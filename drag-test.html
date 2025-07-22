@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drag Button Test</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #debugInfo {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="debugInfo"></div>
+    <script>
+        class DragTest {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.debugInfo = document.getElementById('debugInfo');
+                
+                // 设置画布尺寸
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                
+                // 基础配置
+                this.circleSize = 60;
+                this.currentDragNote = null;
+                
+                // 测试按钮
+                this.testButton = {
+                    x: this.canvas.width / 2,
+                    y: this.canvas.height / 2,
+                    endX: this.canvas.width / 2 + 300,
+                    endY: this.canvas.height / 2,
+                    hit: false,
+                    held: false,
+                    completed: false,
+                    progress: 0
+                };
+
+                // 颜色配置
+                this.colors = {
+                    circle: '#ff6b6b',
+                    track: 'rgba(255, 255, 255, 0.3)',
+                    progress: 'rgba(78, 205, 196, 0.8)',
+                    glow: 'rgba(255, 255, 255, 0.3)'
+                };
+
+                this.setupEventListeners();
+                this.gameLoop();
+            }
+
+            setupEventListeners() {
+                this.canvas.addEventListener('mousedown', (e) => this.handleInput(e.clientX, e.clientY, 'start'));
+                this.canvas.addEventListener('mousemove', (e) => this.handleInput(e.clientX, e.clientY, 'move'));
+                this.canvas.addEventListener('mouseup', (e) => this.handleInput(e.clientX, e.clientY, 'end'));
+                
+                window.addEventListener('resize', () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                });
+            }
+
+            handleInput(x, y, type) {
+                const note = this.testButton;
+                
+                // 如果按钮已完成，重置它
+                if (note.completed && type === 'start') {
+                    note.hit = false;
+                    note.held = false;
+                    note.completed = false;
+                    note.progress = 0;
+                    this.currentDragNote = null;
+                    return;
+                }
+
+                if (note.completed) return;
+
+                if (note.held) {
+                    if (type === 'move') {
+                        // 计算拖动进度
+                        const dx = note.endX - note.x;
+                        const dy = note.endY - note.y;
+                        const totalLength = Math.sqrt(dx * dx + dy * dy);
+                        const mouseDx = x - note.x;
+                        const mouseDy = y - note.y;
+                        const dotProduct = (dx * mouseDx + dy * mouseDy);
+                        note.progress = Math.max(0, Math.min(1, dotProduct / (totalLength * totalLength)));
+
+                        // 更新调试信息
+                        this.updateDebugInfo(x, y);
+                    } else if (type === 'end') {
+                        if (note.progress > 0.9) {
+                            note.completed = true;
+                            note.score = 'perfect';
+                        } else if (note.progress > 0.8) {
+                            note.completed = true;
+                            note.score = 'good';
+                        } else {
+                            note.completed = true;
+                            note.score = 'miss';
+                        }
+                        note.held = false;
+                    }
+                    return;
+                }
+
+                if (type === 'start') {
+                    const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
+                    if (distance <= this.circleSize) {
+                        note.hit = true;
+                        note.held = true;
+                        note.progress = 0;
+                        this.currentDragNote = note;
+                    }
+                }
+            }
+
+            updateDebugInfo(x, y) {
+                const note = this.testButton;
+                this.debugInfo.innerHTML = `
+                    Mouse: (${Math.round(x)}, ${Math.round(y)})<br>
+                    Progress: ${(note.progress * 100).toFixed(1)}%<br>
+                    Status: ${note.held ? 'Dragging' : note.completed ? 'Completed' : 'Waiting'}<br>
+                    Score: ${note.score || 'None'}
+                `;
+            }
+
+            drawNote() {
+                const note = this.testButton;
+                
+                // 绘制轨道
+                this.ctx.beginPath();
+                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = this.circleSize * 2;
+                this.ctx.strokeStyle = this.colors.track;
+                this.ctx.moveTo(note.x, note.y);
+                this.ctx.lineTo(note.endX, note.endY);
+                this.ctx.stroke();
+
+                if (note.held) {
+                    // 绘制进度轨道
+                    const currentX = note.x + (note.endX - note.x) * note.progress;
+                    const currentY = note.y + (note.endY - note.y) * note.progress;
+
+                    // 绘制已完成的轨迹
+                    this.ctx.beginPath();
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineWidth = this.circleSize * 2;
+                    this.ctx.strokeStyle = this.colors.progress;
+                    this.ctx.moveTo(note.x, note.y);
+                    this.ctx.lineTo(currentX, currentY);
+                    this.ctx.stroke();
+
+                    // 绘制拖动点
+                    this.ctx.beginPath();
+                    this.ctx.arc(currentX, currentY, this.circleSize * 1.2, 0, Math.PI * 2);
+                    this.ctx.fillStyle = this.colors.progress;
+                    this.ctx.fill();
+                    
+                    // 发光效果
+                    const pulseSize = this.circleSize * (1.5 + Math.sin(Date.now() / 200) * 0.2);
+                    this.ctx.beginPath();
+                    this.ctx.arc(currentX, currentY, pulseSize, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = this.colors.glow;
+                    this.ctx.lineWidth = 3;
+                    this.ctx.stroke();
+                }
+
+                // 绘制起点圆圈
+                this.ctx.beginPath();
+                this.ctx.arc(note.x, note.y, this.circleSize, 0, Math.PI * 2);
+                this.ctx.fillStyle = note.held ? this.colors.progress : this.colors.circle;
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+
+                // 绘制终点圆圈
+                this.ctx.beginPath();
+                this.ctx.arc(note.endX, note.endY, this.circleSize, 0, Math.PI * 2);
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+
+                // 如果完成，显示评分
+                if (note.completed && note.score) {
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.font = '24px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText(note.score.toUpperCase(), note.x, note.y - 40);
+                    this.ctx.fillText('Click to reset', this.canvas.width / 2, 30);
+                }
+            }
+
+            gameLoop = () => {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.drawNote();
+                requestAnimationFrame(this.gameLoop);
+            }
+        }
+
+        // 初始化测试
+        window.addEventListener('load', () => {
+            new DragTest();
+        });
+    </script>
+</body>
+</html>

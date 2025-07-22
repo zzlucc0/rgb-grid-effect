@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rhythm Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        #backgroundCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+        #gameContainer {
+            position: relative;
+            z-index: 1;
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            cursor: default;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #uploadContainer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            backdrop-filter: blur(5px);
+        }
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        #songSearch {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            outline: none;
+        }
+        #songSearch::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+        #searchResults {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.5);
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .song-result {
+            padding: 10px;
+            cursor: pointer;
+            transition: background 0.3s;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .song-result:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .song-result img {
+            width: 50px;
+            height: 50px;
+            border-radius: 5px;
+        }
+        .separator {
+            color: #fff;
+            text-align: center;
+            margin: 15px 0;
+            opacity: 0.5;
+        }
+        .upload-section {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 15px;
+        }
+        #uploadContainer.hidden {
+            display: none;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #scoreDisplay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 24px;
+            z-index: 100;
+        }
+        .note {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+            user-select: none;
+            transition: transform 0.1s;
+        }
+        .note.click {
+            box-shadow: 0 0 20px #fff;
+        }
+        .note.hold {
+            border-radius: 10px;
+            background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+        }
+        .note.slider {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            clip-path: polygon(0% 50%, 50% 0%, 100% 50%, 50% 100%);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="backgroundCanvas"></canvas>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="scoreDisplay">Score: <span id="score">0</span></div>
+        <div id="uploadContainer">
+            <h2>Music Rhythm Game</h2>
+            <div class="search-container">
+                <input type="text" id="songSearch" placeholder="Enter song name..." />
+                <button id="searchButton">Search</button>
+            </div>
+            <div id="searchResults"></div>
+            <div class="separator">- OR -</div>
+            <div class="upload-section">
+                <h3>Upload Your Own Music</h3>
+                <input type="file" id="audioUpload" accept="audio/*" />
+            </div>
+            <button id="startGame" disabled>Start Game</button>
+        </div>
+    </div>
+    <script src="default-songs.js"></script>
+    <script src="music-api.js"></script>
+    <script src="rgb-effect.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
