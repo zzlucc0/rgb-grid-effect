@@ -216,13 +216,21 @@ class RhythmGame {
             const file = e.target.files[0];
             if (file) {
                 try {
+                    // Update the file upload button text to show the selected file name
+                    const fileUploadBtn = document.querySelector('.file-upload-btn');
+                    if (fileUploadBtn) {
+                        fileUploadBtn.textContent = file.name.length > 20 ? 
+                            file.name.substring(0, 17) + '...' : 
+                            file.name;
+                    }
+                    
                     const arrayBuffer = await file.arrayBuffer();
                     this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
                     startButton.disabled = false;
-                    searchResults.innerHTML = `File selected: ${file.name}`;
+                    searchResults.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
                 } catch (error) {
                     console.error('Error loading audio file:', error);
-                    searchResults.innerHTML = 'Failed to load audio file, please try another file';
+                    searchResults.innerHTML = '<div class="error-message">Failed to load audio file, please try another file</div>';
                     startButton.disabled = true;
                 }
             }
