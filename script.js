@@ -11,12 +11,10 @@ resize();
 
 // 网格配置
 const config = {
-    spacing: 30,      // 网格间距
-    dotSize: 2,       // 点的大小
-    waveSpeed: 0.02,  // 波浪速度
-    waveHeight: 50,   // 波浪高度
-    mouseInfluence: 100, // 鼠标影响范围
-    mouseHeight: 30   // 鼠标影响高度
+    spacing: 25,      // 网格间距
+    lineWidth: 1,     // 线条宽度
+    mouseInfluence: 150, // 鼠标影响范围
+    mouseHeight: 40   // 鼠标影响高度
 };
 
 // 鼠标位置
@@ -35,60 +33,80 @@ canvas.addEventListener('mousemove', (e) => {
 let frame = 0;
 
 // 计算点的高度
-function getHeight(x, y, time) {
+function getHeight(x, y) {
     // 计算到鼠标的距离
     const dx = x - mouse.x;
     const dy = y - mouse.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    // 鼠标影响
-    let mouseEffect = 0;
+    // 只有鼠标影响
+    let height = 0;
     if (distance < config.mouseInfluence) {
-        mouseEffect = (1 - distance / config.mouseInfluence) * config.mouseHeight;
+        height = (1 - distance / config.mouseInfluence) * config.mouseHeight;
     }
     
-    // 基础波浪效果
-    const wave = Math.sin(x * 0.02 + time * config.waveSpeed) * 
-                Math.cos(y * 0.02 + time * config.waveSpeed) * 
-                config.waveHeight;
-    
-    return wave + mouseEffect;
+    return height;
 }
 
 // 获取RGB颜色
-function getRGBColor(x, y, time, height) {
-    const r = Math.sin(x * 0.01 + time * 0.001) * 127 + 128;
-    const g = Math.sin(y * 0.01 - time * 0.001) * 127 + 128;
-    const b = Math.sin((x + y) * 0.01 + time * 0.002) * 127 + 128;
+function getRGBColor(x, y, height) {
+    const intensity = Math.min(Math.abs(height) / config.mouseHeight, 1);
+    const r = Math.sin(x * 0.01) * 127 + 128;
+    const g = Math.sin(y * 0.01) * 127 + 128;
+    const b = Math.sin((x + y) * 0.01) * 127 + 128;
     
-    return `rgb(${r}, ${g}, ${b})`;
+    return `rgba(${r}, ${g}, ${b}, ${intensity * 0.8 + 0.2})`;
 }
 
 // 动画循环
 function animate() {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    // 清除画布
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // 绘制网格
-    for (let x = 0; x < canvas.width; x += config.spacing) {
-        for (let y = 0; y < canvas.height; y += config.spacing) {
-            const height = getHeight(x, y, frame);
-            const color = getRGBColor(x, y, frame, height);
-            
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(
-                x + Math.sin(frame * 0.01) * 2,
-                y + height,
-                config.dotSize + Math.abs(height) * 0.05,
-                0,
-                Math.PI * 2
-            );
-            ctx.fill();
+    // 计算每个点的高度
+    const points = [];
+    for (let x = 0; x <= canvas.width; x += config.spacing) {
+        points[x] = [];
+        for (let y = 0; y <= canvas.height; y += config.spacing) {
+            points[x][y] = getHeight(x, y);
         }
     }
     
-    frame++;
+    // 绘制水平线
+    for (let y = 0; y <= canvas.height; y += config.spacing) {
+        for (let x = 0; x < canvas.width; x += config.spacing) {
+            const height1 = points[x][y];
+            const height2 = points[x + config.spacing] ? points[x + config.spacing][y] : height1;
+            
+            ctx.beginPath();
+            ctx.moveTo(x, y + height1);
+            ctx.lineTo(x + config.spacing, y + height2);
+            
+            const color = getRGBColor(x, y, (height1 + height2) / 2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = config.lineWidth;
+            ctx.stroke();
+        }
+    }
+    
+    // 绘制垂直线
+    for (let x = 0; x <= canvas.width; x += config.spacing) {
+        for (let y = 0; y < canvas.height; y += config.spacing) {
+            const height1 = points[x][y];
+            const height2 = points[x][y + config.spacing] || height1;
+            
+            ctx.beginPath();
+            ctx.moveTo(x, y + height1);
+            ctx.lineTo(x, y + config.spacing + height2);
+            
+            const color = getRGBColor(x, y, (height1 + height2) / 2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = config.lineWidth;
+            ctx.stroke();
+        }
+    }
+    
     requestAnimationFrame(animate);
 }
 
