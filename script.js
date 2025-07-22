@@ -20,17 +20,68 @@ const config = {
     colorSpeed: 0.002  // 颜色变化速度
 };
 
-// 鼠标位置
+// 鼠标位置和状态
 let mouse = {
     x: 0,
-    y: 0
+    y: 0,
+    pressed: false
 };
+
+// 粒子数组
+let particles = [];
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.speed = {
+            x: (Math.random() - 0.5) * 15,
+            y: (Math.random() - 0.5) * 15
+        };
+        this.life = 1;
+        this.decay = 0.02;
+    }
+
+    update() {
+        this.x += this.speed.x;
+        this.y += this.speed.y;
+        this.speed.y += 0.1; // 重力
+        this.life -= this.decay;
+    }
+
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = this.color.replace(')', `,${this.life})`);
+        ctx.fill();
+    }
+}
 
 // 更新鼠标位置
 canvas.addEventListener('mousemove', (e) => {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
 });
+
+// 鼠标按下事件
+canvas.addEventListener('mousedown', (e) => {
+    mouse.pressed = true;
+    createExplosion(e.clientX, e.clientY);
+});
+
+// 鼠标释放事件
+canvas.addEventListener('mouseup', () => {
+    mouse.pressed = false;
+});
+
+// 创建爆炸效果
+function createExplosion(x, y) {
+    const color = getRGBColor(x, y, config.mouseHeight, frame);
+    for (let i = 0; i < 30; i++) {
+        particles.push(new Particle(x, y, color));
+    }
+}
 
 // 动画帧
 let frame = 0;
@@ -103,6 +154,16 @@ function animate() {
             points[x][y] = getHeight(x, y, frame);
         }
     }
+
+    // 按下鼠标时的涟漪效果
+    if (mouse.pressed) {
+        ctx.beginPath();
+        ctx.strokeStyle = getRGBColor(mouse.x, mouse.y, config.mouseHeight, frame);
+        ctx.lineWidth = 2;
+        const rippleSize = (frame % 60) * 5;
+        ctx.arc(mouse.x, mouse.y, rippleSize, 0, Math.PI * 2);
+        ctx.stroke();
+    }
     
     // 绘制水平线
     for (let y = 0; y <= canvas.height; y += config.spacing) {
@@ -135,6 +196,24 @@ function animate() {
             ctx.strokeStyle = color;
             ctx.lineWidth = config.lineWidth;
             ctx.stroke();
+        }
+    }
+
+    // 更新和绘制粒子
+    particles = particles.filter(particle => particle.life > 0);
+    particles.forEach(particle => {
+        particle.update();
+        particle.draw(ctx);
+    });
+
+    // 鼠标轨迹效果
+    if (mouse.pressed) {
+        for (let i = 0; i < 3; i++) {
+            particles.push(new Particle(
+                mouse.x + (Math.random() - 0.5) * 20,
+                mouse.y + (Math.random() - 0.5) * 20,
+                getRGBColor(mouse.x, mouse.y, config.mouseHeight, frame)
+            ));
         }
     }
     
