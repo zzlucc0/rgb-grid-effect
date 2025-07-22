@@ -97,10 +97,10 @@ class RGBEffect {
             }
         }
 
-        // 绘制水平线和垂直线
+        // Draw horizontal and vertical lines
         for (let y = 0; y <= this.canvas.height; y += this.config.spacing) {
             for (let x = 0; x < this.canvas.width; x += this.config.spacing) {
-                // 水平线
+                // Horizontal lines
                 const height1 = points[x][y];
                 const height2 = points[x + this.config.spacing] ? points[x + this.config.spacing][y] : height1;
                 
@@ -112,7 +112,7 @@ class RGBEffect {
                 this.ctx.lineWidth = this.config.lineWidth;
                 this.ctx.stroke();
 
-                // 垂直线
+                // Vertical lines
                 const height3 = points[x][y + this.config.spacing] || height1;
                 
                 this.ctx.beginPath();
@@ -132,7 +132,7 @@ class RGBEffect {
     }
 }
 
-// 初始化RGB效果
+// Initialize RGB effect
 window.addEventListener('load', () => {
     new RGBEffect();
 });
