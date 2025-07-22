@@ -65,14 +65,24 @@ function getRGBColor(x, y, height, time) {
     const angle = Math.atan2(y - mouse.y, x - mouse.x);
     const distance = Math.sqrt((x - mouse.x) ** 2 + (y - mouse.y) ** 2);
     
-    // 动态颜色计算
-    const r = Math.sin(angle + time * config.colorSpeed) * 127 + 128;
-    const g = Math.sin(distance * 0.01 + time * config.colorSpeed * 1.5) * 127 + 128;
-    const b = Math.sin((x + y) * 0.01 + time * config.colorSpeed * 0.7) * 127 + 128;
+    // 动态颜色计算，确保最小亮度
+    const r = Math.sin(angle + time * config.colorSpeed) * 100 + 155; // 范围从 55-255
+    const g = Math.sin(distance * 0.01 + time * config.colorSpeed * 1.5) * 100 + 155;
+    const b = Math.sin((x + y) * 0.01 + time * config.colorSpeed * 0.7) * 100 + 155;
     
-    // 呼吸效果
-    const breath = Math.sin(time * config.breathSpeed) * 0.3 + 0.7;
-    const alpha = (intensity * 0.8 + 0.2) * breath;
+    // 呼吸效果，增加最小亮度
+    const breath = Math.sin(time * config.breathSpeed) * 0.2 + 0.8; // 减少呼吸幅度，增加基础亮度
+    const alpha = (intensity * 0.7 + 0.3) * breath; // 增加最小透明度
+    
+    // 添加发光效果
+    if (distance < config.mouseInfluence * 0.5) {
+        // 在鼠标附近添加额外的亮度
+        const glow = (1 - distance / (config.mouseInfluence * 0.5)) * 0.4;
+        return `rgba(${Math.min(r + r * glow, 255)}, 
+                     ${Math.min(g + g * glow, 255)}, 
+                     ${Math.min(b + b * glow, 255)}, 
+                     ${alpha})`;
+    }
     
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
