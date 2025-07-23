@@ -154,62 +154,7 @@ class RhythmGame {
         const audioUpload = document.getElementById('audioUpload');
         const startButton = document.getElementById('startGame');
         const uploadContainer = document.getElementById('uploadContainer');
-        const searchButton = document.getElementById('searchButton');
-        const songSearch = document.getElementById('songSearch');
-        const searchResults = document.getElementById('searchResults');
-
-        // Music search functionality
-        searchButton.addEventListener('click', () => {
-            console.log('Search button clicked');
-            searchResults.innerHTML = 'Searching...';
-            if (songSearch.value) {
-                const matchingSongs = Object.keys(defaultSongs).filter(songName => 
-                    songName.toLowerCase().includes(songSearch.value.toLowerCase())
-                );
-                
-                searchResults.innerHTML = '';
-                
-                if (matchingSongs.length > 0) {
-                    matchingSongs.forEach(songName => {
-                        const resultDiv = document.createElement('div');
-                        resultDiv.className = 'song-result';
-                        resultDiv.innerHTML = `
-                            <div class="song-info">
-                                <div class="song-title">${songName}</div>
-                            </div>
-                        `;
-                        
-                        resultDiv.addEventListener('click', async () => {
-                            try {
-                                searchResults.innerHTML = 'Loading...';
-                                const songUrl = defaultSongs[songName];
-                                const response = await fetch(songUrl);
-                                if (!response.ok) throw new Error('Failed to load audio file');
-                                const arrayBuffer = await response.arrayBuffer();
-                                this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-                                startButton.disabled = false;
-                                searchResults.innerHTML = `Loaded: ${songName}`;
-                            } catch (error) {
-                                console.error('Error loading song:', error);
-                                searchResults.innerHTML = 'Failed to load song, please try again';
-                                startButton.disabled = true;
-                            }
-                        });
-                        searchResults.appendChild(resultDiv);
-                    });
-                } else {
-                    searchResults.innerHTML = 'No matching songs found. Available songs: ' + 
-                        Object.keys(defaultSongs).join(', ');
-                }
-            }
-        });
-
-        // Keyboard search functionality
-        songSearch.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                searchButton.click();
-            }
-        });
+        const statusText = document.getElementById('statusText');
 
         // File upload functionality
         audioUpload.addEventListener('change', async (e) => {
@@ -224,13 +169,14 @@ class RhythmGame {
                             file.name;
                     }
                     
+                    statusText.innerHTML = `<div class="loading-message">Loading...</div>`;
                     const arrayBuffer = await file.arrayBuffer();
                     this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
                     startButton.disabled = false;
-                    searchResults.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
+                    statusText.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
                 } catch (error) {
                     console.error('Error loading audio file:', error);
-                    searchResults.innerHTML = '<div class="error-message">Failed to load audio file, please try another file</div>';
+                    statusText.innerHTML = '<div class="error-message">Failed to load audio file, please try another file</div>';
                     startButton.disabled = true;
                 }
             }
@@ -243,7 +189,7 @@ class RhythmGame {
                 uploadContainer.classList.add('hidden');
                 this.startGame();
             } else {
-                searchResults.innerHTML = 'Please select or upload a song first';
+                statusText.innerHTML = '<div class="error-message">Please select an audio file first</div>';
             }
         });
 
@@ -634,22 +580,22 @@ class RhythmGame {
                 
                 // Check for overlap with other notes or drag tracks
                 const checkOverlap = (x, y) => {
-                    const minSafeDistance = this.circleSize * 4; // 增加最小安全距离，避免按钮重叠
+                    const minSafeDistance = this.circleSize * 4; // Increase minimum safe distance to avoid button overlap
                     
-                    // 检查与其他按钮的重叠
+                    // Check for overlap with other buttons
                     for (const note of this.notes) {
-                        if (note.hit) continue; // 忽略已经击中的音符
+                        if (note.hit) continue; // Ignore already hit notes
                         
-                        // 检查与按钮本身的距离
+                        // Check the distance to the button itself
                         const dx = note.x - x;
                         const dy = note.y - y;
                         if (Math.sqrt(dx * dx + dy * dy) < minSafeDistance) {
-                            return true; // 重叠
+                            return true; // Overlap detected
                         }
                         
-                        // 检查与拖拽轨道的距离
+                        // Check distance to drag tracks
                         if (note.isDrag && !note.completed) {
-                            // 计算新位置到拖拽轨道的最小距离
+                            // Calculate minimum distance from new position to drag path
                             const minDistToDragPath = this.distanceToQuadraticCurve(
                                 x, y, 
                                 note.x, note.y, 
@@ -657,24 +603,24 @@ class RhythmGame {
                                 note.endX, note.endY
                             );
                             
-                            // 如果距离小于安全距离，则认为重叠
+                            // If distance is less than the safety distance, consider it overlapping
                             if (minDistToDragPath < minSafeDistance) {
-                                return true; // 重叠
+                                return true; // Overlap detected
                             }
                         }
                     }
                     
-                    return false; // 不重叠
+                    return false; // No overlap
                 };
 
-                // 使用网格系统来更好地分布按钮
-                // 将屏幕分成 5x5 的网格
+                // Use a grid system to better distribute buttons
+                // Divide the screen into a 5x5 grid
                 const gridCols = 5;
                 const gridRows = 5;
                 const gridCellWidth = this.safeArea.width / gridCols;
                 const gridCellHeight = this.safeArea.height / gridRows;
                 
-                // 创建网格单元格
+                // Create grid cells
                 const grid = [];
                 for (let row = 0; row < gridRows; row++) {
                     for (let col = 0; col < gridCols; col++) {
@@ -683,62 +629,62 @@ class RhythmGame {
                             row: row,
                             x: this.safeArea.x + (col + 0.5) * gridCellWidth,
                             y: this.safeArea.y + (row + 0.5) * gridCellHeight,
-                            used: false // 标记是否在当前组中使用过
+                            used: false // Mark whether used in current group
                         });
                     }
                 }
                 
-                // 查找上一个音符所在的网格单元格
+                // Find the grid cell of the previous note
                 let lastGridCell = null;
                 if (this.noteCount > 0) {
                     const lastNote = this.notes[this.notes.length - 1];
                     const lastCol = Math.floor((lastNote.x - this.safeArea.x) / gridCellWidth);
                     const lastRow = Math.floor((lastNote.y - this.safeArea.y) / gridCellHeight);
                     
-                    // 找到对应的网格单元格
+                    // Find the corresponding grid cell
                     for (let i = 0; i < grid.length; i++) {
                         if (grid[i].col === lastCol && grid[i].row === lastRow) {
                             lastGridCell = grid[i];
-                            grid[i].used = true; // 标记为已使用
+                            grid[i].used = true; // Mark as used
                             break;
                         }
                     }
                 }
                 
-                // 选择下一个网格单元格
+                // Select the next grid cell
                 let selectedCell;
                 
                 if (this.noteCount === 0) {
-                    // 第一个音符从中心开始
+                    // Start the first note from the center
                     const centerIndex = Math.floor(grid.length / 2);
                     selectedCell = grid[centerIndex];
                 } else {
-                    // 为后续音符选择相邻但没有被当前组使用过的单元格
+                    // For subsequent notes, select adjacent cells that haven't been used in the current group
                     const adjacentCells = [];
                     const nearCells = [];
                     const otherCells = [];
                     
                     grid.forEach(cell => {
                         if (!cell.used) {
-                            // 计算与上一个单元格的网格距离
+                            // Calculate grid distance from previous cell
                             const colDist = Math.abs(cell.col - lastGridCell.col);
                             const rowDist = Math.abs(cell.row - lastGridCell.row);
                             const maxDist = Math.max(colDist, rowDist);
                             
                             if (maxDist === 1) {
-                                // 相邻单元格（上、下、左、右、对角线）
+                                // Adjacent cells (up, down, left, right, diagonal)
                                 adjacentCells.push(cell);
                             } else if (maxDist === 2) {
-                                // 稍远一点的单元格
+                                // Slightly further cells
                                 nearCells.push(cell);
                             } else {
-                                // 其他单元格
+                                // Other cells
                                 otherCells.push(cell);
                             }
                         }
                     });
                     
-                    // 优先选择相邻单元格，其次是稍远的，最后是随机单元格
+                    // Prioritize adjacent cells, then nearby cells, and finally random cells
                     if (adjacentCells.length > 0) {
                         selectedCell = adjacentCells[Math.floor(Math.random() * adjacentCells.length)];
                     } else if (nearCells.length > 0) {
@@ -746,7 +692,7 @@ class RhythmGame {
                     } else if (otherCells.length > 0) {
                         selectedCell = otherCells[Math.floor(Math.random() * otherCells.length)];
                     } else {
-                        // 如果所有单元格都已使用，重置使用状态并选择一个不同于上一个的单元格
+                        // If all cells have been used, reset usage status and select a cell different from the last one
                         grid.forEach(cell => cell.used = false);
                         const availableCells = grid.filter(cell => 
                             cell.col !== lastGridCell.col || cell.row !== lastGridCell.row);
@@ -754,28 +700,28 @@ class RhythmGame {
                     }
                 }
                 
-                // 标记选定的单元格为已使用
+                // Mark the selected cell as used
                 selectedCell.used = true;
                 
-                // 在选定的单元格内寻找不重叠的位置
+                // Find a non-overlapping position within the selected cell
                 let attempts = 0;
                 let found = false;
-                const maxAttempts = 30; // 增加尝试次数
+                const maxAttempts = 30; // Increased number of attempts
                 
-                // 在选定单元格附近随机生成位置
+                // Randomly generate positions near the selected cell
                 while (!found && attempts < maxAttempts) {
-                    // 在单元格周围的范围内随机生成位置
+                    // Generate random position within the range around the cell
                     const offsetRange = Math.min(gridCellWidth, gridCellHeight) * 0.4;
                     x = selectedCell.x + (Math.random() - 0.5) * offsetRange;
                     y = selectedCell.y + (Math.random() - 0.5) * offsetRange;
                     
-                    // 确保位置在安全区域内
+                    // Ensure position is within the safe area
                     x = Math.max(this.safeArea.x + this.circleSize, 
                         Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, x));
                     y = Math.max(this.safeArea.y + this.circleSize, 
                         Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y));
                     
-                    // 检查新位置是否与现有音符重叠
+                    // Check if the new position overlaps with existing notes
                     if (!checkOverlap(x, y)) {
                         found = true;
                         break;
@@ -783,13 +729,13 @@ class RhythmGame {
                     attempts++;
                 }
                 
-                // 如果还是没找到合适位置，尝试在整个安全区域内生成
+                // If still no suitable position found, try generating in the entire safe area
                 if (!found) {
                     for (let i = 0; i < 20; i++) {
                         x = this.safeArea.x + Math.random() * this.safeArea.width;
                         y = this.safeArea.y + Math.random() * this.safeArea.height;
                         
-                        // 确保在安全区域内且与边界有一定距离
+                        // Ensure position is within safe area and has some distance from the borders
                         x = Math.max(this.safeArea.x + this.circleSize, 
                             Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, x));
                         y = Math.max(this.safeArea.y + this.circleSize, 
@@ -802,48 +748,48 @@ class RhythmGame {
                     }
                 }
                 
-                // 如果在选定区域内没有找到合适位置，使用改进的螺旋搜索算法
+                // If no suitable position found in the selected area, use improved spiral search algorithm
                 if (!found) {
                     console.log('No suitable position found in the selected area, using spiral search');
                     
-                    // 螺旋搜索算法 - 增加尝试次数和搜索精度
-                    const spiralAttempts = 100; // 增加尝试次数
-                    const spiralStep = this.circleSize * 0.5; // 减小步长以获得更精细的搜索
-                    let spiralAngle = Math.random() * Math.PI * 2; // 随机起始角度，避免固定模式
+                    // Spiral search algorithm - increased attempts and search precision
+                    const spiralAttempts = 100; // Increased number of attempts
+                    const spiralStep = this.circleSize * 0.5; // Reduced step size for finer search
+                    let spiralAngle = Math.random() * Math.PI * 2; // Random starting angle to avoid fixed patterns
                     let spiralRadius = this.circleSize * 2;
                     
-                    // 从多个起点开始搜索，而不仅仅是屏幕中心
+                    // Start search from multiple points, not just the screen center
                     const startPoints = [
-                        { x: this.canvas.width / 2, y: this.canvas.height / 2 }, // 中心
-                        { x: this.canvas.width / 4, y: this.canvas.height / 4 }, // 左上
-                        { x: this.canvas.width * 3/4, y: this.canvas.height / 4 }, // 右上
-                        { x: this.canvas.width / 4, y: this.canvas.height * 3/4 }, // 左下
-                        { x: this.canvas.width * 3/4, y: this.canvas.height * 3/4 } // 右下
+                        { x: this.canvas.width / 2, y: this.canvas.height / 2 }, // Center
+                        { x: this.canvas.width / 4, y: this.canvas.height / 4 }, // Top-left
+                        { x: this.canvas.width * 3/4, y: this.canvas.height / 4 }, // Top-right
+                        { x: this.canvas.width / 4, y: this.canvas.height * 3/4 }, // Bottom-left
+                        { x: this.canvas.width * 3/4, y: this.canvas.height * 3/4 } // Bottom-right
                     ];
                     
-                    // 从每个起点进行螺旋搜索
+                    // Perform spiral search from each starting point
                     for (const startPoint of startPoints) {
                         if (found) break;
                         
                         const centerX = startPoint.x;
                         const centerY = startPoint.y;
-                        spiralAngle = Math.random() * Math.PI * 2; // 每个起点使用随机角度
+                        spiralAngle = Math.random() * Math.PI * 2; // Use random angle for each starting point
                         spiralRadius = this.circleSize * 2;
                         
                         for (let i = 0; i < spiralAttempts; i++) {
                             spiralRadius += spiralStep / (2 * Math.PI);
-                            spiralAngle += Math.PI / 12; // 更小的角度增量，获得更多点
+                            spiralAngle += Math.PI / 12; // Smaller angle increment to get more points
                             
                             x = centerX + Math.cos(spiralAngle) * spiralRadius;
                             y = centerY + Math.sin(spiralAngle) * spiralRadius;
                             
-                            // 确保在安全区域内
+                            // Ensure position is within the safe area
                             if (x >= this.safeArea.x + this.circleSize * 1.5 && 
                                 x <= this.safeArea.x + this.safeArea.width - this.circleSize * 1.5 && 
                                 y >= this.safeArea.y + this.circleSize * 1.5 && 
                                 y <= this.safeArea.y + this.safeArea.height - this.circleSize * 1.5) {
                                     
-                                // 检查是否与其他音符重叠
+                                // Check if the position overlaps with other notes
                                 if (!checkOverlap(x, y)) {
                                     found = true;
                                     break;
@@ -852,37 +798,37 @@ class RhythmGame {
                         }
                     }
                     
-                    // 最后的应急方案：寻找最不重叠的位置
+                    // Last resort: Find the position with least overlap
                     if (!found) {
                         console.log('Spiral search failed, finding best possible position');
                         let bestDistance = 0;
                         let bestX = this.canvas.width / 2;
                         let bestY = this.canvas.height / 2;
                         
-                        // 在整个屏幕网格化采样，找最佳位置
-                        const gridSize = this.circleSize * 2; // 网格大小
+                        // Grid sampling across the entire screen to find the best position
+                        const gridSize = this.circleSize * 2; // Grid size
                         const cols = Math.floor(this.safeArea.width / gridSize);
                         const rows = Math.floor(this.safeArea.height / gridSize);
                         
-                        // 遍历网格点
+                        // Iterate through grid points
                         for (let col = 0; col < cols; col++) {
                             for (let row = 0; row < rows; row++) {
                                 const testX = this.safeArea.x + (col + 0.5) * gridSize;
                                 const testY = this.safeArea.y + (row + 0.5) * gridSize;
                                 
-                                // 计算此位置到所有活跃音符和拖拽轨道的最小距离
+                                // Calculate minimum distance from this position to all active notes and drag tracks
                                 let minDistance = Number.MAX_VALUE;
                                 
                                 for (const note of this.notes) {
                                     if (note.hit || note.completed) continue;
                                     
-                                    // 检查与按钮本身的距离
+                                    // Check distance to the button itself
                                     const dx = note.x - testX;
                                     const dy = note.y - testY;
                                     const distance = Math.sqrt(dx*dx + dy*dy);
                                     minDistance = Math.min(minDistance, distance);
                                     
-                                    // 检查与拖拽轨道的距离
+                                    // Check distance to the drag track
                                     if (note.isDrag) {
                                         const dragDistance = this.distanceToQuadraticCurve(
                                             testX, testY, 
@@ -894,7 +840,7 @@ class RhythmGame {
                                     }
                                 }
                                 
-                                // 更新最佳位置
+                                // Update the best position
                                 if (minDistance > bestDistance) {
                                     bestDistance = minDistance;
                                     bestX = testX;
@@ -903,12 +849,12 @@ class RhythmGame {
                             }
                         }
                         
-                        // 添加一些小的随机偏移，避免严格网格对齐
+                        // Add small random offsets to avoid strict grid alignment
                         const offsetRange = gridSize * 0.3;
                         x = bestX + (Math.random() - 0.5) * offsetRange;
                         y = bestY + (Math.random() - 0.5) * offsetRange;
                         
-                        // 确保在安全区域内
+                        // Ensure position is within safe area
                         x = Math.max(this.safeArea.x + this.circleSize * 1.5, 
                             Math.min(this.safeArea.x + this.safeArea.width - this.circleSize * 1.5, x));
                         y = Math.max(this.safeArea.y + this.circleSize * 1.5, 
@@ -918,13 +864,13 @@ class RhythmGame {
                     }
                 }
                 
-                // 生成音符
+                // Generate note
                 const normalizedEnergy = Math.min(1, energy / 255);
                 
-                // 决定是否创建拖拽按钮
+                // Decide whether to create drag button
                 const isDragNote = Math.random() < this.dragNoteFrequency && this.noteCount > 0;
                 
-                // 基础音符属性
+                // Basic note properties
                 const note = {
                     x: x,
                     y: y,
@@ -935,49 +881,49 @@ class RhythmGame {
                     approachProgress: 0,
                     energy: normalizedEnergy,
                     beatNumber: this.beatCount,
-                    noteNumber: this.noteCount + 1,  // 从1开始计数
+                    noteNumber: this.noteCount + 1,  // Start counting from 1
                     isDrag: isDragNote,
                     held: false,
                     completed: false,
                     progress: 0
                 };
                 
-                // 如果是拖拽按钮，添加额外属性
+                // If it's a drag button, add extra properties
                 if (isDragNote) {
-                    // 计算一个合理的终点位置（小弧线）
+                    // Calculate a reasonable endpoint position (small arc)
                     const distance = this.dragNoteMinDistance + Math.random() * (this.dragNoteMaxDistance - this.dragNoteMinDistance);
                     
-                    // 生成更自然的角度（避免与之前的音符重叠）
+                    // Generate a more natural angle (avoid overlapping with previous notes)
                     let angle;
                     if (this.notes.length > 0) {
-                        // 基于上一个音符的位置生成一个不同的方向
+                        // Generate a different direction based on the position of the last note
                         const lastNote = this.notes[this.notes.length - 1];
                         const dirToLastNote = Math.atan2(lastNote.y - y, lastNote.x - x);
-                        // 避开上一个音符的方向，选择相反或垂直的方向
+                        // Avoid the direction of the previous note, choose opposite or perpendicular direction
                         angle = dirToLastNote + Math.PI * (0.5 + Math.random());
                     } else {
                         angle = Math.random() * Math.PI * 2;
                     }
                     
-                    // 确保终点在安全区域内
+                    // Ensure endpoint is within safe area
                     let endX = x + Math.cos(angle) * distance;
                     let endY = y + Math.sin(angle) * distance;
                     
-                    // 限制在安全区域内
+                    // Restrict to within safe area
                     endX = Math.max(this.safeArea.x + this.circleSize, 
                         Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, endX));
                     endY = Math.max(this.safeArea.y + this.circleSize, 
                         Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, endY));
                     
-                    // 添加到音符对象
+                    // Add to note object
                     note.endX = endX;
                     note.endY = endY;
                     
-                    // 计算曲线控制点
+                    // Calculate curve control points
                     const dx = note.endX - note.x;
                     const dy = note.endY - note.y;
                     const pathDistance = Math.sqrt(dx * dx + dy * dy);
-                    // 弧度高度为路径长度的15-25%，产生小弧线
+                    // Arc height is 15-25% of path length, creating a small arc
                     const arcHeight = pathDistance * (0.15 + Math.random() * 0.1);
                     const midX = (note.x + note.endX) / 2;
                     const midY = (note.y + note.endY) / 2;
@@ -988,7 +934,7 @@ class RhythmGame {
                     note.controlY = midY + perpY * arcHeight;
                 }
                 
-                this.noteCount++; // 增加音符计数
+                this.noteCount++; // Increment note counter
                 
                 this.notes.push(note);
                 this.lastNoteTime = currentTime;
@@ -996,39 +942,39 @@ class RhythmGame {
         }
     }
     detectVocalAndBeat = (audioData) => {
-        // 确保有音频数据
+        // Ensure audio data exists
         if (!audioData || !audioData.length) {
             return { beat: false, vocal: false, energy: 0 };
         }
 
-        // 1. 检测人声
+        // 1. Detect vocals
         let vocalEnergy = 0;
         const sampleRate = this.audioContext.sampleRate || 44100;
         const vocalMinBin = Math.floor(this.vocalFreqRange.min * this.analyser.fftSize / sampleRate);
         const vocalMaxBin = Math.floor(this.vocalFreqRange.max * this.analyser.fftSize / sampleRate);
         
-        // 确保索引在有效范围内
+        // Ensure index is within valid range
         const minBin = Math.max(0, Math.min(vocalMinBin, audioData.length - 1));
         const maxBin = Math.max(0, Math.min(vocalMaxBin, audioData.length - 1));
         
-        // 计算人声频率范围内的能量
+        // Calculate energy within vocal frequency range
         for (let i = minBin; i <= maxBin; i++) {
             vocalEnergy += audioData[i];
         }
         vocalEnergy /= (maxBin - minBin + 1);
         
-        // 使用平滑系数更新人声能量历史
+        // Update vocal energy history using smoothing factor
         this.vocalEnergyHistory.push(vocalEnergy);
-        if (this.vocalEnergyHistory.length > 40) { // 增加历史长度以获得更平滑的结果
+        if (this.vocalEnergyHistory.length > 40) { // Increase history length for smoother results
             this.vocalEnergyHistory.shift();
         }
         
-        // 计算人声能量的动态阈值
+        // Calculate dynamic threshold for vocal energy
         const avgVocalEnergy = this.vocalEnergyHistory.reduce((a, b) => a + b) / this.vocalEnergyHistory.length;
-        // 使用更敏感的人声检测阈值
+        // Use more sensitive threshold for vocal detection
         const vocalDetected = vocalEnergy > avgVocalEnergy * this.vocalDetectionThreshold;
         
-        // 2. 检测节拍
+        // 2. Detect beats
         let beatEnergy = 0;
         for (let i = 0; i < 32; i++) {
             beatEnergy += audioData[i];
@@ -1040,40 +986,40 @@ class RhythmGame {
             this.energyHistory.shift();
         }
         
-        // 存储最近的节拍强度，用于调整每组音符数量
+        // Store recent beat intensity to adjust number of notes per group
         if (beatEnergy > 0) {
             this.recentBeatStrengths.push(beatEnergy);
-            if (this.recentBeatStrengths.length > 20) { // 保留最近20个节拍的强度
+            if (this.recentBeatStrengths.length > 20) { // Keep intensity of the 20 most recent beats
                 this.recentBeatStrengths.shift();
             }
             
-            // 根据最近节拍强度和预分析的数据调整每组音符的数量
+            // Adjust number of notes per group based on recent beat intensity and pre-analyzed data
             if (this.recentBeatStrengths.length >= 5 && !this.isGroupPaused) {
-                // 结合实时节拍强度和预分析结果
+                // Combine real-time beat intensity and pre-analyzed results
                 const currentTime = this.audioContext.currentTime - this.startTime;
-                let plannedSize = this.notesPerGroup; // 默认值
+                let plannedSize = this.notesPerGroup; // Default value
                 
-                // 如果有预分析的数据，查找当前时间点对应的计划按钮数量
+                // If pre-analyzed data exists, find planned button count for current time point
                 if (this.vocalSections && this.vocalSections.length > 0) {
-                    // 查找当前时间所在的人声段落
+                    // Find vocal segment containing current time
                     const currentSection = this.vocalSections.find(section => 
                         currentTime >= section.start && currentTime <= section.end);
                     
                     if (currentSection) {
-                        // 使用预分析的计划按钮数量
+                        // Use pre-analyzed planned button count
                         plannedSize = currentSection.plannedButtonCount;
                     }
                 }
                 
-                // 结合实时节拍强度进行微调
+                // Fine-tune based on real-time beat intensity
                 const avgStrength = this.recentBeatStrengths.reduce((a, b) => a + b) / this.recentBeatStrengths.length;
-                const normalizedStrength = Math.min(avgStrength / 255, 1); // 归一化到0-1范围
+                const normalizedStrength = Math.min(avgStrength / 255, 1); // Normalize to 0-1 range
                 
-                // 动态调整每组音符数量，以预分析数据为基础，根据实时节拍强度进行微调
-                const adjustment = Math.round(normalizedStrength * 3) - 1; // -1到2之间的调整
+                // Dynamically adjust note count per group, based on pre-analyzed data and fine-tuned by real-time beat intensity
+                const adjustment = Math.round(normalizedStrength * 3) - 1; // Adjustment between -1 and 2
                 this.currentGroupSize = plannedSize + adjustment;
                 
-                // 确保在指定范围内
+                // Ensure within specified range
                 this.currentGroupSize = Math.max(this.notesPerGroup, Math.min(this.maxNotesPerGroup, this.currentGroupSize));
             }
         }
@@ -1097,19 +1043,19 @@ class RhythmGame {
         const currentTime = this.audioContext.currentTime - this.startTime;
         
         this.notes = this.notes.filter(note => {
-            // 如果音符已经显示过评分并消失，则移除
+            // If note has shown score and disappeared, remove it
             if (note.hit && !note.score) return false;
             
-            // 拖拽按钮的特殊处理
+            // Special handling for drag buttons
             if (note.isDrag && note.completed) {
-                // 已完成的拖拽按钮在显示一段时间后移除
+                // Completed drag buttons are removed after displaying for a period of time
                 if (note.score && (currentTime - note.hitTime > 1)) {
                     return false;
                 }
                 return true;
             }
             
-            // 如果音符超过判定时间太久还没有被点击，标记为 miss
+            // If note has passed the judgment time for too long without being clicked, mark as miss
             if (!note.hit && !note.held && currentTime > note.hitTime + this.goodRange / 1000) {
                 note.hit = true;
                 note.score = 'miss';
@@ -1117,8 +1063,8 @@ class RhythmGame {
                 return true;
             }
             
-            // 如果拖拽按钮被点击但是很长时间没有完成拖拽，也标记为miss
-            if (note.isDrag && note.held && !note.completed && currentTime > note.hitTime + 5) { // 5秒后超时
+            // If drag button was clicked but drag not completed for a long time, also mark as miss
+            if (note.isDrag && note.held && !note.completed && currentTime > note.hitTime + 5) { // Timeout after 5 seconds
                 note.hit = true;
                 note.held = false;
                 note.completed = true;
@@ -1135,9 +1081,9 @@ class RhythmGame {
     drawNotes = () => {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Debug模式：显示安全区域和调试信息
+        // Debug mode: Display safe area and debug information
         if (this.debugMode) {
-            // 绘制安全区域边界
+            // Draw safe area boundaries
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             this.ctx.strokeRect(
                 this.safeArea.x,
@@ -1146,7 +1092,7 @@ class RhythmGame {
                 this.safeArea.height
             );
             
-            // 显示调试信息
+            // Display debug information
             this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.font = '14px Arial';
             this.ctx.textAlign = 'left';
@@ -1157,7 +1103,7 @@ class RhythmGame {
             this.ctx.fillText(`Notes in Group: ${this.noteCount} / ${this.notesPerGroup}`, 10, 100);
         }
 
-        // 绘制音符和光圈
+        // Draw notes and circles
         this.notes.forEach(note => {
             if (note.hit && !note.score) return;
 
@@ -1165,7 +1111,7 @@ class RhythmGame {
             const timeUntilHit = note.hitTime - currentTime;
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / (this.approachRate / 1000)));
 
-            // 绘制收缩光圈
+            // Draw contracting circle
             if (!note.hit) {
                 const approachSize = Math.max(
                     this.circleSize,
@@ -1182,20 +1128,20 @@ class RhythmGame {
 
 
 
-            // 如果是拖拽按钮，绘制轨道
+            // If it's a drag button, draw the track
             if (note.isDrag) {
-                // 绘制弧形轨道
+                // Draw curved track
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * 0.8; // 轨道宽度比圆圈小
+                this.ctx.lineWidth = this.circleSize * 0.8; // Track width is smaller than circle
                 this.ctx.strokeStyle = this.colors.track;
                 this.ctx.moveTo(note.x, note.y);
                 this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
                 this.ctx.stroke();
                 
-                // 如果正在拖拽，绘制进度轨道
+                // If currently dragging, draw progress track
                 if (note.held) {
-                    // 计算当前点在曲线上的位置
+                    // Calculate current point position on the curve
                     const t = note.progress;
                     const currentX = Math.pow(1-t, 2) * note.x + 
                                    2 * (1-t) * t * note.controlX + 
@@ -1204,7 +1150,7 @@ class RhythmGame {
                                    2 * (1-t) * t * note.controlY + 
                                    Math.pow(t, 2) * note.endY;
                     
-                    // 绘制已完成的轨迹
+                    // Draw completed track
                     const progressIndex = Math.floor(note.progress * 100);
                     const fullPath = [];
                     
@@ -1219,7 +1165,7 @@ class RhythmGame {
                         fullPath.push({x: ptX, y: ptY});
                     }
                     
-                    // 绘制截至当前进度的部分路径
+                    // Draw partial path up to current progress
                     this.ctx.beginPath();
                     this.ctx.moveTo(note.x, note.y);
                     this.ctx.lineCap = 'round';
@@ -1232,13 +1178,13 @@ class RhythmGame {
                     
                     this.ctx.stroke();
                     
-                    // 绘制拖动点
+                    // Draw drag point
                     this.ctx.beginPath();
                     this.ctx.arc(currentX, currentY, this.circleSize * 0.9, 0, Math.PI * 2);
                     this.ctx.fillStyle = this.colors.progress;
                     this.ctx.fill();
                     
-                    // 发光效果
+                    // Glow effect
                     const pulseSize = this.circleSize * (1.2 + Math.sin(Date.now() / 200) * 0.1);
                     this.ctx.beginPath();
                     this.ctx.arc(currentX, currentY, pulseSize, 0, Math.PI * 2);
@@ -1247,7 +1193,7 @@ class RhythmGame {
                     this.ctx.stroke();
                 }
                 
-                // 绘制终点圆圈
+                // Draw endpoint circle
                 this.ctx.beginPath();
                 this.ctx.arc(note.endX, note.endY, this.circleSize * 0.8, 0, Math.PI * 2);
                 this.ctx.fillStyle = note.completed ? this.colors.perfect : 'rgba(255, 255, 255, 0.2)';
@@ -1257,7 +1203,7 @@ class RhythmGame {
                 this.ctx.stroke();
             }
             
-            // 绘制起点圆圈
+            // Draw starting circle
             this.ctx.beginPath();
             this.ctx.arc(note.x, note.y, this.circleSize, 0, Math.PI * 2);
             this.ctx.fillStyle = note.score ? this.colors[note.score] : 
@@ -1267,9 +1213,9 @@ class RhythmGame {
             this.ctx.lineWidth = 2;
             this.ctx.stroke();
 
-            // 在圆圈中显示序号，并在相邻数字之间画线
+            // Show sequence number in circle and draw lines between adjacent numbers
             if (!note.hit) {
-                // 如果有前一个音符且是连续的数字，画一条连线
+                // If there is a previous note and they have consecutive numbers, draw a connecting line
                 if (note.noteNumber > 1 && !note.isDrag) {
                     const prevNote = this.notes.find(n => !n.hit && n.noteNumber === note.noteNumber - 1);
                     if (prevNote) {
@@ -1282,7 +1228,7 @@ class RhythmGame {
                     }
                 }
 
-                // 显示序号
+                // Display sequence number
                 this.ctx.fillStyle = '#fff';
                 this.ctx.font = '24px Arial';
                 this.ctx.textAlign = 'center';
@@ -1290,14 +1236,14 @@ class RhythmGame {
                 this.ctx.fillText(note.noteNumber.toString(), note.x, note.y);
             }
 
-            // 如果有评分，显示评分文本
+            // If there is a score, display the score text
             if (note.score) {
                 this.ctx.fillStyle = '#fff';
                 this.ctx.font = '20px Arial';
                 this.ctx.textAlign = 'center';
                 this.ctx.fillText(note.score.toUpperCase(), note.x, note.y - 40);
                 
-                // 评分显示一段时间后移除音符
+                // Remove the note after displaying the score for a period of time
                 if (currentTime - note.hitTime > 0.5) {
                     note.hit = true;
                     note.score = null;
@@ -1305,7 +1251,7 @@ class RhythmGame {
             }
         });
 
-        // 绘制连击数和分数
+        // Draw combo count and score
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '24px Arial';
         this.ctx.textAlign = 'center';
@@ -1316,20 +1262,20 @@ class RhythmGame {
         
         this.ctx.fillText(`Score: ${Math.floor(this.score)}`, this.canvas.width / 2, 90);
         
-        // 人声活跃状态的指示器已隐藏，但保留人声检测的逻辑功能
+        // The voice activity indicator is hidden, but the voice detection logic functionality is retained
     }
     handleInput = (x, y, type) => {
         if (!this.isPlaying) return;
 
         const currentTime = this.audioContext.currentTime - this.startTime;
         
-        // 如果有正在拖拽的音符
+        // If there is a note being dragged
         if (this.currentDragNote) {
             const note = this.currentDragNote;
             
             if (note.held) {
                 if (type === 'move') {
-                    // 生成曲线上的点
+                    // Generate points on the curve
                     const curvePoints = [];
                     const steps = 100;
                     
@@ -1344,7 +1290,7 @@ class RhythmGame {
                         curvePoints.push({x: ptX, y: ptY, t: t});
                     }
                     
-                    // 找到最近的点
+                    // Find the closest point
                     let minDist = Infinity;
                     let closestPoint = null;
                     
@@ -1356,11 +1302,11 @@ class RhythmGame {
                         }
                     });
                     
-                    // 更新进度
+                    // Update progress
                     if (closestPoint) {
                         note.progress = closestPoint.t;
                     } else {
-                        // 退回到线性计算作为备选
+                        // Fall back to linear calculation as an alternative
                         const dx = note.endX - note.x;
                         const dy = note.endY - note.y;
                         const totalLength = Math.sqrt(dx * dx + dy * dy);
@@ -1373,7 +1319,7 @@ class RhythmGame {
                     if (note.progress > 0.9) {
                         note.completed = true;
                         note.score = 'perfect';
-                        this.score += 1500 * (1 + this.combo * 0.1); // 拖拽完成给更多分数
+                        this.score += 1500 * (1 + this.combo * 0.1); // More points for completing the drag
                         this.combo++;
                         this.createHitEffect(note.endX, note.endY, 'perfect');
                     } else if (note.progress > 0.7) {
@@ -1396,19 +1342,19 @@ class RhythmGame {
             }
         }
 
-        // 处理普通点击
+        // Handle normal clicks
         if (type === 'start') {
             this.notes.forEach(note => {
                 if (note.hit || note.completed) return;
     
-                // 计算点击位置与音符的距离
+                // Calculate the distance between click position and note
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
                 
-                // 只有在圆圈范围内的点击才判定
+                // Only judge clicks within the circle range
                 if (distance <= this.circleSize) {
-                    const timingDiff = Math.abs(currentTime - note.hitTime) * 1000; // 转换为毫秒
+                    const timingDiff = Math.abs(currentTime - note.hitTime) * 1000; // Convert to milliseconds
                     
-                    // 对于拖拽按钮
+                    // For drag buttons
                     if (note.isDrag) {
                         note.held = true;
                         note.progress = 0;
@@ -1416,7 +1362,7 @@ class RhythmGame {
                         return;
                     }
                     
-                    // 对于普通按钮
+                    // For normal buttons
                     if (timingDiff <= this.perfectRange) {
                         note.score = 'perfect';
                         this.score += 1000 * (1 + this.combo * 0.1);
@@ -1447,29 +1393,29 @@ class RhythmGame {
         this.score += 100 * (1 + this.combo * 0.1);
         document.getElementById('score').textContent = Math.floor(this.score);
 
-        // 创建打击效果
+        // Create hit effect
         this.createHitEffect(note.x, note.y);
     }
 
-    // 计算点到二次贝塞尔曲线的最小距离
+    // Calculate the minimum distance from a point to a quadratic Bezier curve
     distanceToQuadraticCurve(px, py, x0, y0, x1, y1, x2, y2) {
-        // 将点投影到曲线上的参数范围为0到1
-        const numPoints = 20; // 用20个点来近似曲线
+        // Project the point onto the curve with parameter range 0 to 1
+        const numPoints = 20; // Use 20 points to approximate the curve
         let minDistance = Number.MAX_VALUE;
         
-        // 通过采样曲线上的点来估算最小距离
+        // Estimate the minimum distance by sampling points on the curve
         for (let i = 0; i <= numPoints; i++) {
             const t = i / numPoints;
-            // 二次贝塞尔曲线的参数方程
+            // Parametric equation of the quadratic Bezier curve
             const curveX = Math.pow(1-t, 2) * x0 + 2 * (1-t) * t * x1 + Math.pow(t, 2) * x2;
             const curveY = Math.pow(1-t, 2) * y0 + 2 * (1-t) * t * y1 + Math.pow(t, 2) * y2;
             
-            // 计算点到曲线上该点的距离
+            // Calculate the distance from the point to this point on the curve
             const dx = px - curveX;
             const dy = py - curveY;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            // 更新最小距离
+            // Update the minimum distance
             if (distance < minDistance) {
                 minDistance = distance;
             }
@@ -1530,7 +1476,7 @@ class RhythmGame {
     }
 }
 
-// 初始化游戏
+// Initialize the game
 window.addEventListener('load', () => {
     new RhythmGame();
 });
