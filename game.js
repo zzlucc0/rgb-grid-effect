@@ -575,7 +575,7 @@ class RhythmGame {
                     return;
                 }
 
-                // Calculate position for new note
+                // Calculate position for new notes
                 let x, y;
                 
                 // Check for overlap with other notes or drag tracks
