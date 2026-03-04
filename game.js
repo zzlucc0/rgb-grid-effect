@@ -233,7 +233,7 @@ class RhythmGame {
         
         // Create offline audio context to pre-analyze the song (keep for beat analysis)
         const statusText = document.getElementById('statusText');
-        if (statusText && this.chartMode) statusText.innerHTML = "<div class="loading-message">Analyzing beats (preAnalyzeSong)...</div>";
+        if (statusText && this.chartMode) statusText.innerHTML = "<div class=\"loading-message\">Analyzing beats (preAnalyzeSong)...</div>";
         await this.preAnalyzeSong();
         
         // Chart mode still uses preAnalyzeSong result as timing/style assistant
@@ -247,7 +247,7 @@ class RhythmGame {
                 time: Number(Math.max(0.6, n.time + nudge + (idx % 8 === 0 ? 0.005 : 0)).toFixed(3)),
                 type: n.type || (idx % 7 === 0 ? "drag" : "tap")
             }));
-            if (statusText) statusText.innerHTML = "<div class="loading-message">Chart loaded: " + this.chartData.notes.length + " notes</div>";
+            if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Chart loaded: " + this.chartData.notes.length + " notes</div>";
         }
 
         // Display countdown while showing analysis results
