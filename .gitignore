@@ -13,3 +13,4 @@ Thumbs.db
 # server runtime data
 server/data/cache/
 server/data/jobs/
+server/node_modules/
