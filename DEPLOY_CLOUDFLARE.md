@@ -67,3 +67,35 @@ cd /mnt/data/projects/rgb-grid-effect
 git pull
 docker compose up -d --build
 ```
+
+## 8) Optional: YouTube cookies for higher fetch success
+
+If some public videos fail due to YouTube restrictions, place exported cookies at:
+
+`server/cookies/youtube.txt`
+
+Compose already mounts this path and passes:
+
+`YTDLP_COOKIES_PATH=/app/cookies/youtube.txt`
+
+Then restart:
+
+```bash
+docker compose up -d --build
+```
+
+## 9) Regression test set
+
+Test at least these types:
+
+1. Cache-hit video (already processed)
+2. New short public clip
+3. New music video
+4. Known fetch-fail sample (expect readable failure)
+5. Invalid URL (expect validation error)
+
+Pass criteria:
+- job reaches done or clear failed reason
+- done => audio URL returns 200
+- done => chart notes > 0
+- front-end can start game and spawn notes
