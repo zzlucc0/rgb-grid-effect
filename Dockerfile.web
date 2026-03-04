@@ -1,0 +1,7 @@
+FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/index.html
+COPY game.js /usr/share/nginx/html/game.js
+COPY rgb-effect.js /usr/share/nginx/html/rgb-effect.js
+COPY default-songs.js /usr/share/nginx/html/default-songs.js
+COPY music-api.js /usr/share/nginx/html/music-api.js
+COPY youtube-client.js /usr/share/nginx/html/youtube-client.js

@@ -7,3 +7,14 @@ services:
       - "8787:8787"
     volumes:
       - ./server/data:/app/data
+
+  rgb-grid-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: rgb-grid-web
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    depends_on:
+      - rgb-grid-api
