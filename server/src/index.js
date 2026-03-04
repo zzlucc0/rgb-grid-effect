@@ -223,30 +223,30 @@ async function searchBilibili(query, limit = 5) {
   if (!q) return [];
   const n = Math.max(1, Math.min(10, Number(limit) || 5));
 
-  // 1) Bilibili public search API (preferred)
+  // 1) Bilibili search endpoint that is reachable from this server
   try {
-    const api = "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=" + encodeURIComponent(q) + "&page=1";
+    const api = "https://s.search.bilibili.com/cate/search?main_ver=v3&search_type=video&view_type=hot_rank&order=click&copy_right=-1&cate_id=0&page=1&page_size=" + n + "&jsonp=jsonp&keyword=" + encodeURIComponent(q);
     const resp = await fetch(api, {
       headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/" }
     });
     if (resp.ok) {
       const data = await resp.json();
-      const arr = Array.isArray(data?.data?.result) ? data.data.result : [];
+      const arr = Array.isArray(data?.result) ? data.result : [];
       const out = [];
       for (const e of arr) {
         const bvid = e?.bvid || "";
-        const url = bvid ? ("https://www.bilibili.com/video/" + bvid) : "";
-        if (!url) continue;
-        const title = String(e?.title || "Untitled").replace(/<[^>]+>/g, "");
+        const url = bvid ? ("https://www.bilibili.com/video/" + bvid) : (e?.arcurl || "");
+        if (!url || url.indexOf("bilibili.com/video/") === -1) continue;
+        const cleanTitle = String(e?.title || "Untitled").replace(/<[^>]+>/g, "");
         const durationText = String(e?.duration || "0:00");
         const parts = durationText.split(":").map(x => Number(x || 0));
-        const dur = parts.length === 2 ? parts[0]*60 + parts[1] : (parts.length===3 ? parts[0]*3600 + parts[1]*60 + parts[2] : 0);
+        const dur = parts.length===2 ? parts[0]*60+parts[1] : (parts.length===3 ? parts[0]*3600 + parts[1]*60 + parts[2] : 0);
         out.push({
-          title,
+          title: cleanTitle,
           url,
           duration: dur,
           uploader: e?.author || "",
-          id: bvid
+          id: bvid || e?.aid || ""
         });
         if (out.length >= n) break;
       }
@@ -254,7 +254,7 @@ async function searchBilibili(query, limit = 5) {
     }
   } catch {}
 
-  // 2) Fallback: yt-dlp bilisearch
+  // 2) fallback to yt-dlp bilisearch
   try {
     const searchExpr = `bilisearch${n}:${q}`;
     const { stdout } = await run("yt-dlp", ytDlpArgs(["--ignore-errors", "--no-warnings", "-J", searchExpr]), ROOT, 90000);
@@ -297,7 +297,7 @@ app.post("/api/search-bilibili", async (req, res) => {
     const { query, limit } = req.body ?? {};
     if (!query || typeof query !== "string") return res.status(400).json({ error: "query is required" });
     const results = await searchBilibili(query, Number(limit || 5));
-    res.json({ query, count: results.length, results });
+    res.json({ query, count: results.length, results, empty: results.length===0 });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err) });
   }
