@@ -1,0 +1,9 @@
+services:
+  rgb-grid-api:
+    build: ./server
+    container_name: rgb-grid-api
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./server/data:/app/data
