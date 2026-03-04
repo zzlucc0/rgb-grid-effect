@@ -221,22 +221,24 @@ function buildOnlineFallback(url, reason) {
 async function searchBilibili(query, limit = 5) {
   const q = String(query || "").trim();
   if (!q) return [];
-  const searchExpr = `ytsearch${Math.max(1, Math.min(10, limit * 2))}:${q} bilibili`;
-  const { stdout } = await run("yt-dlp", ytDlpArgs(["-J", "--flat-playlist", "--no-playlist", searchExpr]), ROOT, 60000);
+  const n = Math.max(1, Math.min(10, Number(limit) || 5));
+  const searchExpr = `bilisearch${n}:${q}`;
+  const { stdout } = await run("yt-dlp", ytDlpArgs(["-J", searchExpr]), ROOT, 90000);
   const data = JSON.parse(stdout);
   const entries = Array.isArray(data?.entries) ? data.entries : [];
   const out = [];
   for (const e of entries) {
-    const url = e?.url || e?.webpage_url || "";
+    const id = e?.id || "";
+    const url = e?.webpage_url || (id ? `https://www.bilibili.com/video/${id}` : "");
     if (!url || url.indexOf("bilibili.com/video/") === -1) continue;
     out.push({
       title: e?.title || "Untitled",
       url,
       duration: Number(e?.duration || 0),
       uploader: e?.uploader || e?.channel || "",
-      id: e?.id || ""
+      id
     });
-    if (out.length >= limit) break;
+    if (out.length >= n) break;
   }
   return out;
 }
