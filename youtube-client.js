@@ -146,7 +146,7 @@
     var box = el("searchResults");
     box.innerHTML = "";
     if (!data.results || !data.results.length) {
-      box.innerHTML = '<div class="error-message">No candidates found</div>';
+      box.innerHTML = '<div class="error-message">No candidates found. Try Chinese title or artist + song name.</div>';
       return;
     }
 
