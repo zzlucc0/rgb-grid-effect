@@ -523,7 +523,7 @@ class RhythmGame {
                     energy: 0.6,
                     beatNumber: this.nextChartIndex,
                     noteNumber: this.nextChartIndex,
-                    isDrag: chartNote.type === drag,
+                    isDrag: chartNote.type === 'drag',
                     held: false,
                     completed: false,
                     progress: 0
