@@ -223,7 +223,7 @@ async function searchBilibili(query, limit = 5) {
   if (!q) return [];
   const n = Math.max(1, Math.min(10, Number(limit) || 5));
   const searchExpr = `bilisearch${n}:${q}`;
-  const { stdout } = await run("yt-dlp", ytDlpArgs(["-J", searchExpr]), ROOT, 90000);
+  const { stdout } = await run("yt-dlp", ytDlpArgs(["--ignore-errors", "--no-warnings", "-J", searchExpr]), ROOT, 90000);
   const data = JSON.parse(stdout);
   const entries = Array.isArray(data?.entries) ? data.entries : [];
   const out = [];
