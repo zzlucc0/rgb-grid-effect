@@ -1560,37 +1560,3 @@ class RhythmGame {
         animate();
     }
 }
-
-    startLivePlayback() {
-        const holder = document.getElementById('livePlayerHolder');
-        if (holder) holder.classList.remove('hidden');
-        if (this.liveConfig?.player?.type === 'youtube' && window.YT && window.YT.Player) {
-            if (!this._ytPlayer) {
-                this._ytPlayer = new YT.Player('ytPlayer', {
-                    height: '180', width: '320', videoId: this.liveConfig.player.videoId,
-                    playerVars: { autoplay: 1, controls: 1, rel: 0 }
-                });
-            } else {
-                this._ytPlayer.loadVideoById(this.liveConfig.player.videoId);
-            }
-        } else if (this.liveConfig?.player?.type === 'audio') {
-            const a = document.getElementById('liveAudio');
-            if (a) {
-                a.src = this.liveConfig.player.url;
-                a.play().catch(() => {});
-            }
-        }
-    }
-
-    getLiveCurrentTime() {
-        if (this.liveConfig?.player?.type === 'youtube' && this._ytPlayer && this._ytPlayer.getCurrentTime) {
-            return this._ytPlayer.getCurrentTime() || 0;
-        }
-        const a = document.getElementById('liveAudio');
-        return a ? (a.currentTime || 0) : (this.audioContext.currentTime - this.startTime);
-    }
-
-// Initialize the game
-window.addEventListener('load', () => {
-    window.game = new RhythmGame();
-});
