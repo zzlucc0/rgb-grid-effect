@@ -1,5 +1,5 @@
 (function () {
-  const API_BASE = window.RGB_API_BASE || "http://z2one:8787";
+  const API_BASE = window.RGB_API_BASE || (window.location.protocol + "//" + window.location.hostname + ":8787");
 
   async function waitForGame() {
     for (let i = 0; i < 50; i++) {

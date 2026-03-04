@@ -1524,5 +1524,5 @@ class RhythmGame {
 
 // Initialize the game
 window.addEventListener('load', () => {
-    new RhythmGame();
+    window.game = new RhythmGame();
 });
