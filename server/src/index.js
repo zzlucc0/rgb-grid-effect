@@ -222,25 +222,56 @@ async function searchBilibili(query, limit = 5) {
   const q = String(query || "").trim();
   if (!q) return [];
   const n = Math.max(1, Math.min(10, Number(limit) || 5));
-  const searchExpr = `bilisearch${n}:${q}`;
-  const { stdout } = await run("yt-dlp", ytDlpArgs(["--ignore-errors", "--no-warnings", "-J", searchExpr]), ROOT, 90000);
-  const data = JSON.parse(stdout);
-  const entries = Array.isArray(data?.entries) ? data.entries : [];
-  const out = [];
-  for (const e of entries) {
-    const id = e?.id || "";
-    const url = e?.webpage_url || (id ? `https://www.bilibili.com/video/${id}` : "");
-    if (!url || url.indexOf("bilibili.com/video/") === -1) continue;
-    out.push({
-      title: e?.title || "Untitled",
-      url,
-      duration: Number(e?.duration || 0),
-      uploader: e?.uploader || e?.channel || "",
-      id
+
+  // 1) Bilibili public search API (preferred)
+  try {
+    const api = "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=" + encodeURIComponent(q) + "&page=1";
+    const resp = await fetch(api, {
+      headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/" }
     });
-    if (out.length >= n) break;
+    if (resp.ok) {
+      const data = await resp.json();
+      const arr = Array.isArray(data?.data?.result) ? data.data.result : [];
+      const out = [];
+      for (const e of arr) {
+        const bvid = e?.bvid || "";
+        const url = bvid ? ("https://www.bilibili.com/video/" + bvid) : "";
+        if (!url) continue;
+        const title = String(e?.title || "Untitled").replace(/<[^>]+>/g, "");
+        const durationText = String(e?.duration || "0:00");
+        const parts = durationText.split(":").map(x => Number(x || 0));
+        const dur = parts.length === 2 ? parts[0]*60 + parts[1] : (parts.length===3 ? parts[0]*3600 + parts[1]*60 + parts[2] : 0);
+        out.push({
+          title,
+          url,
+          duration: dur,
+          uploader: e?.author || "",
+          id: bvid
+        });
+        if (out.length >= n) break;
+      }
+      if (out.length) return out;
+    }
+  } catch {}
+
+  // 2) Fallback: yt-dlp bilisearch
+  try {
+    const searchExpr = `bilisearch${n}:${q}`;
+    const { stdout } = await run("yt-dlp", ytDlpArgs(["--ignore-errors", "--no-warnings", "-J", searchExpr]), ROOT, 90000);
+    const data = JSON.parse(stdout);
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    const out = [];
+    for (const e of entries) {
+      const id = e?.id || "";
+      const url = e?.webpage_url || (id ? `https://www.bilibili.com/video/${id}` : "");
+      if (!url || url.indexOf("bilibili.com/video/") === -1) continue;
+      out.push({ title: e?.title || "Untitled", url, duration: Number(e?.duration || 0), uploader: e?.uploader || e?.channel || "", id });
+      if (out.length >= n) break;
+    }
+    return out;
+  } catch {
+    return [];
   }
-  return out;
 }
 
 app.get("/health", (_req, res) => {
