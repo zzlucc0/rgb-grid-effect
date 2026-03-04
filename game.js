@@ -10,6 +10,7 @@ class RhythmGame {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.analyser = this.audioContext.createAnalyser();
         this.notes = [];
+        this.readyMode = null;
         this.score = 0;
         this.combo = 0;
         this.isPlaying = false;
@@ -22,6 +23,7 @@ class RhythmGame {
         this.liveMode = false;
         this.liveConfig = null;
         this.liveLastNote = 0;
+        this.readyMode = null;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -178,6 +180,7 @@ class RhythmGame {
                     statusText.innerHTML = `<div class="loading-message">Loading...</div>`;
                     const arrayBuffer = await file.arrayBuffer();
                     this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                    this.readyMode = "offline";
                     startButton.disabled = false;
                     statusText.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
                 } catch (error) {
