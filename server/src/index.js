@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { nanoid } from "nanoid";
 import { spawn } from "child_process";
+import { createHash } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +64,11 @@ function isYouTubeUrl(url) {
 function looksLikeDirectMedia(url) {
   return /\.(mp3|wav|m4a|ogg|webm|mp4)(\?|$)/i.test(url);
 }
+function makeSourceId(url) {
+  if (isYouTubeUrl(url)) return extractVideoId(url) || "yt_unknown";
+  return "u_" + createHash("sha256").update(url).digest("hex").slice(0, 24);
+}
+
 
 function ytDlpArgs(extra) {
   const args = [];
@@ -213,7 +219,7 @@ async function tryDownloadToWav(url, workDir) {
 async function processOfflineJob(job) {
   const MAX_MS = 5 * 60 * 1000;
   const start = Date.now();
-  const sourceId = isYouTubeUrl(job.url) ? (extractVideoId(job.url) || nanoid(8)) : Buffer.from(job.url).toString("base64url").slice(0, 16);
+  const sourceId = makeSourceId(job.url);
   const cacheDir = path.join(CACHE_DIR, sourceId);
   const chartFile = path.join(cacheDir, "chart.json");
   const wavFile = path.join(cacheDir, "audio.wav");
