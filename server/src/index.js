@@ -300,6 +300,8 @@ async function processJob(job) {
   const jobStart = Date.now();
   const MAX_JOB_MS = 5 * 60 * 1000;
 
+  let legacyCache = null;
+
   try {
     const videoId = extractVideoId(job.url);
     if (!videoId) throw new Error("Invalid YouTube URL");
@@ -316,10 +318,19 @@ async function processJob(job) {
         job.result = {
           videoId,
           chart: cachedChart,
-          audioUrl: `/media/${videoId}/audio.wav`
+          audioUrl: "/media/" + videoId + "/audio.wav"
         };
         return saveJob(job);
       }
+
+      if (Array.isArray(cachedChart?.notes) && cachedChart.notes.length > 0) {
+        legacyCache = {
+          videoId,
+          chart: cachedChart,
+          audioUrl: "/media/" + videoId + "/audio.wav"
+        };
+      }
+
       try {
         fs.rmSync(cacheDir, { recursive: true, force: true });
       } catch {
@@ -353,10 +364,25 @@ async function processJob(job) {
       title: meta.title,
       duration: meta.duration,
       chart,
-      audioUrl: `/media/${videoId}/audio.wav`
+      audioUrl: "/media/" + videoId + "/audio.wav"
     };
     saveJob(job);
   } catch (err) {
+    if (legacyCache) {
+      job.status = "done";
+      job.step = "legacy cache fallback";
+      job.result = {
+        videoId: legacyCache.videoId,
+        chart: {
+          ...legacyCache.chart,
+          algorithm: legacyCache.chart.algorithm || "legacy-cache-v1",
+          version: legacyCache.chart.version || 1
+        },
+        audioUrl: legacyCache.audioUrl
+      };
+      return saveJob(job);
+    }
+
     job.status = "failed";
     job.error = sanitizeError(err);
     saveJob(job);
