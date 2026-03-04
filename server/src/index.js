@@ -11,7 +11,8 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
-const API_VERSION = "mvp-0.2.0";
+const API_VERSION = "mvp-0.3.0";
+const CHART_SCHEMA_VERSION = 3;
 
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -51,9 +52,11 @@ function extractVideoId(input) {
 
 function sanitizeError(err) {
   const m = String(err?.message || err || "Unknown error");
-  if (/private/i.test(m)) return "Video is private or unavailable.";
+  if (/private|unavailable/i.test(m)) return "Video is private or unavailable.";
   if (/<= 6 minutes|must be <= 6 minutes/i.test(m)) return "Video must be 6 minutes or shorter.";
+  if (/drm protected/i.test(m)) return "Video source is DRM-protected and cannot be fetched.";
   if (/yt-dlp failed/i.test(m)) return "Failed to fetch YouTube media. Try another public video.";
+  if (/timed out|timeout/i.test(m)) return "Processing timed out. Try a shorter/lighter video.";
   return m;
 }
 
@@ -90,27 +93,43 @@ async function runWithRetry(cmd, args, cwd, retries = 1, timeoutMs = 120000) {
       return await run(cmd, args, cwd, timeoutMs);
     } catch (err) {
       lastErr = err;
-      if (i < retries) await new Promise(r => setTimeout(r, 1000));
+      if (i < retries) await new Promise(r => setTimeout(r, 1200));
     }
   }
   throw lastErr;
 }
 
 async function getMetadata(url) {
-  const { stdout } = await runWithRetry(
-    "yt-dlp",
-    ["-J", "--no-playlist", "--extractor-args", "youtube:player_client=web", url],
-    ROOT,
-    1,
-    90000
-  );
-  const data = JSON.parse(stdout);
-  return {
-    id: data.id,
-    title: data.title,
-    duration: Number(data.duration || 0),
-    isPrivate: data.availability === "private"
-  };
+  const strategies = [
+    ["youtube:player_client=web"],
+    ["youtube:player_client=tv"],
+    ["youtube:player_client=android"],
+    ["youtube:player_client=tv,web"],
+  ];
+
+  let lastErr;
+  for (const extractorArgs of strategies) {
+    try {
+      const { stdout } = await runWithRetry(
+        "yt-dlp",
+        ["-J", "--no-playlist", "--extractor-args", extractorArgs[0], url],
+        ROOT,
+        0,
+        90000
+      );
+      const data = JSON.parse(stdout);
+      return {
+        id: data.id,
+        title: data.title,
+        duration: Number(data.duration || 0),
+        isPrivate: data.availability === "private"
+      };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error("Unable to fetch metadata");
 }
 
 async function downloadAndConvert(url, videoId, job) {
@@ -124,13 +143,31 @@ async function downloadAndConvert(url, videoId, job) {
   job.step = "downloading audio";
   saveJob(job);
 
-  await runWithRetry(
-    "yt-dlp",
-    ["--no-playlist", "--extractor-args", "youtube:player_client=web", "-f", "bestaudio", "-o", sourcePath, url],
-    dir,
-    1,
-    180000
-  );
+  const downloadStrategies = [
+    ["youtube:player_client=web", "bestaudio"],
+    ["youtube:player_client=tv", "bestaudio"],
+    ["youtube:player_client=android", "bestaudio"],
+    ["youtube:player_client=tv,web", "ba/bestaudio"],
+  ];
+
+  let lastErr;
+  for (const [extractorArgs, fmt] of downloadStrategies) {
+    try {
+      await runWithRetry(
+        "yt-dlp",
+        ["--no-playlist", "--extractor-args", extractorArgs, "-f", fmt, "-o", sourcePath, url],
+        dir,
+        0,
+        180000
+      );
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (lastErr) throw lastErr;
 
   const downloaded = fs.readdirSync(dir).find(f => f.startsWith("source."));
   if (!downloaded) throw new Error("audio download failed");
@@ -203,24 +240,22 @@ function buildDspChartFromWav(wavPath) {
   }
 
   const flux = new Array(energies.length).fill(0);
-  for (let i = 1; i < energies.length; i++) {
-    flux[i] = Math.max(0, energies[i] - energies[i - 1]);
-  }
+  for (let i = 1; i < energies.length; i++) flux[i] = Math.max(0, energies[i] - energies[i - 1]);
 
   const notes = [];
-  const minGapSec = 0.32;
+  const minGapSec = 0.30;
   let lastNoteT = -99;
 
-  for (let i = 8; i < flux.length - 1; i++) {
+  for (let i = 10; i < flux.length - 2; i++) {
     let localSum = 0;
-    for (let k = i - 8; k < i; k++) localSum += flux[k];
-    const localAvg = localSum / 8;
+    for (let k = i - 10; k < i; k++) localSum += flux[k];
+    const localAvg = localSum / 10;
     const t = i * windowSec;
     const isPeak = flux[i] > flux[i - 1] && flux[i] >= flux[i + 1];
-    const strong = flux[i] > localAvg * 2.2 && flux[i] > 0.005;
+    const strong = flux[i] > localAvg * 2.0 && flux[i] > 0.004;
 
-    if (isPeak && strong && t - lastNoteT >= minGapSec && t >= 1.4) {
-      const type = notes.length % 6 === 0 ? "drag" : "tap";
+    if (isPeak && strong && t - lastNoteT >= minGapSec && t >= 1.2) {
+      const type = notes.length % 7 === 0 ? "drag" : "tap";
       notes.push({
         time: Number(t.toFixed(3)),
         type,
@@ -231,21 +266,25 @@ function buildDspChartFromWav(wavPath) {
     }
   }
 
-  if (notes.length < 20) {
-    let t = 2;
+  if (notes.length < 24) {
+    let t = 1.8;
     while (t < Math.min(samples.length / sampleRate - 1, 355)) {
-      notes.push({ time: Number(t.toFixed(3)), type: notes.length % 5 === 0 ? "drag" : "tap", laneHint: notes.length % 4, strength: 0.5 });
-      t += 0.42;
+      notes.push({ time: Number(t.toFixed(3)), type: notes.length % 6 === 0 ? "drag" : "tap", laneHint: notes.length % 4, strength: 0.5 });
+      t += 0.40;
     }
   }
 
   return {
-    version: 2,
-    algorithm: "dsp-energy-flux",
+    version: CHART_SCHEMA_VERSION,
+    algorithm: "dsp-energy-flux-v2",
     difficulty: "normal",
     approachRateMs: 1250,
     notes
   };
+}
+
+function isCacheUsable(chartObj) {
+  return chartObj && chartObj.version >= CHART_SCHEMA_VERSION && Array.isArray(chartObj.notes) && chartObj.notes.length > 0;
 }
 
 async function processJob(job) {
@@ -261,14 +300,22 @@ async function processJob(job) {
     const wavFile = path.join(cacheDir, "audio.wav");
 
     if (fs.existsSync(chartFile) && fs.existsSync(wavFile)) {
-      job.status = "done";
-      job.step = "cache hit";
-      job.result = {
-        videoId,
-        chart: JSON.parse(fs.readFileSync(chartFile, "utf8")),
-        audioUrl: `/media/${videoId}/audio.wav`
-      };
-      return saveJob(job);
+      const cachedChart = JSON.parse(fs.readFileSync(chartFile, "utf8"));
+      if (isCacheUsable(cachedChart)) {
+        job.status = "done";
+        job.step = "cache hit";
+        job.result = {
+          videoId,
+          chart: cachedChart,
+          audioUrl: `/media/${videoId}/audio.wav`
+        };
+        return saveJob(job);
+      }
+      try {
+        fs.rmSync(cacheDir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
     }
 
     job.step = "fetch metadata";
@@ -308,11 +355,18 @@ async function processJob(job) {
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "rgb-grid-effect-server", version: API_VERSION });
+  res.json({ ok: true, service: "rgb-grid-effect-server", version: API_VERSION, chartSchema: CHART_SCHEMA_VERSION });
 });
 
-app.get("/api/debug/version", (_req, res) => {
-  res.json({ version: API_VERSION, ytDlp: "container", now: new Date().toISOString() });
+app.get("/api/debug/version", async (_req, res) => {
+  let ytDlpVersion = "unknown";
+  try {
+    const { stdout } = await run("yt-dlp", ["--version"], ROOT, 8000);
+    ytDlpVersion = stdout.trim();
+  } catch {
+    // ignore
+  }
+  res.json({ version: API_VERSION, chartSchema: CHART_SCHEMA_VERSION, ytDlpVersion, now: new Date().toISOString() });
 });
 
 app.post("/api/analyze-youtube", (req, res) => {
