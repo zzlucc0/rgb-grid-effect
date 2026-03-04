@@ -19,6 +19,7 @@ class RhythmGame {
         this.chartMode = false;
         this.chartData = null;
         this.nextChartIndex = 0;
+        this.isYouTubeMode = false;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -230,9 +231,25 @@ class RhythmGame {
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
         
-        // Create offline audio context to pre-analyze the song
+        // Create offline audio context to pre-analyze the song (keep for beat analysis)
+        const statusText = document.getElementById('statusText');
+        if (statusText && this.chartMode) statusText.innerHTML = "<div class="loading-message">Analyzing beats (preAnalyzeSong)...</div>";
         await this.preAnalyzeSong();
         
+        // Chart mode still uses preAnalyzeSong result as timing/style assistant
+        if (this.chartMode && this.chartData?.notes?.length) {
+            const avgVocalEnergy = (this.vocalSections || []).length
+                ? this.vocalSections.reduce((sum, sec) => sum + (sec.avgEnergy || 0), 0) / this.vocalSections.length
+                : 120;
+            const nudge = avgVocalEnergy > 130 ? -0.02 : 0.01;
+            this.chartData.notes = this.chartData.notes.map((n, idx) => ({
+                ...n,
+                time: Number(Math.max(0.6, n.time + nudge + (idx % 8 === 0 ? 0.005 : 0)).toFixed(3)),
+                type: n.type || (idx % 7 === 0 ? "drag" : "tap")
+            }));
+            if (statusText) statusText.innerHTML = "<div class="loading-message">Chart loaded: " + this.chartData.notes.length + " notes</div>";
+        }
+
         // Display countdown while showing analysis results
         await this.showCountdown(3); // 3-second countdown
         
@@ -487,6 +504,10 @@ class RhythmGame {
             while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
                 const chartNote = this.chartData.notes[this.nextChartIndex];
                 this.nextChartIndex += 1;
+
+                if (chartNote.time < currentTime - (this.goodRange / 1000)) {
+                    continue;
+                }
 
                 const x = this.safeArea.x + Math.random() * this.safeArea.width;
                 const y = this.safeArea.y + Math.random() * this.safeArea.height;
