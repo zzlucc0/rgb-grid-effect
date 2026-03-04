@@ -19,7 +19,9 @@ class RhythmGame {
         this.chartMode = false;
         this.chartData = null;
         this.nextChartIndex = 0;
-        this.isYouTubeMode = false;
+        this.liveMode = false;
+        this.liveConfig = null;
+        this.liveLastNote = 0;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -237,6 +239,22 @@ class RhythmGame {
         await this.preAnalyzeSong();
         
         // Chart mode still uses preAnalyzeSong result as timing/style assistant
+        if (this.liveMode) {
+            const t = this.getLiveCurrentTime();
+            if (t - this.liveLastNote >= (60 / this.liveConfig.bpm) * (Math.random() > 0.7 ? 0.5 : 1.0)) {
+                this.liveLastNote = t;
+                const x = this.safeArea.x + Math.random() * this.safeArea.width;
+                const y = this.safeArea.y + Math.random() * this.safeArea.height;
+                this.notes.push({
+                    x, y, createTime: t, hitTime: t + this.approachRate / 1000,
+                    hit: false, score: null, approachProgress: 0, energy: 0.6,
+                    beatNumber: this.notes.length, noteNumber: this.notes.length,
+                    isDrag: this.notes.length % 7 === 0, held: false, completed: false, progress: 0
+                });
+            }
+            return;
+        }
+
         if (this.chartMode && this.chartData?.notes?.length) {
             const avgVocalEnergy = (this.vocalSections || []).length
                 ? this.vocalSections.reduce((sum, sec) => sum + (sec.avgEnergy || 0), 0) / this.vocalSections.length
@@ -257,20 +275,20 @@ class RhythmGame {
         this.isPlaying = true;
         this.startTime = this.audioContext.currentTime;
 
-        // Create audio source and connect analyzer
-        const source = this.audioContext.createBufferSource();
-        source.buffer = this.audioBuffer;
-        source.connect(this.analyser);
-        this.analyser.connect(this.audioContext.destination);
-        
-        // Set analyzer parameters
-        this.analyser.fftSize = 2048;
-        const bufferLength = this.analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
+        // Start game source
+        let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        if (this.liveMode) {
+            this.startLivePlayback();
+        } else {
+            const source = this.audioContext.createBufferSource();
+            source.buffer = this.audioBuffer;
+            source.connect(this.analyser);
+            this.analyser.connect(this.audioContext.destination);
+            this.analyser.fftSize = 2048;
+            dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+            source.start();
+        }
 
-        // Start playing audio
-        source.start();
-        
         // Start game loop
         this.gameLoop(dataArray);
     }
@@ -481,7 +499,7 @@ class RhythmGame {
         if (!this.isPlaying) return;
 
         // Get audio data
-        this.analyser.getByteFrequencyData(dataArray);
+        if (!this.liveMode) this.analyser.getByteFrequencyData(dataArray);
 
         // Generate notes based on audio data
         this.generateNotes(dataArray);
@@ -1542,6 +1560,35 @@ class RhythmGame {
         animate();
     }
 }
+
+    startLivePlayback() {
+        const holder = document.getElementById('livePlayerHolder');
+        if (holder) holder.classList.remove('hidden');
+        if (this.liveConfig?.player?.type === 'youtube' && window.YT && window.YT.Player) {
+            if (!this._ytPlayer) {
+                this._ytPlayer = new YT.Player('ytPlayer', {
+                    height: '180', width: '320', videoId: this.liveConfig.player.videoId,
+                    playerVars: { autoplay: 1, controls: 1, rel: 0 }
+                });
+            } else {
+                this._ytPlayer.loadVideoById(this.liveConfig.player.videoId);
+            }
+        } else if (this.liveConfig?.player?.type === 'audio') {
+            const a = document.getElementById('liveAudio');
+            if (a) {
+                a.src = this.liveConfig.player.url;
+                a.play().catch(() => {});
+            }
+        }
+    }
+
+    getLiveCurrentTime() {
+        if (this.liveConfig?.player?.type === 'youtube' && this._ytPlayer && this._ytPlayer.getCurrentTime) {
+            return this._ytPlayer.getCurrentTime() || 0;
+        }
+        const a = document.getElementById('liveAudio');
+        return a ? (a.currentTime || 0) : (this.audioContext.currentTime - this.startTime);
+    }
 
 // Initialize the game
 window.addEventListener('load', () => {
