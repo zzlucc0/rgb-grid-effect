@@ -13,6 +13,7 @@ const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
 const API_VERSION = "mvp-0.3.0";
 const CHART_SCHEMA_VERSION = 3;
+const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
 
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -48,6 +49,14 @@ function extractVideoId(input) {
   } catch {
     return null;
   }
+}
+
+function ytDlpArgs(extra) {
+  const args = [];
+  if (YTDLP_COOKIES_PATH) {
+    args.push(--cookies, YTDLP_COOKIES_PATH);
+  }
+  return args.concat(extra);
 }
 
 function sanitizeError(err) {
