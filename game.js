@@ -194,11 +194,11 @@ class RhythmGame {
         // Start game button
         startButton.addEventListener('click', () => {
             console.log('Start button clicked', this.audioBuffer);
-            if (this.audioBuffer) {
+            if (this.audioBuffer || this.liveMode || this.readyMode) {
                 uploadContainer.classList.add('hidden');
                 this.startGame();
             } else {
-                statusText.innerHTML = '<div class="error-message">Please select an audio file first</div>';
+                statusText.innerHTML = '<div class="error-message">Please analyze or select media first</div>';
             }
         });
 
