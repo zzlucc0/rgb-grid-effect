@@ -16,6 +16,9 @@ class RhythmGame {
         this.audioBuffer = null;
         this.startTime = 0;
         this.lastNoteTime = 0;
+        this.chartMode = false;
+        this.chartData = null;
+        this.nextChartIndex = 0;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -221,6 +224,7 @@ class RhythmGame {
         this.notes = [];
         this.beatCount = 0; // Reset beat count
         this.noteCount = 0; // Reset note count
+        this.nextChartIndex = 0;
         this.isGroupPaused = false; // Reset pause state
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
         this.recentBeatStrengths = []; // Used to store recent beat strengths
@@ -478,6 +482,48 @@ class RhythmGame {
 
     generateNotes(audioData) {
         const currentTime = this.audioContext.currentTime - this.startTime;
+
+        if (this.chartMode && this.chartData?.notes?.length) {
+            while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
+                const chartNote = this.chartData.notes[this.nextChartIndex];
+                this.nextChartIndex += 1;
+
+                const x = this.safeArea.x + Math.random() * this.safeArea.width;
+                const y = this.safeArea.y + Math.random() * this.safeArea.height;
+
+                const note = {
+                    x,
+                    y,
+                    createTime: currentTime,
+                    hitTime: chartNote.time,
+                    hit: false,
+                    score: null,
+                    approachProgress: 0,
+                    energy: 0.6,
+                    beatNumber: this.nextChartIndex,
+                    noteNumber: this.nextChartIndex,
+                    isDrag: chartNote.type === drag,
+                    held: false,
+                    completed: false,
+                    progress: 0
+                };
+
+                if (note.isDrag) {
+                    note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, x + (Math.random() * 2 - 1) * this.circleSize * 5));
+                    note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + (Math.random() * 2 - 1) * this.circleSize * 5));
+                    const dx = note.endX - note.x;
+                    const dy = note.endY - note.y;
+                    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const midX = (note.x + note.endX) / 2;
+                    const midY = (note.y + note.endY) / 2;
+                    note.controlX = midX - dy / d * d * 0.2;
+                    note.controlY = midY + dx / d * d * 0.2;
+                }
+
+                this.notes.push(note);
+            }
+            return;
+        }
         
         // Detect vocals and beats
         const { beat, vocal, energy } = this.detectVocalAndBeat(audioData);
