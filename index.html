@@ -175,10 +175,17 @@
             Tip: Upload local audio, or paste a YouTube link (public, <=6 min)
         </div>
     </div>
-    <script src="rgb-effect.js?v=20260304b"></script>
-    <script src="default-songs.js?v=20260304b"></script>
-    <script src="music-api.js?v=20260304b"></script>
-    <script src="game.js?v=20260304c"></script>
-    <script src="youtube-client.js?v=20260304c"></script>
+
+    <div id="livePlayerHolder" class="hidden">
+        <div id="ytPlayer"></div>
+        <audio id="liveAudio" controls playsinline crossorigin="anonymous"></audio>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+    <script src="rgb-effect.js?v=20260307a"></script>
+    <script src="default-songs.js?v=20260307a"></script>
+    <script src="music-api.js?v=20260307a"></script>
+    <script src="game.js?v=20260307a"></script>
+    <script src="youtube-client.js?v=20260307a"></script>
 </body>
 </html>

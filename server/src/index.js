@@ -14,6 +14,7 @@ const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
 const API_VERSION = "mvp-0.6.0";
 const CHART_SCHEMA_VERSION = 4;
+const HLS_ENABLED = String(process.env.HLS_ENABLED || "true").toLowerCase() !== "false";
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
 const CACHE_TTL_HOURS = Math.max(1, Number(process.env.CACHE_TTL_HOURS || 168));
@@ -314,6 +315,21 @@ function cleanupCache(maxAgeHours = CACHE_TTL_HOURS) {
   return removed;
 }
 
+async function buildHlsFromWav(wavPath, outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const playlist = path.join(outDir, "index.m3u8");
+  await run("ffmpeg", [
+    "-y", "-i", wavPath,
+    "-c:a", "aac", "-b:a", "128k",
+    "-f", "hls",
+    "-hls_time", "4",
+    "-hls_playlist_type", "vod",
+    "-hls_segment_filename", path.join(outDir, "seg_%03d.ts"),
+    playlist
+  ], ROOT, 120000);
+  return playlist;
+}
+
 async function processOfflineJob(job) {
   const sourceId = makeSourceId(job.url);
   const cacheDir = path.join(CACHE_DIR, sourceId);
@@ -327,7 +343,8 @@ async function processOfflineJob(job) {
       if (chart?.version >= CHART_SCHEMA_VERSION && chart?.notes?.length) {
         job.status = "done";
         job.step = "cache hit";
-        job.result = { mode: "offline", sourceId, chart, audioUrl: `/media/${sourceId}/audio.wav` };
+        const hlsUrl = fs.existsSync(path.join(cacheDir, "hls", "index.m3u8")) ? `/media/${sourceId}/hls/index.m3u8` : null;
+        job.result = { mode: "offline", sourceId, chart, audioUrl: `/media/${sourceId}/audio.wav`, hlsUrl };
         return saveJob(job);
       }
     } catch {}
@@ -351,6 +368,12 @@ async function processOfflineJob(job) {
     job.mirror = mirrorResult.mirror;
   }
 
+  if (HLS_ENABLED) {
+    job.step = "building hls";
+    saveJob(job);
+    try { await buildHlsFromWav(wav, path.join(cacheDir, "hls")); } catch {}
+  }
+
   job.step = "analyzing rhythm";
   saveJob(job);
   const chart = dspChartFromWav(wav);
@@ -358,7 +381,8 @@ async function processOfflineJob(job) {
 
   job.status = "done";
   job.step = "completed";
-  job.result = { mode: "offline", sourceId, chart, audioUrl: `/media/${sourceId}/audio.wav` };
+  const hlsUrl = fs.existsSync(path.join(cacheDir, "hls", "index.m3u8")) ? `/media/${sourceId}/hls/index.m3u8` : null;
+  job.result = { mode: "offline", sourceId, chart, audioUrl: `/media/${sourceId}/audio.wav`, hlsUrl };
   saveJob(job);
 }
 

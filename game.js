@@ -236,12 +236,17 @@ class RhythmGame {
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
         
-        // Create offline audio context to pre-analyze the song (keep for beat analysis)
+        // Create offline audio context to pre-analyze the song (only when needed)
         const statusText = document.getElementById('statusText');
-        if (statusText && this.chartMode) statusText.innerHTML = "<div class=\"loading-message\">Analyzing beats (preAnalyzeSong)...</div>";
-        await this.preAnalyzeSong();
+        if (!this.chartMode) {
+            if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Analyzing beats (preAnalyzeSong)...</div>";
+            await this.preAnalyzeSong();
+        } else {
+            this.analyzedSections = [];
+            this.vocalSections = [];
+        }
         
-        // Chart mode still uses preAnalyzeSong result as timing/style assistant
+        // Chart mode uses backend chart timing; no client-side pre-analysis required
         if (this.liveMode) {
             const t = this.getLiveCurrentTime();
             if (t - this.liveLastNote >= (60 / this.liveConfig.bpm) * (Math.random() > 0.7 ? 0.5 : 1.0)) {
@@ -1580,12 +1585,34 @@ RhythmGame.prototype.startLivePlayback = function () {
         } else {
             this._ytPlayer.loadVideoById(this.liveConfig.player.videoId);
         }
-    } else if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "audio") {
-        const a = document.getElementById("liveAudio");
-        if (a) {
-            a.src = this.liveConfig.player.url;
+        return;
+    }
+
+    const a = document.getElementById("liveAudio");
+    if (!a || !this.liveConfig || !this.liveConfig.player) return;
+
+    if (this.liveConfig.player.type === "hls") {
+        const src = this.liveConfig.player.url;
+        if (window.Hls && window.Hls.isSupported()) {
+            if (this._hls) {
+                try { this._hls.destroy(); } catch (_) {}
+            }
+            this._hls = new window.Hls({ maxBufferLength: 20 });
+            this._hls.loadSource(src);
+            this._hls.attachMedia(a);
+            this._hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+                a.play().catch(() => {});
+            });
+        } else {
+            a.src = src;
             a.play().catch(() => {});
         }
+        return;
+    }
+
+    if (this.liveConfig.player.type === "audio") {
+        a.src = this.liveConfig.player.url;
+        a.play().catch(() => {});
     }
 };
 
