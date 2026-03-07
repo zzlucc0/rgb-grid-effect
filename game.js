@@ -192,11 +192,17 @@ class RhythmGame {
         });
 
         // Start game button
-        startButton.addEventListener('click', () => {
+        startButton.addEventListener('click', async () => {
             console.log('Start button clicked', this.audioBuffer);
             if (this.audioBuffer || this.liveMode || this.readyMode) {
-                uploadContainer.classList.add('hidden');
-                this.startGame();
+                try {
+                    uploadContainer.classList.add('hidden');
+                    await this.startGame();
+                } catch (err) {
+                    console.error('startGame failed:', err);
+                    uploadContainer.classList.remove('hidden');
+                    statusText.innerHTML = '<div class="error-message">Start failed: ' + (err?.message || 'unknown error') + '</div>';
+                }
             } else {
                 statusText.innerHTML = '<div class="error-message">Please analyze or select media first</div>';
             }
@@ -225,6 +231,14 @@ class RhythmGame {
     }
 
     async startGame() {
+        try {
+            if (this.audioContext && this.audioContext.state !== 'running') {
+                await this.audioContext.resume();
+            }
+        } catch (e) {
+            console.warn('audioContext resume failed:', e);
+        }
+
         this.score = 0;
         this.combo = 0;
         this.notes = [];
@@ -524,7 +538,7 @@ class RhythmGame {
     }
 
     generateNotes(audioData) {
-        const currentTime = this.audioContext.currentTime - this.startTime;
+        const currentTime = this.liveMode ? this.getLiveCurrentTime() : (this.audioContext.currentTime - this.startTime);
 
         if (this.chartMode && this.chartData?.notes?.length) {
             while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
