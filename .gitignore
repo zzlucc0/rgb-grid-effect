@@ -13,4 +13,9 @@ Thumbs.db
 # server runtime data
 server/data/cache/
 server/data/jobs/
+server/data/loop-test-report.json
 server/node_modules/
+
+# secrets / local credentials
+server/cookies/*
+!server/cookies/.gitkeep

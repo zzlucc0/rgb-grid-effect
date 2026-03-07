@@ -12,15 +12,23 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
-const API_VERSION = "mvp-0.5.0";
+const API_VERSION = "mvp-0.6.0";
 const CHART_SCHEMA_VERSION = 4;
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+const CACHE_TTL_HOURS = Math.max(1, Number(process.env.CACHE_TTL_HOURS || 168));
+const CACHE_CLEANUP_INTERVAL_MIN = Math.max(5, Number(process.env.CACHE_CLEANUP_INTERVAL_MIN || 60));
 
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin || ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS origin not allowed"));
+  }
+}));
 app.use(express.json({ limit: "1mb" }));
 app.use("/media", express.static(CACHE_DIR));
 
@@ -68,8 +76,45 @@ function sanitizeError(err) {
   if (/<= 6 minutes|must be <= 6 minutes/i.test(m)) return "Video must be 6 minutes or shorter.";
   if (/drm protected/i.test(m)) return "Video source is DRM-protected and cannot be fetched.";
   if (/timed out|timeout/i.test(m)) return "Processing timed out. Try a shorter/lighter video.";
-  if (/yt-dlp failed|http error|requested format/i.test(m)) return "Failed to fetch media from source.";
+  if (/yt-dlp failed|http error|requested format|precondition check failed/i.test(m)) return "Failed to fetch media from source.";
   return m;
+}
+function classifyError(err) {
+  const m = String(err?.message || err || "").toLowerCase();
+  if (m.includes("drm")) return "E_DRM";
+  if (m.includes("private") || m.includes("unavailable")) return "E_UNAVAILABLE";
+  if (m.includes("timed out") || m.includes("timeout")) return "E_TIMEOUT";
+  if (m.includes("precondition check failed") || m.includes("http error 400")) return "E_YT_400";
+  if (m.includes("requested format is not available")) return "E_FORMAT_UNAVAILABLE";
+  return "E_FETCH";
+}
+function normalizeTitle(s = "") {
+  return String(s).toLowerCase().replace(/\[[^\]]*\]|\([^\)]*\)/g, " ").replace(/official|mv|lyrics|audio|4k|hd|live|remix|version/g, " ").replace(/[^\p{L}\p{N}\s]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+function buildSearchQueries(meta) {
+  const title = String(meta?.title || "").trim();
+  const uploader = String(meta?.uploader || "").trim();
+  const clean = title.replace(/\(.*?\)|\[.*?\]/g, " ").replace(/official|video|remaster|lyrics|4k|hd|mv/ig, " ").replace(/\s+/g, " ").trim();
+  const short = clean.split(" ").slice(0, 6).join(" ");
+  const byDash = clean.includes("-") ? clean.split("-").slice(0, 2).join(" ").trim() : "";
+  const q = [clean, short, byDash, `${uploader} ${short}`.trim()].filter(Boolean);
+  return [...new Set(q)];
+}
+
+function scoreCandidate(queryMeta, c) {
+  const qTitle = normalizeTitle(queryMeta?.title || "");
+  const cTitle = normalizeTitle(c?.title || "");
+  const qWords = new Set(qTitle.split(" ").filter(Boolean));
+  const cWords = new Set(cTitle.split(" ").filter(Boolean));
+  let overlap = 0;
+  for (const w of qWords) if (cWords.has(w)) overlap++;
+  const titleSim = qWords.size ? overlap / qWords.size : 0;
+  const qDur = Number(queryMeta?.duration || 0);
+  const cDur = Number(c?.duration || 0);
+  const durDelta = qDur && cDur ? Math.abs(qDur - cDur) : 999;
+  const durationScore = durDelta <= 3 ? 1 : durDelta <= 8 ? 0.75 : durDelta <= 15 ? 0.45 : 0.1;
+  const uploaderTrust = /official|topic|vevo|records|music/i.test(String(c?.uploader || "")) ? 1 : 0.4;
+  return Number((0.5 * titleSim + 0.3 * durationScore + 0.2 * uploaderTrust).toFixed(4));
 }
 
 function run(cmd, args, cwd, timeoutMs = 120000) {
@@ -174,6 +219,89 @@ async function tryDownloadToWav(url, workDir) {
   return wavPath;
 }
 
+async function fetchYouTubeMeta(url) {
+  try {
+    const { stdout } = await run("yt-dlp", ytDlpArgs(["--skip-download", "--dump-single-json", "--no-playlist", url]), ROOT, 45000);
+    const meta = JSON.parse(stdout || "{}");
+    return {
+      title: meta?.title || "",
+      duration: Number(meta?.duration || 0),
+      uploader: meta?.uploader || "",
+      id: meta?.id || extractVideoId(url) || ""
+    };
+  } catch {}
+
+  try {
+    const u = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (r.ok) {
+      const j = await r.json();
+      return {
+        title: j?.title || "",
+        duration: 0,
+        uploader: j?.author_name || "",
+        id: extractVideoId(url) || ""
+      };
+    }
+  } catch {}
+
+  return { title: "", duration: 0, uploader: "", id: extractVideoId(url) || "" };
+}
+
+async function tryMirrorDownloadToWav(job, sourceId, cacheDir) {
+  if (!isYouTubeUrl(job.url)) return null;
+  const meta = await fetchYouTubeMeta(job.url);
+  const queries = buildSearchQueries(meta);
+  if (queries.length === 0) return null;
+  job.step = "mirror search";
+  saveJob(job);
+
+  let candidates = [];
+  for (const q of queries.slice(0, 3)) {
+    const found = await searchBilibili(q, 8);
+    if (found.length) {
+      candidates = found;
+      break;
+    }
+  }
+  const query = queries[0];
+  const ranked = candidates
+    .map(c => ({ ...c, url: String(c.url || "").replace(/^http:\/\//, "https://"), score: scoreCandidate(meta, c) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  for (const c of ranked) {
+    if (c.score < 0.5) continue;
+    try {
+      job.step = `mirror fetch (${c.id || "bilibili"})`;
+      saveJob(job);
+      const wav = await tryDownloadToWav(c.url, cacheDir);
+      return { wav, mirror: { provider: "bilibili", query, picked: c, meta } };
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
+function cleanupCache(maxAgeHours = CACHE_TTL_HOURS) {
+  const now = Date.now();
+  const maxAgeMs = maxAgeHours * 3600 * 1000;
+  let removed = 0;
+  for (const entry of fs.readdirSync(CACHE_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const p = path.join(CACHE_DIR, entry.name);
+    try {
+      const st = fs.statSync(p);
+      if (now - st.mtimeMs > maxAgeMs) {
+        fs.rmSync(p, { recursive: true, force: true });
+        removed++;
+      }
+    } catch {}
+  }
+  return removed;
+}
+
 async function processOfflineJob(job) {
   const sourceId = makeSourceId(job.url);
   const cacheDir = path.join(CACHE_DIR, sourceId);
@@ -195,8 +323,21 @@ async function processOfflineJob(job) {
 
   job.status = "processing";
   job.step = "downloading media";
+  job.attempts = [];
   saveJob(job);
-  const wav = await tryDownloadToWav(job.url, cacheDir);
+
+  let wav;
+  try {
+    wav = await tryDownloadToWav(job.url, cacheDir);
+    job.attempts.push({ provider: "youtube-direct", ok: true, at: new Date().toISOString() });
+  } catch (err) {
+    job.attempts.push({ provider: "youtube-direct", ok: false, code: classifyError(err), error: sanitizeError(err), at: new Date().toISOString() });
+    const mirrorResult = await tryMirrorDownloadToWav(job, sourceId, cacheDir);
+    if (!mirrorResult?.wav) throw err;
+    wav = mirrorResult.wav;
+    job.attempts.push({ provider: mirrorResult.mirror.provider, ok: true, score: mirrorResult.mirror?.picked?.score || 0, picked: mirrorResult.mirror?.picked?.url || "", at: new Date().toISOString() });
+    job.mirror = mirrorResult.mirror;
+  }
 
   job.step = "analyzing rhythm";
   saveJob(job);
@@ -314,8 +455,9 @@ app.post("/api/analyze-link", async (req, res) => {
   try {
     await processOfflineJob(job);
   } catch (err) {
-    job.status = "done";
+    job.status = "failed";
     job.step = "online fallback";
+    job.errorCode = classifyError(err);
     job.error = sanitizeError(err);
     job.result = buildOnlineFallback(url, job.error);
     saveJob(job);
@@ -329,4 +471,23 @@ app.get("/api/job/:id", (req, res) => {
 });
 
 const port = Number(process.env.PORT || 8787);
+
+if (YTDLP_COOKIES_PATH && fs.existsSync(YTDLP_COOKIES_PATH)) {
+  try {
+    const mode = fs.statSync(YTDLP_COOKIES_PATH).mode & 0o777;
+    if (mode & 0o077) {
+      console.warn(`[warn] Cookie file permissions are too open (${mode.toString(8)}). Recommend chmod 600 ${YTDLP_COOKIES_PATH}`);
+    }
+  } catch {}
+}
+
+setInterval(() => {
+  try {
+    const removed = cleanupCache(CACHE_TTL_HOURS);
+    if (removed > 0) console.log(`[cache] removed ${removed} expired source dirs`);
+  } catch (e) {
+    console.warn(`[cache] cleanup failed: ${sanitizeError(e)}`);
+  }
+}, CACHE_CLEANUP_INTERVAL_MIN * 60 * 1000).unref();
+
 app.listen(port, () => console.log(`Server listening on :${port}`));
