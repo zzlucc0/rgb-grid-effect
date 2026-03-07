@@ -66,25 +66,43 @@
     var startBtn = el("startGame");
     var game = await waitForGame();
 
-    if (job.result.mode === "offline") {
-      setStatus("loading", "Preparing stream playback...");
-      game.chartMode = true;
-      game.chartData = job.result.chart;
-      game.nextChartIndex = 0;
-      game.liveMode = true;
-      if (job.result.hlsUrl) {
-        game.liveConfig = {
-          bpm: 122,
-          player: { type: "hls", url: API_BASE + job.result.hlsUrl },
-          fallbackAudioUrl: API_BASE + job.result.audioUrl
-        };
-      } else {
-        game.liveConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
+    if (job.result.mode === "offline" || job.result.mode === "offline-capture-fallback" || job.result.mode === "capture-poc") {
+      // Prefer proven buffer playback path for reliability.
+      setStatus("loading", "Loading analyzed audio...");
+      try {
+        var audioResp = await fetch(API_BASE + job.result.audioUrl);
+        if (!audioResp.ok) throw new Error("audio fetch failed");
+        var arrayBuffer = await audioResp.arrayBuffer();
+        game.audioBuffer = await game.audioContext.decodeAudioData(arrayBuffer.slice(0));
+        game.chartMode = true;
+        game.liveMode = false;
+        game.liveConfig = null;
+        game.chartData = job.result.chart;
+        game.nextChartIndex = 0;
+        game.readyMode = "offline";
+        startBtn.disabled = false;
+        setReady("offline", true, job.result.chart.notes.length);
+        setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
+      } catch (e) {
+        // fallback to live stream mode when decode path fails
+        game.chartMode = true;
+        game.chartData = job.result.chart;
+        game.nextChartIndex = 0;
+        game.liveMode = true;
+        if (job.result.hlsUrl) {
+          game.liveConfig = {
+            bpm: 122,
+            player: { type: "hls", url: API_BASE + job.result.hlsUrl },
+            fallbackAudioUrl: API_BASE + job.result.audioUrl
+          };
+        } else {
+          game.liveConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
+        }
+        game.readyMode = "offline";
+        startBtn.disabled = false;
+        setReady("offline", true, job.result.chart.notes.length + " notes");
+        setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
       }
-      game.readyMode = "offline";
-      startBtn.disabled = false;
-      setReady("offline", true, job.result.chart.notes.length + " notes");
-      setStatus("success", "Offline ready · stream mode · notes: " + job.result.chart.notes.length);
       if (el("searchPanel")) el("searchPanel").style.display = "none";
       return;
     }
