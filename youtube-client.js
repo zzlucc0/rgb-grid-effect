@@ -73,7 +73,11 @@
       game.nextChartIndex = 0;
       game.liveMode = true;
       if (job.result.hlsUrl) {
-        game.liveConfig = { bpm: 122, player: { type: "hls", url: API_BASE + job.result.hlsUrl } };
+        game.liveConfig = {
+          bpm: 122,
+          player: { type: "hls", url: API_BASE + job.result.hlsUrl },
+          fallbackAudioUrl: API_BASE + job.result.audioUrl
+        };
       } else {
         game.liveConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
       }

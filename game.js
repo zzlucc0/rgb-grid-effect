@@ -24,6 +24,7 @@ class RhythmGame {
         this.liveConfig = null;
         this.liveLastNote = 0;
         this.readyMode = null;
+        this._liveStartWall = 0;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -296,6 +297,7 @@ class RhythmGame {
         // Start the game after countdown ends
         this.isPlaying = true;
         this.startTime = this.audioContext.currentTime;
+        this._liveStartWall = performance.now();
 
         // Start game source
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
@@ -538,7 +540,14 @@ class RhythmGame {
     }
 
     generateNotes(audioData) {
-        const currentTime = this.liveMode ? this.getLiveCurrentTime() : (this.audioContext.currentTime - this.startTime);
+        let currentTime;
+        if (this.liveMode) {
+            const liveT = this.getLiveCurrentTime();
+            const wallT = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000);
+            currentTime = Math.max(liveT || 0, wallT);
+        } else {
+            currentTime = this.audioContext.currentTime - this.startTime;
+        }
 
         if (this.chartMode && this.chartData?.notes?.length) {
             while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
@@ -1607,19 +1616,29 @@ RhythmGame.prototype.startLivePlayback = function () {
 
     if (this.liveConfig.player.type === "hls") {
         const src = this.liveConfig.player.url;
+        const fallback = this.liveConfig.fallbackAudioUrl || "";
+        const fallbackToAudio = () => {
+            if (!fallback) return;
+            a.src = fallback;
+            a.play().catch(() => {});
+        };
+
         if (window.Hls && window.Hls.isSupported()) {
             if (this._hls) {
                 try { this._hls.destroy(); } catch (_) {}
             }
-            this._hls = new window.Hls({ maxBufferLength: 20 });
+            this._hls = new window.Hls({ maxBufferLength: 20, lowLatencyMode: true });
             this._hls.loadSource(src);
             this._hls.attachMedia(a);
             this._hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
-                a.play().catch(() => {});
+                a.play().catch(() => fallbackToAudio());
+            });
+            this._hls.on(window.Hls.Events.ERROR, function () {
+                fallbackToAudio();
             });
         } else {
             a.src = src;
-            a.play().catch(() => {});
+            a.play().catch(() => fallbackToAudio());
         }
         return;
     }
