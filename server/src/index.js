@@ -71,6 +71,37 @@ function ytDlpArgs(extra) {
   if (YTDLP_COOKIES_PATH) args.push("--cookies", YTDLP_COOKIES_PATH);
   return args.concat(extra);
 }
+
+async function ytProbe(url) {
+  const { stdout } = await run("yt-dlp", ytDlpArgs(["--skip-download", "--dump-single-json", "--no-playlist", url]), ROOT, 45000);
+  const j = JSON.parse(stdout || "{}");
+  return {
+    title: j?.title || "",
+    duration: Number(j?.duration || 0),
+    extractor: j?.extractor_key || j?.extractor || "unknown",
+    webpageUrl: j?.webpage_url || url
+  };
+}
+
+async function ytResolveAudioUrl(url) {
+  const strategies = [
+    ["-f", "bestaudio/best"],
+    ["-f", "ba"],
+    []
+  ];
+  let lastErr;
+  for (const s of strategies) {
+    try {
+      const args = ["--no-playlist", "-g", ...s, url];
+      const { stdout } = await run("yt-dlp", ytDlpArgs(args), ROOT, 60000);
+      const u = String(stdout || "").trim().split("\n").find(Boolean);
+      if (u) return u;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("resolve stream url failed");
+}
 function sanitizeError(err) {
   const m = String(err?.message || err || "Unknown error");
   if (/private|unavailable/i.test(m)) return "Video is private or unavailable.";
@@ -330,6 +361,56 @@ async function buildHlsFromWav(wavPath, outDir) {
   return playlist;
 }
 
+async function processCaptureJob(job) {
+  const sourceId = makeSourceId(job.url) + "_cap";
+  const cacheDir = path.join(CACHE_DIR, sourceId);
+  const wavPath = path.join(cacheDir, "capture.wav");
+  const chartFile = path.join(cacheDir, "chart.json");
+  fs.mkdirSync(cacheDir, { recursive: true });
+
+  job.status = "processing";
+  job.step = "probe page";
+  saveJob(job);
+
+  const meta = await ytProbe(job.url);
+  job.captureMeta = meta;
+  saveJob(job);
+
+  job.step = "resolve stream";
+  saveJob(job);
+  const streamUrl = await ytResolveAudioUrl(job.url);
+
+  job.step = "capture audio";
+  saveJob(job);
+  const captureSec = Math.max(8, Math.min(180, Number(job.captureSec || 45)));
+  await run("ffmpeg", ["-y", "-t", String(captureSec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath], cacheDir, 180000);
+
+  job.step = "analyze rhythm";
+  saveJob(job);
+  const chart = dspChartFromWav(wavPath);
+  fs.writeFileSync(chartFile, JSON.stringify(chart, null, 2));
+
+  if (HLS_ENABLED) {
+    job.step = "building hls";
+    saveJob(job);
+    try { await buildHlsFromWav(wavPath, path.join(cacheDir, "hls")); } catch {}
+  }
+
+  const hlsUrl = fs.existsSync(path.join(cacheDir, "hls", "index.m3u8")) ? `/media/${sourceId}/hls/index.m3u8` : null;
+  job.status = "done";
+  job.step = "completed";
+  job.result = {
+    mode: "capture-poc",
+    sourceId,
+    chart,
+    audioUrl: `/media/${sourceId}/capture.wav`,
+    hlsUrl,
+    captureSec,
+    extractor: meta.extractor
+  };
+  saveJob(job);
+}
+
 async function processOfflineJob(job) {
   const sourceId = makeSourceId(job.url);
   const cacheDir = path.join(CACHE_DIR, sourceId);
@@ -529,6 +610,31 @@ app.post("/api/search-bilibili", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err) });
   }
+});
+
+app.post("/api/capture-link", async (req, res) => {
+  const { url, captureSec } = req.body ?? {};
+  if (!url || typeof url !== "string") return res.status(400).json({ error: "url is required" });
+  const id = nanoid(10);
+  const now = new Date().toISOString();
+  const job = { id, kind: "capture", status: "pending", step: "queued", url, captureSec: Number(captureSec || 45), createdAt: now, updatedAt: now, error: null, result: null };
+  saveJob(job);
+  res.status(202).json({ jobId: id, status: job.status, kind: "capture" });
+  try {
+    await processCaptureJob(job);
+  } catch (err) {
+    job.status = "failed";
+    job.step = "capture failed";
+    job.errorCode = classifyError(err);
+    job.error = sanitizeError(err);
+    saveJob(job);
+  }
+});
+
+app.get("/api/capture-job/:id", (req, res) => {
+  const job = loadJob(req.params.id);
+  if (!job || job.kind !== "capture") return res.status(404).json({ error: "capture job not found" });
+  res.json(job);
 });
 
 app.post("/api/analyze-link", async (req, res) => {
