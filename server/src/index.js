@@ -361,6 +361,19 @@ async function buildHlsFromWav(wavPath, outDir) {
   return playlist;
 }
 
+async function captureAudioToWav(url, wavPath, workDir, captureSec = 45) {
+  const sec = Math.max(8, Math.min(180, Number(captureSec || 45)));
+  if (isYouTubeUrl(url)) {
+    const streamUrl = await ytResolveAudioUrl(url);
+    await run("ffmpeg", ["-y", "-t", String(sec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath], workDir, 180000);
+    return { captureSec: sec, method: "youtube-stream" };
+  }
+
+  const downloadedWav = await tryDownloadToWav(url, workDir);
+  await run("ffmpeg", ["-y", "-t", String(sec), "-i", downloadedWav, "-ac", "1", "-ar", "44100", wavPath], workDir, 120000);
+  return { captureSec: sec, method: "download-transcode" };
+}
+
 async function processCaptureJob(job) {
   const sourceId = makeSourceId(job.url) + "_cap";
   const cacheDir = path.join(CACHE_DIR, sourceId);
@@ -372,18 +385,16 @@ async function processCaptureJob(job) {
   job.step = "probe page";
   saveJob(job);
 
-  const meta = await ytProbe(job.url);
+  let meta = { title: "", duration: 0, extractor: "generic", webpageUrl: job.url };
+  if (isYouTubeUrl(job.url)) {
+    try { meta = await ytProbe(job.url); } catch {}
+  }
   job.captureMeta = meta;
   saveJob(job);
 
-  job.step = "resolve stream";
-  saveJob(job);
-  const streamUrl = await ytResolveAudioUrl(job.url);
-
   job.step = "capture audio";
   saveJob(job);
-  const captureSec = Math.max(8, Math.min(180, Number(job.captureSec || 45)));
-  await run("ffmpeg", ["-y", "-t", String(captureSec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath], cacheDir, 180000);
+  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45);
 
   job.step = "analyze rhythm";
   saveJob(job);
@@ -405,8 +416,9 @@ async function processCaptureJob(job) {
     chart,
     audioUrl: `/media/${sourceId}/capture.wav`,
     hlsUrl,
-    captureSec,
-    extractor: meta.extractor
+    captureSec: cap.captureSec,
+    extractor: meta.extractor,
+    method: cap.method
   };
   saveJob(job);
 }
@@ -648,6 +660,26 @@ app.post("/api/analyze-link", async (req, res) => {
   try {
     await processOfflineJob(job);
   } catch (err) {
+    // fallback path: try capture-poc flow before dropping to online-only mode
+    try {
+      const capJob = {
+        ...job,
+        id: job.id,
+        kind: "capture-fallback",
+        captureSec: 45,
+        attempts: Array.isArray(job.attempts) ? job.attempts : []
+      };
+      await processCaptureJob(capJob);
+      capJob.result.mode = "offline-capture-fallback";
+      capJob.error = null;
+      capJob.errorCode = null;
+      saveJob(capJob);
+      return;
+    } catch (capErr) {
+      job.attempts = Array.isArray(job.attempts) ? job.attempts : [];
+      job.attempts.push({ provider: "capture-fallback", ok: false, code: classifyError(capErr), error: sanitizeError(capErr), at: new Date().toISOString() });
+    }
+
     job.status = "failed";
     job.step = "online fallback";
     job.errorCode = classifyError(err);
