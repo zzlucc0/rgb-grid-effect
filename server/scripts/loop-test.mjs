@@ -4,11 +4,14 @@ const base = process.env.API_BASE || "http://127.0.0.1:8878";
 const timeoutMs = Number(process.env.JOB_TIMEOUT_MS || 45000);
 const pollMs = Number(process.env.POLL_MS || 1200);
 
-const urls = [
+const urls = (process.env.URLS || [
   "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   "https://www.youtube.com/watch?v=9bZkp7q19f0",
+  "https://www.youtube.com/watch?v=YQHsXMglC9A",
+  "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
   "https://www.bilibili.com/video/BV1xx411c7mD"
-];
+].join(",")).split(",").map(s => s.trim()).filter(Boolean);
+const rounds = Math.max(1, Number(process.env.ROUNDS || 1));
 
 async function postJson(url, body) {
   const r = await fetch(url, {
@@ -41,23 +44,25 @@ async function waitJob(jobId) {
 }
 
 const out = [];
-for (const url of urls) {
-  const row = { url, ok: false };
-  try {
-    const submit = await postJson(`${base}/api/analyze-link`, { url });
-    const job = await waitJob(submit.jobId);
-    row.status = job.status;
-    row.step = job.step;
-    row.errorCode = job.errorCode || null;
-    row.error = job.error || null;
-    row.mode = job.result?.mode || null;
-    row.audioUrl = job.result?.audioUrl || null;
-    row.attempts = job.attempts || [];
-    row.ok = job.status === "done";
-  } catch (e) {
-    row.error = String(e.message || e);
+for (let r = 1; r <= rounds; r++) {
+  for (const url of urls) {
+    const row = { round: r, url, ok: false };
+    try {
+      const submit = await postJson(`${base}/api/analyze-link`, { url });
+      const job = await waitJob(submit.jobId);
+      row.status = job.status;
+      row.step = job.step;
+      row.errorCode = job.errorCode || null;
+      row.error = job.error || null;
+      row.mode = job.result?.mode || null;
+      row.audioUrl = job.result?.audioUrl || null;
+      row.attempts = job.attempts || [];
+      row.ok = job.status === "done";
+    } catch (e) {
+      row.error = String(e.message || e);
+    }
+    out.push(row);
   }
-  out.push(row);
 }
 
 const summary = {

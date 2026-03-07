@@ -253,34 +253,46 @@ async function tryMirrorDownloadToWav(job, sourceId, cacheDir) {
   const meta = await fetchYouTubeMeta(job.url);
   const queries = buildSearchQueries(meta);
   if (queries.length === 0) return null;
+
+  const providers = [
+    { name: "bilibili", search: searchBilibili },
+    { name: "soundcloud", search: searchSoundCloud },
+    { name: "archive", search: searchArchive }
+  ];
+
   job.step = "mirror search";
   saveJob(job);
 
-  let candidates = [];
-  for (const q of queries.slice(0, 3)) {
-    const found = await searchBilibili(q, 8);
-    if (found.length) {
-      candidates = found;
-      break;
+  for (const provider of providers) {
+    let candidates = [];
+    let queryUsed = "";
+    for (const q of queries.slice(0, 3)) {
+      const found = await provider.search(q, 8);
+      if (found.length) {
+        candidates = found;
+        queryUsed = q;
+        break;
+      }
     }
-  }
-  const query = queries[0];
-  const ranked = candidates
-    .map(c => ({ ...c, url: String(c.url || "").replace(/^http:\/\//, "https://"), score: scoreCandidate(meta, c) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
 
-  for (const c of ranked) {
-    if (c.score < 0.5) continue;
-    try {
-      job.step = `mirror fetch (${c.id || "bilibili"})`;
-      saveJob(job);
-      const wav = await tryDownloadToWav(c.url, cacheDir);
-      return { wav, mirror: { provider: "bilibili", query, picked: c, meta } };
-    } catch {
-      // try next candidate
+    const ranked = candidates
+      .map(c => ({ ...c, url: String(c.url || "").replace(/^http:\/\//, "https://"), score: scoreCandidate(meta, c) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+
+    for (const c of ranked) {
+      if (c.score < 0.48) continue;
+      try {
+        job.step = `mirror fetch (${provider.name}:${c.id || "candidate"})`;
+        saveJob(job);
+        const wav = await tryDownloadToWav(c.url, cacheDir);
+        return { wav, mirror: { provider: provider.name, query: queryUsed, picked: c, meta } };
+      } catch (err) {
+        job.attempts.push({ provider: `${provider.name}-mirror`, ok: false, code: classifyError(err), error: sanitizeError(err), picked: c.url, score: c.score, at: new Date().toISOString() });
+      }
     }
   }
+
   return null;
 }
 
@@ -407,6 +419,57 @@ async function searchBilibili(query, limit = 5) {
       const url = e?.webpage_url || (id ? `https://www.bilibili.com/video/${id}` : "");
       if (!url || url.indexOf("bilibili.com/video/") === -1) continue;
       out.push({ title: e?.title || "Untitled", url, duration: Number(e?.duration || 0), uploader: e?.uploader || e?.channel || "", id });
+      if (out.length >= n) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function searchSoundCloud(query, limit = 5) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const n = Math.max(1, Math.min(10, Number(limit) || 5));
+  try {
+    const searchExpr = `scsearch${n}:${q}`;
+    const { stdout } = await run("yt-dlp", ytDlpArgs(["--ignore-errors", "--no-warnings", "-J", searchExpr]), ROOT, 90000);
+    const data = JSON.parse(stdout || "{}");
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    const out = [];
+    for (const e of entries) {
+      const url = e?.webpage_url || "";
+      if (!url || !url.includes("soundcloud.com")) continue;
+      out.push({ title: e?.title || "Untitled", url, duration: Number(e?.duration || 0), uploader: e?.uploader || e?.channel || "", id: e?.id || "" });
+      if (out.length >= n) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function searchArchive(query, limit = 5) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const n = Math.max(1, Math.min(10, Number(limit) || 5));
+  try {
+    const api = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(q)}&fl[]=identifier,title,creator&rows=${n}&page=1&output=json`;
+    const resp = await fetch(api, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const docs = Array.isArray(data?.response?.docs) ? data.response.docs : [];
+    const out = [];
+    for (const d of docs) {
+      const id = String(d?.identifier || "");
+      if (!id) continue;
+      out.push({
+        title: d?.title || id,
+        url: `https://archive.org/details/${id}`,
+        duration: 0,
+        uploader: d?.creator || "",
+        id
+      });
       if (out.length >= n) break;
     }
     return out;
