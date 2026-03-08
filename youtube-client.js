@@ -203,11 +203,17 @@
     }
   }
 
-  function onCancelAnalyze() {
+  async function onCancelAnalyze() {
     analyzeCancelled = true;
+    var jid = currentAnalyzeJobId;
     currentAnalyzeJobId = null;
     if (el("cancelAnalyze")) el("cancelAnalyze").disabled = true;
     if (el("startGame")) el("startGame").disabled = true;
+    try {
+      if (jid) {
+        await fetch(API_BASE + "/api/job/" + jid + "/cancel", { method: "POST" });
+      }
+    } catch (_) {}
     setStatus("error", "Analysis cancelled");
     setReady("cancelled", false, "-");
   }
@@ -259,7 +265,7 @@
     var btn = el("analyzeYoutube");
     if (btn) btn.addEventListener("click", onAnalyzeClick);
     var cbtn = el("cancelAnalyze");
-    if (cbtn) cbtn.addEventListener("click", onCancelAnalyze);
+    if (cbtn) cbtn.addEventListener("click", function () { onCancelAnalyze().catch(function(){}); });
     var sbtn = el("searchBiliBtn");
     if (sbtn) sbtn.addEventListener("click", onSearchBiliClick);
   });

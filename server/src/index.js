@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
-const API_VERSION = "mvp-0.9.0";
+const API_VERSION = "mvp-1.0.0";
 const CHART_SCHEMA_VERSION = 4;
 const HLS_ENABLED = String(process.env.HLS_ENABLED || "true").toLowerCase() !== "false";
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
@@ -35,6 +35,8 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/media", express.static(CACHE_DIR));
 
 const jobs = new Map();
+const jobControllers = new Map();
+const jobChildren = new Map();
 
 function saveJob(job) {
   job.updatedAt = new Date().toISOString();
@@ -48,6 +50,48 @@ function loadJob(id) {
   const j = JSON.parse(fs.readFileSync(p, "utf8"));
   jobs.set(id, j);
   return j;
+}
+
+function ensureJobController(jobId) {
+  if (!jobControllers.has(jobId)) jobControllers.set(jobId, { cancelled: false });
+  return jobControllers.get(jobId);
+}
+function isJobCancelled(jobId) {
+  return Boolean(jobId && jobControllers.get(jobId)?.cancelled);
+}
+function throwIfCancelled(jobId) {
+  if (isJobCancelled(jobId)) throw new Error('job cancelled');
+}
+function registerJobChild(jobId, child) {
+  if (!jobId || !child) return;
+  if (!jobChildren.has(jobId)) jobChildren.set(jobId, new Set());
+  const set = jobChildren.get(jobId);
+  set.add(child);
+  const cleanup = () => set.delete(child);
+  child.on('close', cleanup);
+  child.on('exit', cleanup);
+}
+function killJobChildren(jobId) {
+  const set = jobChildren.get(jobId);
+  if (!set) return 0;
+  let killed = 0;
+  for (const child of set) {
+    try { child.kill('SIGKILL'); killed += 1; } catch {}
+  }
+  jobChildren.delete(jobId);
+  return killed;
+}
+function cancelJob(job) {
+  if (!job) return { ok: false, error: 'job not found' };
+  const ctl = ensureJobController(job.id);
+  ctl.cancelled = true;
+  const killed = killJobChildren(job.id);
+  job.status = 'failed';
+  job.step = 'cancelled';
+  job.errorCode = 'E_CANCELLED';
+  job.error = 'Analysis cancelled by user.';
+  saveJob(job);
+  return { ok: true, killed };
 }
 
 function extractVideoId(input) {
@@ -74,7 +118,7 @@ function ytDlpArgs(extra) {
 }
 
 async function ytProbe(url) {
-  const { stdout } = await run("yt-dlp", ytDlpArgs(["--skip-download", "--dump-single-json", "--no-playlist", url]), ROOT, 45000);
+  const { stdout } = await run("yt-dlp", ytDlpArgs(["--skip-download", "--dump-single-json", "--no-playlist", url]), ROOT, 45000, null);
   const j = JSON.parse(stdout || "{}");
   return {
     title: j?.title || "",
@@ -94,7 +138,7 @@ async function ytResolveAudioUrl(url) {
   for (const s of strategies) {
     try {
       const args = ["--no-playlist", "-g", ...s, url];
-      const { stdout } = await run("yt-dlp", ytDlpArgs(args), ROOT, 60000);
+      const { stdout } = await run("yt-dlp", ytDlpArgs(args), ROOT, 60000, null);
       const u = String(stdout || "").trim().split("\n").find(Boolean);
       if (u) return u;
     } catch (e) {
@@ -150,14 +194,16 @@ function scoreCandidate(queryMeta, c) {
   return Number((0.5 * titleSim + 0.3 * durationScore + 0.2 * uploaderTrust).toFixed(4));
 }
 
-function run(cmd, args, cwd, timeoutMs = 120000) {
+function run(cmd, args, cwd, timeoutMs = 120000, jobId = null) {
   return new Promise((resolve, reject) => {
+    if (jobId) throwIfCancelled(jobId);
     const child = spawn(cmd, args, { cwd });
+    registerJobChild(jobId, child);
     let stdout = "", stderr = "", done = false;
     const timer = setTimeout(() => {
       if (done) return;
       done = true;
-      child.kill("SIGKILL");
+      try { child.kill("SIGKILL"); } catch {}
       reject(new Error(`${cmd} timed out after ${Math.round(timeoutMs / 1000)}s`));
     }, timeoutMs);
     child.stdout.on("data", d => (stdout += d.toString()));
@@ -166,15 +212,16 @@ function run(cmd, args, cwd, timeoutMs = 120000) {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      if (jobId && isJobCancelled(jobId)) return reject(new Error('job cancelled'));
       if (code === 0) return resolve({ stdout, stderr });
       reject(new Error(`${cmd} failed (${code}): ${stderr || stdout}`));
     });
   });
 }
-async function runWithRetry(cmd, args, cwd, retries = 1, timeoutMs = 120000) {
+async function runWithRetry(cmd, args, cwd, retries = 1, timeoutMs = 120000, jobId = null) {
   let lastErr;
   for (let i = 0; i <= retries; i++) {
-    try { return await run(cmd, args, cwd, timeoutMs); }
+    try { return await run(cmd, args, cwd, timeoutMs, jobId); }
     catch (e) { lastErr = e; if (i < retries) await new Promise(r => setTimeout(r, 900)); }
   }
   throw lastErr;
@@ -274,14 +321,14 @@ async function processOnlineAnalyzedJob(job) {
   job.step = 'capturing preview audio';
   job.captureMeta = meta;
   saveJob(job);
-  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45);
+  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45, job.id);
 
   job.step = 'analyzing rhythm';
   saveJob(job);
   let analysis;
   let chart;
   try {
-    analysis = await analyzeRhythmWithPython(wavPath, cacheDir);
+    analysis = await analyzeRhythmWithPython(wavPath, cacheDir, job.id);
     chart = chartFromAnalysis(analysis, job.difficulty || "normal");
   } catch (_err) {
     chart = dspChartFromWav(wavPath);
@@ -320,8 +367,8 @@ async function processOnlineAnalyzedJob(job) {
 }
 
 
-async function analyzeRhythmWithPython(wavPath, cwd = ROOT) {
-  const { stdout } = await run("python3", [path.join(ROOT, "scripts", "analyze_rhythm.py"), wavPath], cwd, 180000);
+async function analyzeRhythmWithPython(wavPath, cwd = ROOT, jobId = null) {
+  const { stdout } = await run("python3", [path.join(ROOT, "scripts", "analyze_rhythm.py"), wavPath], cwd, 180000, jobId);
   const parsed = JSON.parse(String(stdout || "{}").trim() || "{}");
   parsed.analyzer = parsed.analyzer || 'librosa';
   if (!parsed.ok) throw new Error(parsed.error || "python analyzer failed");
@@ -452,7 +499,7 @@ function mergeAnalysisWithChart(chart, analysis) {
   if (!segments.length) return { ...analysis, segments: buildSegmentsFromChart(chart, Number(analysis?.duration || 45)) };
   return analysis;
 }
-async function tryDownloadToWav(url, workDir) {
+async function tryDownloadToWav(url, workDir, jobId = null) {
   const sourceTpl = path.join(workDir, "source.%(ext)s");
   const wavPath = path.join(workDir, "audio.wav");
   if (isYouTubeUrl(url)) {
@@ -465,23 +512,23 @@ async function tryDownloadToWav(url, workDir) {
     let lastErr;
     for (const [clientArg, fmt] of strategies) {
       try {
-        await runWithRetry("yt-dlp", ytDlpArgs(["--no-playlist", "--extractor-args", clientArg, "-f", fmt, "-o", sourceTpl, url]), workDir, 0, 180000);
+        await runWithRetry("yt-dlp", ytDlpArgs(["--no-playlist", "--extractor-args", clientArg, "-f", fmt, "-o", sourceTpl, url]), workDir, 0, 180000, jobId);
         lastErr = null; break;
       } catch (e) { lastErr = e; }
     }
     if (lastErr) throw lastErr;
   } else {
-    await runWithRetry("yt-dlp", ytDlpArgs(["-o", sourceTpl, url]), workDir, 0, 180000);
+    await runWithRetry("yt-dlp", ytDlpArgs(["-o", sourceTpl, url]), workDir, 0, 180000, jobId);
   }
   const downloaded = fs.readdirSync(workDir).find(f => f.startsWith("source."));
   if (!downloaded) throw new Error("media download failed");
-  await run("ffmpeg", ["-y", "-i", path.join(workDir, downloaded), "-ac", "1", "-ar", "44100", "-t", "360", wavPath], workDir, 120000);
+  await run("ffmpeg", ["-y", "-i", path.join(workDir, downloaded), "-ac", "1", "-ar", "44100", "-t", "360", wavPath], workDir, 120000, jobId);
   return wavPath;
 }
 
 async function fetchYouTubeMeta(url) {
   try {
-    const { stdout } = await run("yt-dlp", ytDlpArgs(["--skip-download", "--dump-single-json", "--no-playlist", url]), ROOT, 45000);
+    const { stdout } = await run("yt-dlp", ytDlpArgs(["--skip-download", "--dump-single-json", "--no-playlist", url]), ROOT, 45000, null);
     const meta = JSON.parse(stdout || "{}");
     return {
       title: meta?.title || "",
@@ -589,16 +636,16 @@ async function buildHlsFromWav(wavPath, outDir) {
   return playlist;
 }
 
-async function captureAudioToWav(url, wavPath, workDir, captureSec = 45) {
+async function captureAudioToWav(url, wavPath, workDir, captureSec = 45, jobId = null) {
   const sec = Math.max(8, Math.min(180, Number(captureSec || 45)));
   if (isYouTubeUrl(url)) {
     const streamUrl = await ytResolveAudioUrl(url);
-    await run("ffmpeg", ["-y", "-t", String(sec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath], workDir, 180000);
+    await run("ffmpeg", ["-y", "-t", String(sec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath], workDir, 180000, jobId);
     return { captureSec: sec, method: "youtube-stream" };
   }
 
-  const downloadedWav = await tryDownloadToWav(url, workDir);
-  await run("ffmpeg", ["-y", "-t", String(sec), "-i", downloadedWav, "-ac", "1", "-ar", "44100", wavPath], workDir, 120000);
+  const downloadedWav = await tryDownloadToWav(url, workDir, jobId);
+  await run("ffmpeg", ["-y", "-t", String(sec), "-i", downloadedWav, "-ac", "1", "-ar", "44100", wavPath], workDir, 120000, jobId);
   return { captureSec: sec, method: "download-transcode" };
 }
 
@@ -622,7 +669,7 @@ async function processCaptureJob(job) {
 
   job.step = "capture audio";
   saveJob(job);
-  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45);
+  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45, job.id);
 
   job.step = "analyze rhythm";
   saveJob(job);
@@ -865,6 +912,7 @@ app.post("/api/capture-link", async (req, res) => {
   const id = nanoid(10);
   const now = new Date().toISOString();
   const job = { id, kind: "capture", status: "pending", step: "queued", url, captureSec: Number(captureSec || 45), createdAt: now, updatedAt: now, error: null, result: null };
+  ensureJobController(id);
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status, kind: "capture" });
   try {
@@ -890,6 +938,7 @@ app.post("/api/analyze-link", async (req, res) => {
   const id = nanoid(10);
   const now = new Date().toISOString();
   const job = { id, status: "pending", step: "queued", url, difficulty: ["easy","normal","hard"].includes(difficulty) ? difficulty : "normal", createdAt: now, updatedAt: now, error: null, result: null };
+  ensureJobController(id);
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status });
 
@@ -946,6 +995,15 @@ app.get("/api/job/:id", (req, res) => {
   if (!job) return res.status(404).json({ error: "job not found" });
   res.json(job);
 });
+
+
+app.post("/api/job/:id/cancel", (req, res) => {
+  const job = loadJob(req.params.id);
+  if (!job) return res.status(404).json({ error: "job not found" });
+  const result = cancelJob(job);
+  res.json({ ok: result.ok, jobId: job.id, killed: result.killed || 0, status: job.status, step: job.step, error: job.error });
+});
+
 
 const port = Number(process.env.PORT || 8787);
 
