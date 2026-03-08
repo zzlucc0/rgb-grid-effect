@@ -277,6 +277,7 @@ class RhythmGame {
         }
 
         if (this.chartMode && this.chartData?.notes?.length) {
+            if (this.liveMode) this.applySegmentProfile(currentTime);
             const avgVocalEnergy = (this.vocalSections || []).length
                 ? this.vocalSections.reduce((sum, sec) => sum + (sec.avgEnergy || 0), 0) / this.vocalSections.length
                 : 120;
@@ -553,6 +554,7 @@ class RhythmGame {
         }
 
         if (this.chartMode && this.chartData?.notes?.length) {
+            if (this.liveMode) this.applySegmentProfile(currentTime);
             while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
                 const chartNote = this.chartData.notes[this.nextChartIndex];
                 this.nextChartIndex += 1;
@@ -576,6 +578,7 @@ class RhythmGame {
 
         // Link-play rhythm generation: time-grid based (no download/analyze required)
         if (this.liveMode) {
+            this.applySegmentProfile(currentTime);
             this.generateLiveGridNotes(currentTime);
             return;
         }
@@ -1835,6 +1838,32 @@ RhythmGame.prototype.generateLiveGridNotes = function (currentTime) {
         eng.step += 1;
         if (eng.step % 16 === 0) eng.bar += 1;
         eng.nextTime += eng.beatSec / 2;
+    }
+};
+
+
+RhythmGame.prototype.getCurrentSegment = function (timeSec) {
+    const segs = (this.liveConfig && this.liveConfig.segments) || (this.liveConfig && this.liveConfig.analysis && this.liveConfig.analysis.segments) || [];
+    return segs.find(s => timeSec >= s.start && timeSec < s.end) || null;
+};
+
+RhythmGame.prototype.applySegmentProfile = function (timeSec) {
+    if (!this.liveEngine) return;
+    const seg = this.getCurrentSegment(timeSec);
+    if (!seg) return;
+    const key = seg.start + ':' + seg.end;
+    if (this.liveEngine.segmentKey === key) return;
+    this.liveEngine.segmentKey = key;
+    this.liveEngine.density = seg.energy === 'high' ? 1.2 : (seg.energy === 'mid' ? 0.95 : 0.72);
+    this.liveEngine.dragQuotaPerBar = seg.label === 'chorus' ? 3 : (seg.label === 'verse' ? 2 : 1);
+    this.liveEngine.phrase.radius = seg.phraseRadius || (seg.label === 'chorus' ? 260 : seg.label === 'verse' ? 220 : 185);
+    this.liveEngine.phrase.left = seg.label === 'chorus' ? 6 : (seg.label === 'verse' ? 5 : 4);
+    if (seg.label === 'chorus') {
+        this.liveEngine.pattern16 = [1,1,1,0, 1,1,0,1, 1,1,1,0, 1,0,1,1];
+    } else if (seg.label === 'verse') {
+        this.liveEngine.pattern16 = [1,0,1,0, 1,1,0,0, 1,0,1,0, 0,1,0,1];
+    } else {
+        this.liveEngine.pattern16 = [1,0,0,0, 1,0,1,0, 0,0,1,0, 1,0,0,0];
     }
 };
 

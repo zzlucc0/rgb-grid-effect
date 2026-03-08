@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
-const API_VERSION = "mvp-0.7.0";
+const API_VERSION = "mvp-0.8.0";
 const CHART_SCHEMA_VERSION = 4;
 const HLS_ENABLED = String(process.env.HLS_ENABLED || "true").toLowerCase() !== "false";
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
@@ -278,19 +278,31 @@ async function processOnlineAnalyzedJob(job) {
 
   job.step = 'analyzing rhythm';
   saveJob(job);
-  const chart = dspChartFromWav(wavPath);
-  const durationSec = Number(meta.duration || job.captureSec || 45);
-  const bpm = estimateBpmFromChart(chart);
-  const analysis = {
+  let analysis;
+  let chart;
+  try {
+    analysis = await analyzeRhythmWithPython(wavPath, cacheDir);
+    chart = chartFromAnalysis(analysis);
+  } catch (_err) {
+    chart = dspChartFromWav(wavPath);
+    const durationSec = Number(meta.duration || job.captureSec || 45);
+    analysis = {
+      duration: durationSec,
+      bpm: estimateBpmFromChart(chart),
+      beats: (chart.notes || []).map(n => n.time),
+      segments: buildSegmentsFromChart(chart, durationSec),
+      analyzer: 'dsp-fallback'
+    };
+  }
+  analysis = mergeAnalysisWithChart(chart, {
+    ...analysis,
     sourceId,
-    bpm,
-    beats: (chart.notes || []).map(n => n.time),
-    segments: buildSegmentsFromChart(chart, durationSec),
     captureSec: cap.captureSec,
     method: cap.method,
     extractor: meta.extractor || 'unknown',
     title: meta.title || ''
-  };
+  });
+  const bpm = Number(analysis.bpm || estimateBpmFromChart(chart));
   fs.writeFileSync(analysisFile, JSON.stringify({ chart, analysis }, null, 2));
 
   job.status = 'done';
@@ -305,6 +317,37 @@ async function processOnlineAnalyzedJob(job) {
   saveJob(job);
 }
 
+
+async function analyzeRhythmWithPython(wavPath, cwd = ROOT) {
+  const { stdout } = await run("python3", [path.join(ROOT, "scripts", "analyze_rhythm.py"), wavPath], cwd, 180000);
+  const parsed = JSON.parse(String(stdout || "{}").trim() || "{}");
+  parsed.analyzer = parsed.analyzer || 'librosa';
+  if (!parsed.ok) throw new Error(parsed.error || "python analyzer failed");
+  return parsed;
+}
+
+function chartFromAnalysis(analysis) {
+  const beats = Array.isArray(analysis?.beats) ? analysis.beats : [];
+  const notes = beats.map((t, idx) => ({
+    time: Number(Number(t).toFixed(3)),
+    type: idx % 7 === 0 ? "drag" : "tap",
+    laneHint: idx % 4,
+    strength: 0.8
+  })).filter(n => n.time >= 1.0);
+  return {
+    version: CHART_SCHEMA_VERSION,
+    algorithm: "librosa-beat-track-v1",
+    difficulty: "normal",
+    approachRateMs: 1250,
+    notes: notes.length >= 16 ? notes : simpleChart(Number(analysis?.duration || 45), "librosa-fallback") .notes
+  };
+}
+
+function mergeAnalysisWithChart(chart, analysis) {
+  const segments = Array.isArray(analysis?.segments) ? analysis.segments : [];
+  if (!segments.length) return { ...analysis, segments: buildSegmentsFromChart(chart, Number(analysis?.duration || 45)) };
+  return analysis;
+}
 async function tryDownloadToWav(url, workDir) {
   const sourceTpl = path.join(workDir, "source.%(ext)s");
   const wavPath = path.join(workDir, "audio.wav");

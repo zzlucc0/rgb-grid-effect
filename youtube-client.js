@@ -55,7 +55,14 @@
     while (true) {
       var r = await fetch(API_BASE + "/api/job/" + jobId);
       var j = await r.json();
-      setStatus("loading", j.status + " · " + (j.step || ""));
+      
+      var stepText = j.status + " · " + (j.step || "");
+      if (j.step === "resolving stream") stepText = "Analyzing… resolving source";
+      else if (j.step === "capturing preview audio") stepText = "Analyzing… capturing preview audio";
+      else if (j.step === "analyzing rhythm") stepText = "Analyzing… detecting BPM / beats / segments";
+      else if (j.step === "analysis ready") stepText = "Analysis complete";
+      setStatus("loading", stepText);
+
       if (j.status === "done") return j;
       if (j.status === "failed") throw new Error(j.error || "analysis failed");
       await new Promise(function (r2) { setTimeout(r2, 1500); });
@@ -119,6 +126,7 @@
         pattern: "analyzed",
         strictPlayback: true,
         analysis: job.result.analysis,
+        segments: (job.result.analysis && job.result.analysis.segments) || [],
         player: job.result.player
       };
       game.readyMode = "online-analyzed";
