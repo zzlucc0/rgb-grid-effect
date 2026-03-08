@@ -30,6 +30,7 @@ class RhythmGame {
         this.playbackViolations = [];
         this.runInvalid = false;
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
+        this.globalNoteSeq = 0;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -255,6 +256,7 @@ class RhythmGame {
         this.playbackViolations = [];
         this.runInvalid = false;
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
+        this.globalNoteSeq = 0;
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
@@ -1699,32 +1701,161 @@ RhythmGame.prototype.initLiveEngine = function () {
         step: 0,
         bar: 0,
         nextTime: 0.8,
-        pattern16: [1,0,1,0, 1,1,0,0, 1,0,1,1, 0,1,0,1]
+        pattern16: [1,0,1,0, 1,1,0,0, 1,0,1,1, 0,1,0,1],
+        phrase: { anchorX: this.canvas.width / 2, anchorY: this.canvas.height / 2, radius: 260, left: 0 },
+        dragQuotaPerBar: 2,
+        dragSpawnedInBar: 0,
+        lastWasDrag: false,
+        lastSpawnX: null,
+        lastSpawnY: null
     };
+    this.resetLivePhrase();
     this.watchPlaybackIntegrity();
+};
+
+RhythmGame.prototype.resetLivePhrase = function () {
+    if (!this.liveEngine) return;
+    const cols = 4;
+    const rows = 3;
+    const c = Math.floor(Math.random() * cols);
+    const r = Math.floor(Math.random() * rows);
+    const cellW = this.safeArea.width / cols;
+    const cellH = this.safeArea.height / rows;
+    this.liveEngine.phrase = {
+        anchorX: this.safeArea.x + c * cellW + cellW * 0.5,
+        anchorY: this.safeArea.y + r * cellH + cellH * 0.5,
+        radius: Math.min(300, Math.max(190, Math.min(cellW, cellH) * 0.85)),
+        left: 4 + Math.floor(Math.random() * 4)
+    };
+};
+
+RhythmGame.prototype._activeLiveNotes = function () {
+    return this.notes.filter(n => !n.hit && !n.completed);
+};
+
+RhythmGame.prototype._distance = function (x1, y1, x2, y2) {
+    const dx = x1 - x2;
+    const dy = y1 - y2;
+    return Math.sqrt(dx * dx + dy * dy);
+};
+
+RhythmGame.prototype.pickSpawnPosition = function () {
+    const eng = this.liveEngine;
+    const phrase = eng.phrase;
+    if (!phrase || phrase.left <= 0) this.resetLivePhrase();
+
+    const minGap = this.circleSize * 2.4;
+    const minDragGap = this.circleSize * 2.0;
+    const minStep = this.circleSize * 1.2;
+    const maxStep = this.circleSize * 3.2;
+    const active = this._activeLiveNotes();
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    for (let i = 0; i < 80; i++) {
+        const pr = this.liveEngine.phrase;
+        const angle = Math.random() * Math.PI * 2;
+        const rr = Math.sqrt(Math.random()) * pr.radius;
+        const x = clamp(pr.anchorX + Math.cos(angle) * rr, this.safeArea.x + this.circleSize, this.safeArea.x + this.safeArea.width - this.circleSize);
+        const y = clamp(pr.anchorY + Math.sin(angle) * rr, this.safeArea.y + this.circleSize, this.safeArea.y + this.safeArea.height - this.circleSize);
+
+        if (eng.lastSpawnX != null) {
+            const d = this._distance(x, y, eng.lastSpawnX, eng.lastSpawnY);
+            if (d < minStep || d > maxStep) continue;
+        }
+
+        let ok = true;
+        for (const n of active) {
+            const d = this._distance(x, y, n.x, n.y);
+            if (d < minGap) { ok = false; break; }
+            if (n.isDrag && !n.completed && Number.isFinite(n.endX) && Number.isFinite(n.endY)) {
+                const cdist = this.distanceToQuadraticCurve(x, y, n.x, n.y, n.controlX, n.controlY, n.endX, n.endY);
+                if (cdist < minDragGap) { ok = false; break; }
+            }
+        }
+        if (ok) return { x, y };
+    }
+    return null;
+};
+
+RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
+    const pos = this.pickSpawnPosition();
+    if (!pos) return null;
+    this.globalNoteSeq += 1;
+    const note = {
+        x: pos.x,
+        y: pos.y,
+        createTime: currentTime,
+        hitTime,
+        hit: false,
+        score: null,
+        approachProgress: 0,
+        energy: 0.65,
+        beatNumber: this.globalNoteSeq,
+        noteNumber: this.globalNoteSeq,
+        isDrag: Boolean(isDrag),
+        held: false,
+        completed: false,
+        progress: 0
+    };
+
+    if (note.isDrag) {
+        const d = this.circleSize * (3.4 + Math.random() * 1.3);
+        const a = Math.random() * Math.PI * 2;
+        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * d));
+        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * d));
+        const dx = note.endX - note.x;
+        const dy = note.endY - note.y;
+        const L = Math.sqrt(dx * dx + dy * dy) || 1;
+        const midX = (note.x + note.endX) / 2;
+        const midY = (note.y + note.endY) / 2;
+        note.controlX = midX - dy / L * (L * 0.24);
+        note.controlY = midY + dx / L * (L * 0.24);
+    }
+
+    this.liveEngine.lastSpawnX = note.x;
+    this.liveEngine.lastSpawnY = note.y;
+    this.liveEngine.phrase.left -= 1;
+    return note;
 };
 
 RhythmGame.prototype.generateLiveGridNotes = function (currentTime) {
     if (!this.liveEngine) this.initLiveEngine();
     const eng = this.liveEngine;
     const lookahead = this.approachRate / 1000;
+
     while (eng.nextTime <= currentTime + lookahead) {
         const idx = eng.step % 16;
+        if (idx === 0) {
+            eng.dragSpawnedInBar = 0;
+            eng.lastWasDrag = false;
+        }
+
         const accTotal = this.judgementStats.perfect + this.judgementStats.good + this.judgementStats.miss;
         const acc = accTotal ? ((this.judgementStats.perfect + this.judgementStats.good * 0.6) / accTotal) : 0.8;
-        const adaptiveDensity = Math.max(0.55, Math.min(1.45, eng.density * (0.85 + acc * 0.4)));
-        const spawn = eng.pattern16[idx] === 1 && Math.random() < adaptiveDensity;
+        const adaptiveDensity = Math.max(0.55, Math.min(1.35, eng.density * (0.85 + acc * 0.4)));
+
+        const remainSteps = 15 - idx;
+        const needDrag = Math.max(0, eng.dragQuotaPerBar - eng.dragSpawnedInBar);
+        const forceDragNow = needDrag > 0 && remainSteps < needDrag;
+        const baseSpawn = eng.pattern16[idx] === 1 && Math.random() < adaptiveDensity;
+        const spawn = forceDragNow || baseSpawn;
+
         if (spawn) {
-            const x = this.safeArea.x + Math.random() * this.safeArea.width;
-            const y = this.safeArea.y + Math.random() * this.safeArea.height;
-            const n = this.notes.length + 1;
-            this.notes.push({
-                x, y, createTime: currentTime, hitTime: eng.nextTime,
-                hit: false, score: null, approachProgress: 0, energy: 0.65,
-                beatNumber: n, noteNumber: n,
-                isDrag: idx % 8 === 0, held: false, completed: false, progress: 0
-            });
+            let wantDrag = false;
+            if (forceDragNow) wantDrag = true;
+            else if (!eng.lastWasDrag && eng.dragSpawnedInBar < eng.dragQuotaPerBar) {
+                const dragChance = idx % 4 === 0 ? 0.45 : 0.2;
+                wantDrag = Math.random() < dragChance;
+            }
+
+            const note = this.createLiveNote(currentTime, eng.nextTime, wantDrag);
+            if (note) {
+                this.notes.push(note);
+                if (note.isDrag) eng.dragSpawnedInBar += 1;
+                eng.lastWasDrag = note.isDrag;
+            }
         }
+
         eng.step += 1;
         if (eng.step % 16 === 0) eng.bar += 1;
         eng.nextTime += eng.beatSec / 2;
