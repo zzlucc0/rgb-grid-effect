@@ -253,7 +253,7 @@ class RhythmGame {
         
         // Create offline audio context to pre-analyze the song (only when needed)
         const statusText = document.getElementById('statusText');
-        if (!this.chartMode) {
+        if (!this.chartMode && !this.liveMode) {
             if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Analyzing beats (preAnalyzeSong)...</div>";
             await this.preAnalyzeSong();
         } else {
@@ -319,6 +319,11 @@ class RhythmGame {
     
     // Pre-analyze the song, identify vocal parts and plan button generation
     async preAnalyzeSong() {
+        if (!this.audioBuffer || !this.audioBuffer.duration) {
+            this.vocalSections = [];
+            this.analyzedSections = [];
+            return;
+        }
         return new Promise(resolve => {
             // Show analyzing prompt
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
