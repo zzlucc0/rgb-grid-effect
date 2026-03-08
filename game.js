@@ -571,6 +571,15 @@ class RhythmGame {
                 }
                 note.beatNumber = this.nextChartIndex;
                 note.noteNumber = this.nextChartIndex;
+                note.energy = chartNote.strength || note.energy;
+                note.segmentLabel = chartNote.segmentLabel || null;
+                note.laneHint = chartNote.laneHint;
+                if (Number.isFinite(chartNote.laneHint) && !note.isDrag) {
+                    const laneCount = 4;
+                    const laneWidth = this.safeArea.width / laneCount;
+                    const laneCenterX = this.safeArea.x + laneWidth * (chartNote.laneHint + 0.5);
+                    note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, laneCenterX));
+                }
                 this.notes.push(note);
             }
             return;
@@ -1855,7 +1864,7 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
     if (this.liveEngine.segmentKey === key) return;
     this.liveEngine.segmentKey = key;
     this.liveEngine.density = seg.energy === 'high' ? 1.2 : (seg.energy === 'mid' ? 0.95 : 0.72);
-    this.liveEngine.dragQuotaPerBar = seg.label === 'chorus' ? 3 : (seg.label === 'verse' ? 2 : 1);
+    this.liveEngine.dragQuotaPerBar = seg.dragRatio >= 0.24 ? 3 : (seg.dragRatio >= 0.16 ? 2 : 1);
     this.liveEngine.phrase.radius = seg.phraseRadius || (seg.label === 'chorus' ? 260 : seg.label === 'verse' ? 220 : 185);
     this.liveEngine.phrase.left = seg.label === 'chorus' ? 6 : (seg.label === 'verse' ? 5 : 4);
     if (seg.label === 'chorus') {

@@ -326,20 +326,89 @@ async function analyzeRhythmWithPython(wavPath, cwd = ROOT) {
   return parsed;
 }
 
+function pickSegmentForTime(segments, t) {
+  return (segments || []).find(seg => t >= Number(seg.start || 0) && t < Number(seg.end || 0)) || null;
+}
+
 function chartFromAnalysis(analysis) {
-  const beats = Array.isArray(analysis?.beats) ? analysis.beats : [];
-  const notes = beats.map((t, idx) => ({
-    time: Number(Number(t).toFixed(3)),
-    type: idx % 7 === 0 ? "drag" : "tap",
-    laneHint: idx % 4,
-    strength: 0.8
-  })).filter(n => n.time >= 1.0);
+  const beats = Array.isArray(analysis?.beats) ? analysis.beats.map(Number).filter(n => Number.isFinite(n)) : [];
+  const segments = Array.isArray(analysis?.segments) ? analysis.segments : [];
+  if (beats.length < 16) {
+    const fallback = simpleChart(Number(analysis?.duration || 45), "librosa-fallback");
+    return fallback;
+  }
+
+  const notes = [];
+  let lane = 0;
+  let phraseIndex = 0;
+  let lastTime = -99;
+  let lastWasDrag = false;
+
+  for (let i = 0; i < beats.length; i++) {
+    const t = Number(beats[i].toFixed(3));
+    if (t < 1.0) continue;
+    const seg = pickSegmentForTime(segments, t) || { label: 'verse', energy: 'mid', dragRatio: 0.16, density: 1.4 };
+    const mod4 = i % 4;
+    const mod8 = i % 8;
+    const gapPrev = i > 0 ? (beats[i] - beats[i - 1]) : 0.5;
+    const gapNext = i < beats.length - 1 ? (beats[i + 1] - beats[i]) : gapPrev;
+    const isStrong = mod4 === 0;
+    const isPickup = mod4 === 2;
+    const dense = seg.energy === 'high' || Number(seg.density || 0) > 1.8;
+    const sparse = seg.label === 'intro' || seg.energy === 'low';
+
+    let spawn = false;
+    if (isStrong) spawn = true;
+    else if (dense && (mod4 === 2 || mod8 === 6)) spawn = true;
+    else if (!sparse && isPickup && gapPrev < 0.9) spawn = Math.random() < 0.75;
+    else if (!sparse && mod8 === 7) spawn = Math.random() < 0.35;
+
+    if (!spawn) continue;
+    if (t - lastTime < 0.22) continue;
+
+    let type = 'tap';
+    const segDrag = Number(seg.dragRatio || 0.16);
+    const dragWindow = isStrong && gapNext > 0.35 && gapNext < 1.4;
+    if (!lastWasDrag && dragWindow && (seg.label === 'chorus' ? mod8 === 0 || mod8 === 4 : mod8 === 0) && Math.random() < Math.min(0.45, segDrag + 0.08)) {
+      type = 'drag';
+    }
+
+    if (isStrong) lane = (lane + 1) % 4;
+    else if (type === 'drag') lane = (lane + 2) % 4;
+    else lane = (lane + (mod4 === 2 ? 2 : 1)) % 4;
+
+    const strength = isStrong ? 1.0 : (dense ? 0.78 : 0.68);
+    notes.push({
+      time: t,
+      type,
+      laneHint: lane,
+      phrase: phraseIndex,
+      strength: Number(strength.toFixed(2)),
+      segmentLabel: seg.label,
+      energy: seg.energy
+    });
+
+    lastTime = t;
+    lastWasDrag = type === 'drag';
+    if (mod8 === 7) phraseIndex += 1;
+  }
+
+  // ensure variety: if no drag generated, inject on suitable strong beats in non-intro segments
+  if (!notes.some(n => n.type === 'drag')) {
+    for (let i = 0; i < notes.length; i++) {
+      if (notes[i].segmentLabel !== 'intro' && i % 6 === 0) {
+        notes[i].type = 'drag';
+        break;
+      }
+    }
+  }
+
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: "librosa-beat-track-v1",
+    algorithm: "librosa-phrase-chart-v2",
     difficulty: "normal",
     approachRateMs: 1250,
-    notes: notes.length >= 16 ? notes : simpleChart(Number(analysis?.duration || 45), "librosa-fallback") .notes
+    notes: notes.length >= 16 ? notes : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes
   };
 }
 
