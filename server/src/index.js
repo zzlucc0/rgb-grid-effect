@@ -19,6 +19,7 @@ const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
 const CACHE_TTL_HOURS = Math.max(1, Number(process.env.CACHE_TTL_HOURS || 168));
 const CACHE_CLEANUP_INTERVAL_MIN = Math.max(5, Number(process.env.CACHE_CLEANUP_INTERVAL_MIN || 60));
+const LINK_PLAY_ONLY = String(process.env.LINK_PLAY_ONLY || "true").toLowerCase() !== "false";
 
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -482,10 +483,17 @@ async function processOfflineJob(job) {
 function buildOnlineFallback(url, reason) {
   return {
     mode: "online",
-    player: isYouTubeUrl(url) ? { type: "youtube", videoId: extractVideoId(url) } : { type: "audio", url },
+    player: buildOnlinePlayerFromUrl(url),
     chartSeed: { bpm: 122, density: 1.0, pattern: "adaptive" },
     reason: reason || "offline fetch failed"
   };
+}
+
+function buildOnlinePlayerFromUrl(url) {
+  if (isYouTubeUrl(url)) return { type: "youtube", videoId: extractVideoId(url) };
+  if (looksLikeDirectMedia(url)) return { type: "audio", url };
+  if (isBilibiliUrl(url)) return { type: "bilibili", url };
+  return { type: "web", url };
 }
 
 async function searchBilibili(query, limit = 5) {
@@ -609,8 +617,8 @@ app.post("/api/resolve-source", (req, res) => {
   const { url } = req.body ?? {};
   if (!url || typeof url !== "string") return res.status(400).json({ error: "url is required" });
   const sourceType = isYouTubeUrl(url) ? "youtube" : (looksLikeDirectMedia(url) ? "direct-media" : (isBilibiliUrl(url) ? "bilibili" : "webpage"));
-  const preferred = sourceType === "webpage" ? "online" : "offline";
-  res.json({ sourceType, preferredMode: preferred, fallbackMode: "online" });
+  const preferred = LINK_PLAY_ONLY ? "online" : (sourceType === "webpage" ? "online" : "offline");
+  res.json({ sourceType, preferredMode: preferred, fallbackMode: "online", linkPlayOnly: LINK_PLAY_ONLY });
 });
 
 app.post("/api/search-bilibili", async (req, res) => {
@@ -658,11 +666,11 @@ app.post("/api/analyze-link", async (req, res) => {
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status });
 
-  // New strategy: for YouTube, prefer official player mode directly (no audio file fetch/download pipeline)
-  if (isYouTubeUrl(url)) {
+  // Link-play mode: skip download/analyze pipeline and start from online player path
+  if (LINK_PLAY_ONLY || isYouTubeUrl(url)) {
     job.status = "done";
-    job.step = "youtube official player";
-    job.result = buildOnlineFallback(url, "official player mode");
+    job.step = "link play mode";
+    job.result = buildOnlineFallback(url, LINK_PLAY_ONLY ? "link-play-only mode" : "official player mode");
     saveJob(job);
     return;
   }

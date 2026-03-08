@@ -111,11 +111,20 @@
     game.chartMode = false;
     game.audioBuffer = null;
     game.chartData = null;
-    game.liveConfig = { bpm: (job.result.chartSeed && job.result.chartSeed.bpm) || 122, player: job.result.player };
+    game.liveConfig = {
+      bpm: (job.result.chartSeed && job.result.chartSeed.bpm) || 122,
+      density: (job.result.chartSeed && job.result.chartSeed.density) || 1.0,
+      pattern: (job.result.chartSeed && job.result.chartSeed.pattern) || "adaptive",
+      strictPlayback: true,
+      player: job.result.player
+    };
     game.readyMode = "online";
     startBtn.disabled = false;
     setReady("online", true, "live");
-    setStatus("success", "Online fallback ready (" + job.result.player.type + ")");
+    setStatus("success", "Link-play ready (" + job.result.player.type + ")");
+    if (job.result.player.type === "web" || job.result.player.type === "bilibili") {
+      setStatus("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
+    }
 
     if (job.error) {
       var panel = ensureSearchPanel();
@@ -129,7 +138,7 @@
     var startBtn = el("startGame");
     startBtn.disabled = true;
     setReady("-", false, "-");
-    setStatus("loading", "Submitting link...");
+    setStatus("loading", "Preparing link playback...");
     var resp = await fetch(API_BASE + "/api/analyze-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

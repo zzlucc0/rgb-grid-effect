@@ -10,6 +10,7 @@ services:
       - ./server/cookies:/app/cookies
     environment:
       - YTDLP_COOKIES_PATH=/app/cookies/youtube.txt
+      - LINK_PLAY_ONLY=true
 
   rgb-grid-web:
     build:

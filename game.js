@@ -25,6 +25,11 @@ class RhythmGame {
         this.liveLastNote = 0;
         this.readyMode = null;
         this._liveStartWall = 0;
+        this.liveEngine = null;
+        this.liveMonitorTimer = null;
+        this.playbackViolations = [];
+        this.runInvalid = false;
+        this.judgementStats = { perfect: 0, good: 0, miss: 0 };
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -247,6 +252,9 @@ class RhythmGame {
         this.noteCount = 0; // Reset note count
         this.nextChartIndex = 0;
         this.isGroupPaused = false; // Reset pause state
+        this.playbackViolations = [];
+        this.runInvalid = false;
+        this.judgementStats = { perfect: 0, good: 0, miss: 0 };
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
@@ -263,19 +271,7 @@ class RhythmGame {
         
         // Chart mode uses backend chart timing; no client-side pre-analysis required
         if (this.liveMode) {
-            const t = this.getLiveCurrentTime();
-            if (t - this.liveLastNote >= (60 / this.liveConfig.bpm) * (Math.random() > 0.7 ? 0.5 : 1.0)) {
-                this.liveLastNote = t;
-                const x = this.safeArea.x + Math.random() * this.safeArea.width;
-                const y = this.safeArea.y + Math.random() * this.safeArea.height;
-                this.notes.push({
-                    x, y, createTime: t, hitTime: t + this.approachRate / 1000,
-                    hit: false, score: null, approachProgress: 0, energy: 0.6,
-                    beatNumber: this.notes.length, noteNumber: this.notes.length,
-                    isDrag: this.notes.length % 7 === 0, held: false, completed: false, progress: 0
-                });
-            }
-            return;
+            this.initLiveEngine();
         }
 
         if (this.chartMode && this.chartData?.notes?.length) {
@@ -600,20 +596,9 @@ class RhythmGame {
             return;
         }
 
-        // Live fallback note generation (for official player mode without decoded audio analyser input)
+        // Link-play rhythm generation: time-grid based (no download/analyze required)
         if (this.liveMode) {
-            const interval = (60 / ((this.liveConfig && this.liveConfig.bpm) || 122)) * (Math.random() > 0.7 ? 0.5 : 1.0);
-            if ((currentTime - this.liveLastNote) >= interval) {
-                this.liveLastNote = currentTime;
-                const x = this.safeArea.x + Math.random() * this.safeArea.width;
-                const y = this.safeArea.y + Math.random() * this.safeArea.height;
-                this.notes.push({
-                    x, y, createTime: currentTime, hitTime: currentTime + this.approachRate / 1000,
-                    hit: false, score: null, approachProgress: 0, energy: 0.6,
-                    beatNumber: this.notes.length, noteNumber: this.notes.length,
-                    isDrag: this.notes.length % 7 === 0, held: false, completed: false, progress: 0
-                });
-            }
+            this.generateLiveGridNotes(currentTime);
             return;
         }
         
@@ -1198,6 +1183,7 @@ class RhythmGame {
                 note.hit = true;
                 note.score = 'miss';
                 this.combo = 0;
+                this.recordJudgement('miss');
                 return true;
             }
             
@@ -1208,6 +1194,7 @@ class RhythmGame {
                 note.completed = true;
                 note.score = 'miss';
                 this.combo = 0;
+                this.recordJudgement('miss');
                 this.currentDragNote = null;
                 return true;
             }
@@ -1470,6 +1457,7 @@ class RhythmGame {
                         note.completed = true;
                         note.score = 'miss';
                         this.combo = 0;
+                        this.recordJudgement('miss');
                     }
                     note.held = false;
                     note.hit = true;
@@ -1504,18 +1492,21 @@ class RhythmGame {
                     if (timingDiff <= this.perfectRange) {
                         note.score = 'perfect';
                         this.score += 1000 * (1 + this.combo * 0.1);
+                        this.recordJudgement('perfect');
                         this.combo++;
                         note.hit = true;
                         this.createHitEffect(note.x, note.y, note.score);
                     } else if (timingDiff <= this.goodRange) {
                         note.score = 'good';
                         this.score += 500 * (1 + this.combo * 0.1);
+                        this.recordJudgement('good');
                         this.combo++;
                         note.hit = true;
                         this.createHitEffect(note.x, note.y, note.score);
                     } else {
                         note.score = 'miss';
                         this.combo = 0;
+                        this.recordJudgement('miss');
                         note.hit = true;
                     }
                     
@@ -1643,8 +1634,9 @@ RhythmGame.prototype.startLivePlayback = function () {
         return;
     }
 
-    if (holder) holder.classList.remove("hidden");
+    if (holder) holder.classList.add("hidden");
     const a = document.getElementById("liveAudio");
+    if (a) a.controls = false;
     if (!a || !this.liveConfig || !this.liveConfig.player) return;
 
     if (this.liveConfig.player.type === "hls") {
@@ -1680,6 +1672,11 @@ RhythmGame.prototype.startLivePlayback = function () {
         a.src = this.liveConfig.player.url;
         a.play().catch(() => {});
     }
+
+    if (this.liveConfig.player.type === "bilibili" || this.liveConfig.player.type === "web") {
+        a.src = this.liveConfig.player.url;
+        a.play().catch(() => {});
+    }
 };
 
 RhythmGame.prototype.getLiveCurrentTime = function () {
@@ -1687,7 +1684,76 @@ RhythmGame.prototype.getLiveCurrentTime = function () {
         return this._ytPlayer.getCurrentTime() || 0;
     }
     const a = document.getElementById("liveAudio");
+    if (a) a.controls = false;
     return a ? (a.currentTime || 0) : (this.audioContext.currentTime - this.startTime);
+};
+
+
+RhythmGame.prototype.initLiveEngine = function () {
+    const bpm = Math.max(72, Math.min(180, Number((this.liveConfig && this.liveConfig.bpm) || 122)));
+    const density = Math.max(0.6, Math.min(1.4, Number((this.liveConfig && this.liveConfig.density) || 1.0)));
+    this.liveEngine = {
+        bpm,
+        beatSec: 60 / bpm,
+        density,
+        step: 0,
+        bar: 0,
+        nextTime: 0.8,
+        pattern16: [1,0,1,0, 1,1,0,0, 1,0,1,1, 0,1,0,1]
+    };
+    this.watchPlaybackIntegrity();
+};
+
+RhythmGame.prototype.generateLiveGridNotes = function (currentTime) {
+    if (!this.liveEngine) this.initLiveEngine();
+    const eng = this.liveEngine;
+    const lookahead = this.approachRate / 1000;
+    while (eng.nextTime <= currentTime + lookahead) {
+        const idx = eng.step % 16;
+        const accTotal = this.judgementStats.perfect + this.judgementStats.good + this.judgementStats.miss;
+        const acc = accTotal ? ((this.judgementStats.perfect + this.judgementStats.good * 0.6) / accTotal) : 0.8;
+        const adaptiveDensity = Math.max(0.55, Math.min(1.45, eng.density * (0.85 + acc * 0.4)));
+        const spawn = eng.pattern16[idx] === 1 && Math.random() < adaptiveDensity;
+        if (spawn) {
+            const x = this.safeArea.x + Math.random() * this.safeArea.width;
+            const y = this.safeArea.y + Math.random() * this.safeArea.height;
+            const n = this.notes.length + 1;
+            this.notes.push({
+                x, y, createTime: currentTime, hitTime: eng.nextTime,
+                hit: false, score: null, approachProgress: 0, energy: 0.65,
+                beatNumber: n, noteNumber: n,
+                isDrag: idx % 8 === 0, held: false, completed: false, progress: 0
+            });
+        }
+        eng.step += 1;
+        if (eng.step % 16 === 0) eng.bar += 1;
+        eng.nextTime += eng.beatSec / 2;
+    }
+};
+
+RhythmGame.prototype.watchPlaybackIntegrity = function () {
+    if (!this.liveMode || !this.liveConfig || !this.liveConfig.strictPlayback) return;
+    if (this.liveMonitorTimer) clearInterval(this.liveMonitorTimer);
+    let prevT = -1;
+    this.liveMonitorTimer = setInterval(() => {
+        if (!this.isPlaying || !this.liveMode) return;
+        const t = this.getLiveCurrentTime();
+        if (prevT >= 0 && t + 0.35 < prevT) {
+            this.runInvalid = true;
+            this.playbackViolations.push({ type: 'seek-back', at: Date.now() });
+        }
+        prevT = t;
+        if (this._ytPlayer && this._ytPlayer.getPlayerState && this._ytPlayer.getPlayerState() === 2) {
+            this.runInvalid = true;
+            this.playbackViolations.push({ type: 'paused', at: Date.now() });
+            try { this._ytPlayer.playVideo(); } catch (_) {}
+        }
+    }, 500);
+};
+
+RhythmGame.prototype.recordJudgement = function (score) {
+    if (!score || !this.judgementStats[score] && score !== 'miss') return;
+    if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
 };
 
 // Initialize the game

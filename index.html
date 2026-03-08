@@ -167,18 +167,18 @@
         <div id="statusText"></div>
         <div style="margin-top: 12px;">
             <input id="youtubeUrl" type="url" placeholder="Paste YouTube URL (<= 6 min)" style="width: 320px; padding: 8px; border-radius: 4px; border: 1px solid #19A336; background: #111; color: #fff;">
-            <button id="analyzeYoutube" style="margin-left:8px;">Analyze with AI</button>
+            <button id="analyzeYoutube" style="margin-left:8px;">Prepare Link Mode</button>
         </div>
         <button id="startGame" disabled>Start Game</button>
         
         <div class="note-message" style="margin-top: 20px; font-size: 14px; opacity: 0.8;">
-            Tip: Upload local audio, or paste a YouTube link (public, <=6 min)
+            Tip: Paste a playable link (recommended: YouTube). Video runs in hidden background mode.
         </div>
     </div>
 
     <div id="livePlayerHolder" class="hidden">
         <div id="ytPlayer"></div>
-        <audio id="liveAudio" controls playsinline crossorigin="anonymous"></audio>
+        <audio id="liveAudio" playsinline crossorigin="anonymous"></audio>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
