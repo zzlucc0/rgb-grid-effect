@@ -127,7 +127,8 @@
         bpm: (job.result.analysis && job.result.analysis.bpm) || 122,
         density: 1.0,
         pattern: "analyzed",
-        strictPlayback: true,
+        strictPlayback: ((el("playModeSelect") && el("playModeSelect").value) || "casual") === "strict",
+        playMode: ((el("playModeSelect") && el("playModeSelect").value) || "casual"),
         analysis: job.result.analysis,
         segments: (job.result.analysis && job.result.analysis.segments) || [],
         player: job.result.player
@@ -135,7 +136,7 @@
       game.readyMode = "online-analyzed";
       startBtn.disabled = false;
       setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-");
-      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)));
+      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)));
       return;
     }
 
@@ -177,7 +178,7 @@
     var resp = await fetch(API_BASE + "/api/analyze-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: url, difficulty: ((el("difficultySelect") && el("difficultySelect").value) || "normal") })
+      body: JSON.stringify({ url: url, difficulty: ((el("difficultySelect") && el("difficultySelect").value) || "normal"), playMode: ((el("playModeSelect") && el("playModeSelect").value) || "casual") })
     });
     var created = await resp.json();
     currentAnalyzeJobId = created.jobId || null;

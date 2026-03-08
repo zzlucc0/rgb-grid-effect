@@ -36,6 +36,8 @@ class RhythmGame {
         this.pausedAt = 0;
         this.pauseAccumulated = 0;
         this.frozenGameTime = 0;
+        this.playMode = 'casual';
+        this.lastPlaybackHealthyAt = 0;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -272,10 +274,13 @@ class RhythmGame {
         this.globalNoteSeq = 0;
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
         this.gameState = 'starting';
+        this.playMode = (this.liveConfig && this.liveConfig.playMode) || 'casual';
         this.pauseReason = 'none';
         this.pausedAt = 0;
         this.pauseAccumulated = 0;
         this.frozenGameTime = 0;
+        this.playMode = 'casual';
+        this.lastPlaybackHealthyAt = 0;
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
         
@@ -1634,6 +1639,7 @@ RhythmGame.prototype.updatePauseUI = function () {
     const resumeBtn = document.getElementById('resumeGameBtn');
     const overlay = document.getElementById('pauseOverlay');
     const overlayText = document.getElementById('pauseOverlayText');
+    const overlaySubtext = document.getElementById('pauseOverlaySubtext');
     const paused = this.gameState === 'paused-user' || this.gameState === 'paused-system';
     if (pauseBtn) pauseBtn.disabled = !this.isPlaying || paused;
     if (resumeBtn) {
@@ -1642,9 +1648,16 @@ RhythmGame.prototype.updatePauseUI = function () {
     }
     if (overlay) overlay.classList.toggle('hidden', !paused);
     if (overlayText && paused) overlayText.textContent = this.pauseReason === 'system' ? 'Playback paused automatically' : 'Game paused';
+    if (overlaySubtext) {
+        if (!paused) overlaySubtext.textContent = 'Resume will trigger a short countdown.';
+        else if (this.pauseReason === 'invalid-strict') overlaySubtext.textContent = 'Strict mode detected a forbidden pause/seek. This run is now invalid.';
+        else if (this.pauseReason === 'system') overlaySubtext.textContent = 'Playback stalled or tab focus changed. Resume will continue after countdown.';
+        else overlaySubtext.textContent = this.playMode === 'strict' ? 'Strict mode pauses will invalidate the run.' : 'Resume will trigger a short countdown.';
+    }
 };
 
 RhythmGame.prototype.pausePlaybackMedia = function () {
+    if (this.playMode === 'strict' && this.pauseReason === 'user') return;
     if (this._ytPlayer && this._ytPlayer.pauseVideo) {
         try { this._ytPlayer.pauseVideo(); } catch (_) {}
     }
@@ -1662,6 +1675,15 @@ RhythmGame.prototype.resumePlaybackMedia = function () {
 
 RhythmGame.prototype.pauseGame = function (reason = 'user') {
     if (!this.isPlaying || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
+    if (this.playMode === 'strict' && reason === 'user') {
+        this.runInvalid = true;
+        this.pauseReason = 'invalid-strict';
+        this.gameState = 'paused-user';
+        this.pausedAt = performance.now();
+        this.frozenGameTime = this.getGameClockTime();
+        this.updatePauseUI();
+        return;
+    }
     this.pauseReason = reason;
     this.gameState = reason === 'system' ? 'paused-system' : 'paused-user';
     this.pausedAt = performance.now();
@@ -1675,6 +1697,7 @@ RhythmGame.prototype.resumeGame = async function () {
     const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
     this.pauseAccumulated += pausedFor;
     const overlayText = document.getElementById('pauseOverlayText');
+    const overlaySubtext = document.getElementById('pauseOverlaySubtext');
     for (const n of [3,2,1]) {
         if (overlayText) overlayText.textContent = 'Resuming in ' + n;
         await new Promise(r => setTimeout(r, 600));
@@ -1967,21 +1990,39 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
 };
 
 RhythmGame.prototype.watchPlaybackIntegrity = function () {
-    if (!this.liveMode || !this.liveConfig || !this.liveConfig.strictPlayback) return;
+    if (!this.liveMode || !this.liveConfig) return;
     if (this.liveMonitorTimer) clearInterval(this.liveMonitorTimer);
     let prevT = -1;
+    let stagnantTicks = 0;
     this.liveMonitorTimer = setInterval(() => {
-        if (!this.isPlaying || !this.liveMode) return;
+        if (!this.isPlaying || !this.liveMode || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
         const t = this.getLiveCurrentTime();
         if (prevT >= 0 && t + 0.35 < prevT) {
             this.runInvalid = true;
             this.playbackViolations.push({ type: 'seek-back', at: Date.now() });
+            if (this.playMode === 'strict') this.pauseGame('invalid-strict');
         }
+        if (prevT >= 0 && Math.abs(t - prevT) < 0.02) stagnantTicks += 1; else stagnantTicks = 0;
         prevT = t;
-        if (this._ytPlayer && this._ytPlayer.getPlayerState && this._ytPlayer.getPlayerState() === 2) {
-            this.runInvalid = true;
-            this.playbackViolations.push({ type: 'paused', at: Date.now() });
-            try { this._ytPlayer.playVideo(); } catch (_) {}
+        if (this._ytPlayer && this._ytPlayer.getPlayerState) {
+            const st = this._ytPlayer.getPlayerState();
+            if (st === 2) {
+                this.playbackViolations.push({ type: 'paused', at: Date.now() });
+                if (this.playMode === 'strict') {
+                    this.runInvalid = true;
+                    this.pauseGame('invalid-strict');
+                } else {
+                    this.pauseGame('system');
+                }
+                return;
+            }
+        }
+        const a = document.getElementById('liveAudio');
+        if (a && !a.paused && !a.ended) this.lastPlaybackHealthyAt = Date.now();
+        if (stagnantTicks >= 6) {
+            this.playbackViolations.push({ type: 'stalled', at: Date.now() });
+            this.pauseGame('system');
+            stagnantTicks = 0;
         }
     }, 500);
 };

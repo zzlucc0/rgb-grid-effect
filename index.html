@@ -172,6 +172,10 @@
                 <option value="normal" selected>Normal</option>
                 <option value="hard">Hard</option>
             </select>
+            <select id="playModeSelect" style="padding:8px; border-radius:4px; border:1px solid #19A336; background:#111; color:#fff;">
+                <option value="casual" selected>Casual</option>
+                <option value="strict">Strict</option>
+            </select>
             <button id="analyzeYoutube" style="margin-left:8px;">Prepare Link Mode</button>
         </div>
         <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
@@ -188,8 +192,8 @@
 
     <div id="pauseOverlay" class="hidden" style="position:fixed;inset:0;z-index:4;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:22px;">
         <div id="pauseOverlayText">Paused</div>
-        <div style="font-size:14px;opacity:0.75;">Resume will trigger a short countdown.</div>
-    </div>
+        <div id="pauseOverlaySubtext" style="font-size:14px;opacity:0.8;max-width:420px;text-align:center;">Resume will trigger a short countdown.</div>
+            </div>
 
     <div id="livePlayerHolder" class="hidden">
         <div id="ytPlayer"></div>
