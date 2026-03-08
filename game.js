@@ -31,6 +31,11 @@ class RhythmGame {
         this.runInvalid = false;
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
         this.globalNoteSeq = 0;
+        this.gameState = 'idle';
+        this.pauseReason = 'none';
+        this.pausedAt = 0;
+        this.pauseAccumulated = 0;
+        this.frozenGameTime = 0;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -170,6 +175,8 @@ class RhythmGame {
         const startButton = document.getElementById('startGame');
         const uploadContainer = document.getElementById('uploadContainer');
         const statusText = document.getElementById('statusText');
+        const pauseBtn = document.getElementById('pauseGameBtn');
+        const resumeBtn = document.getElementById('resumeGameBtn');
 
         // File upload functionality
         audioUpload.addEventListener('change', async (e) => {
@@ -215,6 +222,12 @@ class RhythmGame {
             }
         });
 
+        if (pauseBtn) pauseBtn.addEventListener('click', () => this.pauseGame('user'));
+        if (resumeBtn) resumeBtn.addEventListener('click', () => this.resumeGame());
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && this.isPlaying && this.gameState === 'playing') this.pauseGame('system');
+        });
+
         // Add game control events
         this.canvas.addEventListener('mousedown', (e) => this.handleInput(e.clientX, e.clientY, 'start'));
         this.canvas.addEventListener('mousemove', (e) => this.handleInput(e.clientX, e.clientY, 'move'));
@@ -258,6 +271,11 @@ class RhythmGame {
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
         this.globalNoteSeq = 0;
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
+        this.gameState = 'starting';
+        this.pauseReason = 'none';
+        this.pausedAt = 0;
+        this.pauseAccumulated = 0;
+        this.frozenGameTime = 0;
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
         
@@ -295,8 +313,10 @@ class RhythmGame {
         
         // Start the game after countdown ends
         this.isPlaying = true;
+        this.gameState = 'playing';
         this.startTime = this.audioContext.currentTime;
         this._liveStartWall = performance.now();
+        this.updatePauseUI();
 
         // Start game source
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
@@ -525,6 +545,11 @@ class RhythmGame {
 
     gameLoop(dataArray) {
         if (!this.isPlaying) return;
+        if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
+            this.updatePauseUI();
+            requestAnimationFrame(() => this.gameLoop(dataArray));
+            return;
+        }
 
         // Get audio data
         if (!this.liveMode) this.analyser.getByteFrequencyData(dataArray);
@@ -544,14 +569,7 @@ class RhythmGame {
     }
 
     generateNotes(audioData) {
-        let currentTime;
-        if (this.liveMode) {
-            const liveT = this.getLiveCurrentTime();
-            const wallT = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000);
-            currentTime = Math.max(liveT || 0, wallT);
-        } else {
-            currentTime = this.audioContext.currentTime - this.startTime;
-        }
+        const currentTime = this.getGameClockTime();
 
         if (this.chartMode && this.chartData?.notes?.length) {
             if (this.liveMode) this.applySegmentProfile(currentTime);
@@ -1109,7 +1127,7 @@ class RhythmGame {
             // Adjust number of notes per group based on recent beat intensity and pre-analyzed data
             if (this.recentBeatStrengths.length >= 5 && !this.isGroupPaused) {
                 // Combine real-time beat intensity and pre-analyzed results
-                const currentTime = this.audioContext.currentTime - this.startTime;
+                const currentTime = this.getGameClockTime();
                 let plannedSize = this.notesPerGroup; // Default value
                 
                 // If pre-analyzed data exists, find planned button count for current time point
@@ -1141,7 +1159,7 @@ class RhythmGame {
             const avgBeatEnergy = this.energyHistory.reduce((a, b) => a + b) / this.energyHistory.length;
             this.energyThreshold = avgBeatEnergy * this.beatThreshold;
             
-            const currentTime = this.audioContext.currentTime - this.startTime;
+            const currentTime = this.getGameClockTime();
             if (beatEnergy > this.energyThreshold && currentTime - this.lastNoteTime >= this.minBeatInterval) {
                 this.beatDetected = true;
                 return { beat: true, vocal: vocalDetected, energy: Math.max(beatEnergy, vocalEnergy) };
@@ -1153,7 +1171,7 @@ class RhythmGame {
     }
 
     updateNotes = () => {
-        const currentTime = this.audioContext.currentTime - this.startTime;
+        const currentTime = this.getGameClockTime();
         
         this.notes = this.notes.filter(note => {
             // If note has shown score and disappeared, remove it
@@ -1381,6 +1399,11 @@ class RhythmGame {
     }
     handleInput = (x, y, type) => {
         if (!this.isPlaying) return;
+        if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
+            this.updatePauseUI();
+            requestAnimationFrame(() => this.gameLoop(dataArray));
+            return;
+        }
 
         const currentTime = this.audioContext.currentTime - this.startTime;
         
@@ -1594,6 +1617,73 @@ class RhythmGame {
         animate();
     }
 }
+
+
+RhythmGame.prototype.getGameClockTime = function () {
+    if (this.gameState === 'paused-user' || this.gameState === 'paused-system') return this.frozenGameTime || 0;
+    if (this.liveMode) {
+        const liveT = this.getLiveCurrentTime();
+        const wallT = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
+        return Math.max(liveT || 0, wallT || 0);
+    }
+    return Math.max(0, this.audioContext.currentTime - this.startTime - (this.pauseAccumulated || 0));
+};
+
+RhythmGame.prototype.updatePauseUI = function () {
+    const pauseBtn = document.getElementById('pauseGameBtn');
+    const resumeBtn = document.getElementById('resumeGameBtn');
+    const overlay = document.getElementById('pauseOverlay');
+    const overlayText = document.getElementById('pauseOverlayText');
+    const paused = this.gameState === 'paused-user' || this.gameState === 'paused-system';
+    if (pauseBtn) pauseBtn.disabled = !this.isPlaying || paused;
+    if (resumeBtn) {
+        resumeBtn.disabled = !paused;
+        resumeBtn.style.display = paused ? 'inline-block' : 'none';
+    }
+    if (overlay) overlay.classList.toggle('hidden', !paused);
+    if (overlayText && paused) overlayText.textContent = this.pauseReason === 'system' ? 'Playback paused automatically' : 'Game paused';
+};
+
+RhythmGame.prototype.pausePlaybackMedia = function () {
+    if (this._ytPlayer && this._ytPlayer.pauseVideo) {
+        try { this._ytPlayer.pauseVideo(); } catch (_) {}
+    }
+    const a = document.getElementById('liveAudio');
+    if (a && !a.paused) { try { a.pause(); } catch (_) {} }
+};
+
+RhythmGame.prototype.resumePlaybackMedia = function () {
+    if (this._ytPlayer && this._ytPlayer.playVideo) {
+        try { this._ytPlayer.playVideo(); } catch (_) {}
+    }
+    const a = document.getElementById('liveAudio');
+    if (a && a.paused) { a.play().catch(() => {}); }
+};
+
+RhythmGame.prototype.pauseGame = function (reason = 'user') {
+    if (!this.isPlaying || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
+    this.pauseReason = reason;
+    this.gameState = reason === 'system' ? 'paused-system' : 'paused-user';
+    this.pausedAt = performance.now();
+    this.frozenGameTime = this.getGameClockTime();
+    this.pausePlaybackMedia();
+    this.updatePauseUI();
+};
+
+RhythmGame.prototype.resumeGame = async function () {
+    if (!(this.gameState === 'paused-user' || this.gameState === 'paused-system')) return;
+    const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
+    this.pauseAccumulated += pausedFor;
+    const overlayText = document.getElementById('pauseOverlayText');
+    for (const n of [3,2,1]) {
+        if (overlayText) overlayText.textContent = 'Resuming in ' + n;
+        await new Promise(r => setTimeout(r, 600));
+    }
+    this.gameState = 'playing';
+    this.pauseReason = 'none';
+    this.resumePlaybackMedia();
+    this.updatePauseUI();
+};
 
 // Live playback helpers (patched)
 RhythmGame.prototype.startLivePlayback = function () {

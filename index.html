@@ -174,11 +174,21 @@
             </select>
             <button id="analyzeYoutube" style="margin-left:8px;">Prepare Link Mode</button>
         </div>
+        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
         <button id="startGame" disabled>Start Game</button>
+        <button id="cancelAnalyze" disabled>Cancel Analysis</button>
+        <button id="pauseGameBtn" disabled>Pause</button>
+        <button id="resumeGameBtn" disabled style="display:none;">Resume</button>
+    </div>
         
         <div class="note-message" style="margin-top: 20px; font-size: 14px; opacity: 0.8;">
             Tip: Paste a playable link (recommended: YouTube). Video runs in hidden background mode.
         </div>
+    </div>
+
+    <div id="pauseOverlay" class="hidden" style="position:fixed;inset:0;z-index:4;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:22px;">
+        <div id="pauseOverlayText">Paused</div>
+        <div style="font-size:14px;opacity:0.75;">Resume will trigger a short countdown.</div>
     </div>
 
     <div id="livePlayerHolder" class="hidden">

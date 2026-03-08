@@ -1,5 +1,7 @@
 (function () {
   var API_BASE = window.RGB_API_BASE || (window.location.protocol + "//" + window.location.hostname + ":8787");
+  var currentAnalyzeJobId = null;
+  var analyzeCancelled = false;
 
   function el(id) { return document.getElementById(id); }
   function setStatus(type, text) {
@@ -63,6 +65,7 @@
       else if (j.step === "analysis ready") stepText = "Analysis complete";
       setStatus("loading", stepText);
 
+      if (analyzeCancelled) throw new Error("analysis cancelled");
       if (j.status === "done") return j;
       if (j.status === "failed") throw new Error(j.error || "analysis failed");
       await new Promise(function (r2) { setTimeout(r2, 1500); });
@@ -165,7 +168,10 @@
 
   async function analyzeUrl(url) {
     var startBtn = el("startGame");
+    var cancelBtn = el("cancelAnalyze");
     startBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = false;
+    analyzeCancelled = false;
     setReady("-", false, "-");
     setStatus("loading", "Analyzing link rhythm...");
     var resp = await fetch(API_BASE + "/api/analyze-link", {
@@ -174,8 +180,11 @@
       body: JSON.stringify({ url: url, difficulty: ((el("difficultySelect") && el("difficultySelect").value) || "normal") })
     });
     var created = await resp.json();
+    currentAnalyzeJobId = created.jobId || null;
     if (!resp.ok) throw new Error(created.error || "submit failed");
     var job = await pollJob(created.jobId);
+    currentAnalyzeJobId = null;
+    if (cancelBtn) cancelBtn.disabled = true;
     await applyJob(job);
   }
 
@@ -185,10 +194,21 @@
       if (!url) return setStatus("error", "Please paste a media link");
       await analyzeUrl(url);
     } catch (e) {
+      if (el("cancelAnalyze")) el("cancelAnalyze").disabled = true;
+      currentAnalyzeJobId = null;
       setStatus("error", e.message || "Unknown error");
       setReady("error", false, "-");
       if (el("startGame")) el("startGame").disabled = true;
     }
+  }
+
+  function onCancelAnalyze() {
+    analyzeCancelled = true;
+    currentAnalyzeJobId = null;
+    if (el("cancelAnalyze")) el("cancelAnalyze").disabled = true;
+    if (el("startGame")) el("startGame").disabled = true;
+    setStatus("error", "Analysis cancelled");
+    setReady("cancelled", false, "-");
   }
 
   async function onSearchBiliClick() {
@@ -237,6 +257,8 @@
     ensureSearchPanel();
     var btn = el("analyzeYoutube");
     if (btn) btn.addEventListener("click", onAnalyzeClick);
+    var cbtn = el("cancelAnalyze");
+    if (cbtn) cbtn.addEventListener("click", onCancelAnalyze);
     var sbtn = el("searchBiliBtn");
     if (sbtn) sbtn.addEventListener("click", onSearchBiliClick);
   });
