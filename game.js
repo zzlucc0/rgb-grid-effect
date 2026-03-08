@@ -38,6 +38,7 @@ class RhythmGame {
         this.frozenGameTime = 0;
         this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
+        this.visualBursts = [];
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -281,6 +282,7 @@ class RhythmGame {
         this.frozenGameTime = 0;
         this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
+        this.visualBursts = [];
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
         
@@ -552,7 +554,6 @@ class RhythmGame {
         if (!this.isPlaying) return;
         if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
             this.updatePauseUI();
-            requestAnimationFrame(() => this.gameLoop(dataArray));
             return;
         }
 
@@ -1241,11 +1242,13 @@ class RhythmGame {
             this.ctx.fillText(`Notes in Group: ${this.noteCount} / ${this.notesPerGroup}`, 10, 100);
         }
 
+        this.drawEnergyBurst();
+
         // Draw notes and circles
         this.notes.forEach(note => {
             if (note.hit && !note.score) return;
 
-            const currentTime = this.audioContext.currentTime - this.startTime;
+            const currentTime = this.getGameClockTime();
             const timeUntilHit = note.hitTime - currentTime;
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / (this.approachRate / 1000)));
 
@@ -1258,9 +1261,13 @@ class RhythmGame {
                 if (approachSize > this.circleSize) {
                     this.ctx.beginPath();
                     this.ctx.arc(note.x, note.y, approachSize, 0, Math.PI * 2);
-                    this.ctx.strokeStyle = this.colors.approach;
-                    this.ctx.lineWidth = 2;
+                    const palette = this.getNotePalette(note);
+                    this.ctx.strokeStyle = palette.glow.replace('.45', '.22').replace('.4', '.22').replace('.36', '.22').replace('.26', '.18');
+                    this.ctx.lineWidth = note.isDrag ? 3 : 2;
+                    this.ctx.shadowBlur = 18;
+                    this.ctx.shadowColor = palette.edge;
                     this.ctx.stroke();
+                    this.ctx.shadowBlur = 0;
                 }
             }
 
@@ -1269,13 +1276,24 @@ class RhythmGame {
             // If it's a drag button, draw the track
             if (note.isDrag) {
                 // Draw curved track
+                const palette = this.getNotePalette(note);
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * 0.8; // Track width is smaller than circle
-                this.ctx.strokeStyle = this.colors.track;
+                this.ctx.lineWidth = this.circleSize * 0.55;
+                this.ctx.strokeStyle = 'rgba(255,255,255,.08)';
                 this.ctx.moveTo(note.x, note.y);
                 this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
                 this.ctx.stroke();
+                this.ctx.beginPath();
+                this.ctx.lineCap = 'round';
+                this.ctx.lineWidth = this.circleSize * 0.22;
+                this.ctx.strokeStyle = palette.edge;
+                this.ctx.shadowBlur = 16;
+                this.ctx.shadowColor = palette.edge;
+                this.ctx.moveTo(note.x, note.y);
+                this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
+                this.ctx.stroke();
+                this.ctx.shadowBlur = 0;
                 
                 // If currently dragging, draw progress track
                 if (note.held) {
@@ -1307,48 +1325,68 @@ class RhythmGame {
                     this.ctx.beginPath();
                     this.ctx.moveTo(note.x, note.y);
                     this.ctx.lineCap = 'round';
-                    this.ctx.lineWidth = this.circleSize * 0.8;
-                    this.ctx.strokeStyle = this.colors.progress;
+                    this.ctx.lineWidth = this.circleSize * 0.26;
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.shadowBlur = 18;
+                    this.ctx.shadowColor = palette.edge;
                     
                     for (let i = 1; i <= progressIndex; i++) {
                         this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
                     }
                     
                     this.ctx.stroke();
+                    this.ctx.shadowBlur = 0;
                     
                     // Draw drag point
                     this.ctx.beginPath();
-                    this.ctx.arc(currentX, currentY, this.circleSize * 0.9, 0, Math.PI * 2);
-                    this.ctx.fillStyle = this.colors.progress;
+                    this.ctx.arc(currentX, currentY, this.circleSize * 0.55, 0, Math.PI * 2);
+                    const grad = this.ctx.createRadialGradient(currentX, currentY, 4, currentX, currentY, this.circleSize * 0.6);
+                    grad.addColorStop(0, '#ffffff');
+                    grad.addColorStop(.35, palette.core);
+                    grad.addColorStop(1, 'rgba(255,255,255,0)');
+                    this.ctx.fillStyle = grad;
                     this.ctx.fill();
                     
                     // Glow effect
-                    const pulseSize = this.circleSize * (1.2 + Math.sin(Date.now() / 200) * 0.1);
+                    const pulseSize = this.circleSize * (0.9 + Math.sin(Date.now() / 180) * 0.12);
                     this.ctx.beginPath();
                     this.ctx.arc(currentX, currentY, pulseSize, 0, Math.PI * 2);
-                    this.ctx.strokeStyle = this.colors.glow;
+                    this.ctx.strokeStyle = palette.glow.replace('.45', '.34').replace('.4', '.3').replace('.36', '.28').replace('.26', '.22');
                     this.ctx.lineWidth = 2;
                     this.ctx.stroke();
                 }
                 
                 // Draw endpoint circle
                 this.ctx.beginPath();
-                this.ctx.arc(note.endX, note.endY, this.circleSize * 0.8, 0, Math.PI * 2);
-                this.ctx.fillStyle = note.completed ? this.colors.perfect : 'rgba(255, 255, 255, 0.2)';
+                this.ctx.arc(note.endX, note.endY, this.circleSize * 0.52, 0, Math.PI * 2);
+                this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.12)';
                 this.ctx.fill();
-                this.ctx.strokeStyle = '#fff';
+                this.ctx.strokeStyle = palette.edge;
                 this.ctx.lineWidth = 2;
                 this.ctx.stroke();
             }
             
             // Draw starting circle
+            const palette = this.getNotePalette(note);
             this.ctx.beginPath();
-            this.ctx.arc(note.x, note.y, this.circleSize, 0, Math.PI * 2);
-            this.ctx.fillStyle = note.score ? this.colors[note.score] : 
-                               (note.held ? this.colors.perfect : this.colors.circle);
+            this.ctx.arc(note.x, note.y, this.circleSize * 0.82, 0, Math.PI * 2);
+            const noteGrad = this.ctx.createRadialGradient(note.x - 10, note.y - 12, 4, note.x, note.y, this.circleSize);
+            noteGrad.addColorStop(0, '#ffffff');
+            noteGrad.addColorStop(.28, palette.core);
+            noteGrad.addColorStop(.7, 'rgba(16,22,34,.96)');
+            noteGrad.addColorStop(1, 'rgba(8,12,18,.96)');
+            this.ctx.fillStyle = noteGrad;
+            this.ctx.shadowBlur = 24;
+            this.ctx.shadowColor = palette.edge;
             this.ctx.fill();
-            this.ctx.strokeStyle = '#fff';
-            this.ctx.lineWidth = 2;
+            this.ctx.shadowBlur = 0;
+            this.ctx.strokeStyle = palette.edge;
+            this.ctx.lineWidth = 2.5;
+            this.ctx.stroke();
+            this.ctx.beginPath();
+            this.ctx.arc(note.x, note.y, this.circleSize * 0.98, 0, Math.PI * 2);
+            this.ctx.strokeStyle = 'rgba(255,255,255,.08)';
+            this.ctx.lineWidth = 1;
             this.ctx.stroke();
 
             // Show sequence number in circle and draw lines between adjacent numbers
@@ -1360,15 +1398,15 @@ class RhythmGame {
                         this.ctx.beginPath();
                         this.ctx.moveTo(prevNote.x, prevNote.y);
                         this.ctx.lineTo(note.x, note.y);
-                        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                        this.ctx.lineWidth = 1;
+                        this.ctx.strokeStyle = 'rgba(84,241,255,0.14)';
+                        this.ctx.lineWidth = 1.2;
                         this.ctx.stroke();
                     }
                 }
 
                 // Display sequence number
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '24px Arial';
+                this.ctx.fillStyle = '#f3fcff';
+                this.ctx.font = '700 22px Arial';
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
                 this.ctx.fillText(note.noteNumber.toString(), note.x, note.y);
@@ -1376,8 +1414,8 @@ class RhythmGame {
 
             // If there is a score, display the score text
             if (note.score) {
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '20px Arial';
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.font = '700 18px Arial';
                 this.ctx.textAlign = 'center';
                 this.ctx.fillText(note.score.toUpperCase(), note.x, note.y - 40);
                 
@@ -1389,16 +1427,8 @@ class RhythmGame {
             }
         });
 
-        // Draw combo count and score
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '24px Arial';
-        this.ctx.textAlign = 'center';
-        
-        if (this.combo > 1) {
-            this.ctx.fillText(`${this.combo}x Combo!`, this.canvas.width / 2, 50);
-        }
-        
-        this.ctx.fillText(`Score: ${Math.floor(this.score)}`, this.canvas.width / 2, 90);
+        // Draw combo / mode HUD
+        this.drawComboHUD();
         
         // The voice activity indicator is hidden, but the voice detection logic functionality is retained
     }
@@ -1406,11 +1436,10 @@ class RhythmGame {
         if (!this.isPlaying) return;
         if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
             this.updatePauseUI();
-            requestAnimationFrame(() => this.gameLoop(dataArray));
             return;
         }
 
-        const currentTime = this.audioContext.currentTime - this.startTime;
+        const currentTime = this.getGameClockTime();
         
         // If there is a note being dragged
         if (this.currentDragNote) {
@@ -1573,29 +1602,34 @@ class RhythmGame {
 
     createHitEffect = (x, y, scoreType = 'perfect') => {
         const particles = [];
-        const particleCount = scoreType === 'perfect' ? 15 : 10;
-        const particleSpeed = scoreType === 'perfect' ? 6 : 4;
+        const particleCount = scoreType === 'perfect' ? 18 : 12;
+        const particleSpeed = scoreType === 'perfect' ? 7 : 4.8;
         let particleColor;
         
         switch (scoreType) {
             case 'perfect':
-                particleColor = this.colors.perfect;
+                particleColor = '84,241,255';
                 break;
             case 'good':
-                particleColor = this.colors.good;
+                particleColor = '255,184,77';
+                break;
+            case 'miss':
+                particleColor = '255,95,118';
                 break;
             default:
-                particleColor = 'rgba(255, 255, 255, 0.8)';
+                particleColor = '255,255,255';
         }
+        this.pushBurst(x, y, scoreType);
         
         for (let i = 0; i < particleCount; i++) {
             const angle = (Math.PI * 2 * i) / particleCount;
             particles.push({
                 x: x,
                 y: y,
-                vx: Math.cos(angle) * particleSpeed,
-                vy: Math.sin(angle) * particleSpeed,
+                vx: Math.cos(angle) * particleSpeed * (0.7 + Math.random() * 0.6),
+                vy: Math.sin(angle) * particleSpeed * (0.7 + Math.random() * 0.6),
                 life: 1,
+                size: 2 + Math.random() * 4,
                 color: particleColor
             });
         }
@@ -1604,13 +1638,18 @@ class RhythmGame {
             particles.forEach(p => {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.life -= 0.02;
+                p.vx *= 0.985;
+                p.vy *= 0.985;
+                p.life -= 0.026;
 
                 if (p.life > 0) {
                     this.ctx.beginPath();
-                    this.ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-                    this.ctx.fillStyle = p.color.replace(')', `, ${p.life})`);
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.fillStyle = `rgba(${p.color}, ${Math.max(0, p.life)})`;
+                    this.ctx.shadowBlur = 16;
+                    this.ctx.shadowColor = `rgba(${p.color}, .45)`;
                     this.ctx.fill();
+                    this.ctx.shadowBlur = 0;
                 }
             });
 
@@ -1622,6 +1661,62 @@ class RhythmGame {
         animate();
     }
 }
+
+
+
+RhythmGame.prototype.getNotePalette = function (note) {
+    if (note.score === 'perfect') return { core: '#8dfff4', edge: '#54f1ff', glow: 'rgba(84,241,255,.45)' };
+    if (note.score === 'good') return { core: '#ffe89b', edge: '#ffb84d', glow: 'rgba(255,184,77,.4)' };
+    if (note.score === 'miss') return { core: '#ff899f', edge: '#ff5f76', glow: 'rgba(255,95,118,.35)' };
+    if (note.isDrag) return { core: '#ffd38a', edge: '#ffb84d', glow: 'rgba(255,184,77,.36)' };
+    if (note.energy >= 0.95) return { core: '#ffe9a8', edge: '#54f1ff', glow: 'rgba(84,241,255,.4)' };
+    return { core: '#e9f8ff', edge: '#54f1ff', glow: 'rgba(84,241,255,.26)' };
+};
+
+RhythmGame.prototype.drawEnergyBurst = function () {
+    const now = performance.now();
+    this.visualBursts = this.visualBursts.filter(b => now - b.at < 550);
+    for (const b of this.visualBursts) {
+        const t = Math.min(1, (now - b.at) / 550);
+        const alpha = (1 - t) * 0.22;
+        const radius = 60 + t * 180;
+        this.ctx.beginPath();
+        this.ctx.arc(b.x, b.y, radius, 0, Math.PI * 2);
+        this.ctx.strokeStyle = b.color.replace('ALPHA', alpha.toFixed(3));
+        this.ctx.lineWidth = 3;
+        this.ctx.stroke();
+        this.ctx.beginPath();
+        this.ctx.arc(b.x, b.y, radius * 0.58, 0, Math.PI * 2);
+        this.ctx.strokeStyle = b.inner.replace('ALPHA', (alpha * 0.9).toFixed(3));
+        this.ctx.lineWidth = 1.5;
+        this.ctx.stroke();
+    }
+};
+
+RhythmGame.prototype.pushBurst = function (x, y, type) {
+    const map = {
+        perfect: { color: 'rgba(84,241,255,ALPHA)', inner: 'rgba(255,255,255,ALPHA)' },
+        good: { color: 'rgba(255,184,77,ALPHA)', inner: 'rgba(255,240,196,ALPHA)' },
+        miss: { color: 'rgba(255,95,118,ALPHA)', inner: 'rgba(255,170,180,ALPHA)' }
+    };
+    this.visualBursts.push({ x, y, at: performance.now(), ...(map[type] || map.perfect) });
+};
+
+RhythmGame.prototype.drawComboHUD = function () {
+    this.ctx.textAlign = 'center';
+    if (this.combo > 1) {
+        this.ctx.fillStyle = 'rgba(255,255,255,.92)';
+        this.ctx.font = '700 28px Arial';
+        this.ctx.fillText(`${this.combo}x COMBO`, this.canvas.width / 2, 56);
+        this.ctx.fillStyle = 'rgba(84,241,255,.22)';
+        this.ctx.fillRect(this.canvas.width / 2 - 90, 68, 180, 4);
+    }
+    this.ctx.fillStyle = this.runInvalid ? 'rgba(255,95,118,.92)' : 'rgba(255,255,255,.84)';
+    this.ctx.font = '600 18px Arial';
+    const modeText = `${String(this.playMode || 'casual').toUpperCase()}${this.runInvalid ? ' · INVALID RUN' : ''}`;
+    this.ctx.fillText(modeText, this.canvas.width / 2, 92);
+};
+
 
 
 RhythmGame.prototype.getGameClockTime = function () {
