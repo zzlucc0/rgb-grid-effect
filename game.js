@@ -594,6 +594,23 @@ class RhythmGame {
             }
             return;
         }
+
+        // Live fallback note generation (for official player mode without decoded audio analyser input)
+        if (this.liveMode) {
+            const interval = (60 / ((this.liveConfig && this.liveConfig.bpm) || 122)) * (Math.random() > 0.7 ? 0.5 : 1.0);
+            if ((currentTime - this.liveLastNote) >= interval) {
+                this.liveLastNote = currentTime;
+                const x = this.safeArea.x + Math.random() * this.safeArea.width;
+                const y = this.safeArea.y + Math.random() * this.safeArea.height;
+                this.notes.push({
+                    x, y, createTime: currentTime, hitTime: currentTime + this.approachRate / 1000,
+                    hit: false, score: null, approachProgress: 0, energy: 0.6,
+                    beatNumber: this.notes.length, noteNumber: this.notes.length,
+                    isDrag: this.notes.length % 7 === 0, held: false, completed: false, progress: 0
+                });
+            }
+            return;
+        }
         
         // Detect vocals and beats
         const { beat, vocal, energy } = this.detectVocalAndBeat(audioData);
@@ -1595,15 +1612,25 @@ class RhythmGame {
 // Live playback helpers (patched)
 RhythmGame.prototype.startLivePlayback = function () {
     const holder = document.getElementById("livePlayerHolder");
-    if (holder) holder.classList.remove("hidden");
 
     if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "youtube" && window.YT && window.YT.Player) {
+        // Keep hidden for YouTube "background" mode (no user seek/controls)
+        if (holder) holder.classList.add("hidden");
         if (!this._ytPlayer) {
             this._ytPlayer = new YT.Player("ytPlayer", {
-                height: "180",
-                width: "320",
+                height: "1",
+                width: "1",
                 videoId: this.liveConfig.player.videoId,
-                playerVars: { autoplay: 1, controls: 1, rel: 0 }
+                playerVars: {
+                    autoplay: 1,
+                    controls: 0,
+                    disablekb: 1,
+                    rel: 0,
+                    modestbranding: 1,
+                    iv_load_policy: 3,
+                    fs: 0,
+                    playsinline: 1
+                }
             });
         } else {
             this._ytPlayer.loadVideoById(this.liveConfig.player.videoId);
@@ -1611,6 +1638,7 @@ RhythmGame.prototype.startLivePlayback = function () {
         return;
     }
 
+    if (holder) holder.classList.remove("hidden");
     const a = document.getElementById("liveAudio");
     if (!a || !this.liveConfig || !this.liveConfig.player) return;
 

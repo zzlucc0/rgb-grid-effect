@@ -657,6 +657,16 @@ app.post("/api/analyze-link", async (req, res) => {
   const job = { id, status: "pending", step: "queued", url, createdAt: now, updatedAt: now, error: null, result: null };
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status });
+
+  // New strategy: for YouTube, prefer official player mode directly (no audio file fetch/download pipeline)
+  if (isYouTubeUrl(url)) {
+    job.status = "done";
+    job.step = "youtube official player";
+    job.result = buildOnlineFallback(url, "official player mode");
+    saveJob(job);
+    return;
+  }
+
   try {
     await processOfflineJob(job);
   } catch (err) {
