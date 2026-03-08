@@ -29,6 +29,7 @@ def main():
 
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, trim=False)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+    downbeats = beat_times[::4] if len(beat_times) else []
 
     onset_env = librosa.onset.onset_strength(y=y, sr=sr)
     rms = librosa.feature.rms(y=y)[0]
@@ -66,6 +67,8 @@ def main():
         'duration': round(duration, 3),
         'bpm': round(safe_float(tempo, 122.0), 2),
         'beats': [round(safe_float(t), 3) for t in beat_times[:5000]],
+        'downbeats': [round(safe_float(t), 3) for t in downbeats[:2000]],
+        'meter': 4,
         'segments': segments,
         'onsetSample': onset_sample,
     }))

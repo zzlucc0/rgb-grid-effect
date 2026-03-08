@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
-const API_VERSION = "mvp-0.8.0";
+const API_VERSION = "mvp-0.9.0";
 const CHART_SCHEMA_VERSION = 4;
 const HLS_ENABLED = String(process.env.HLS_ENABLED || "true").toLowerCase() !== "false";
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
@@ -282,9 +282,10 @@ async function processOnlineAnalyzedJob(job) {
   let chart;
   try {
     analysis = await analyzeRhythmWithPython(wavPath, cacheDir);
-    chart = chartFromAnalysis(analysis);
+    chart = chartFromAnalysis(analysis, job.difficulty || "normal");
   } catch (_err) {
     chart = dspChartFromWav(wavPath);
+    chart.difficulty = job.difficulty || "normal";
     const durationSec = Number(meta.duration || job.captureSec || 45);
     analysis = {
       duration: durationSec,
@@ -312,7 +313,8 @@ async function processOnlineAnalyzedJob(job) {
     player: buildOnlinePlayerFromUrl(job.url),
     chart,
     analysis,
-    chartSeed: { bpm, density: 1.0, pattern: 'analyzed' }
+    chartSeed: { bpm, density: 1.0, pattern: 'analyzed' },
+    difficulty: job.difficulty || "normal"
   };
   saveJob(job);
 }
@@ -326,15 +328,43 @@ async function analyzeRhythmWithPython(wavPath, cwd = ROOT) {
   return parsed;
 }
 
+
+function getDifficultyConfig(name = 'normal') {
+  const map = {
+    easy: { weakChance: 0.35, dragBoost: -0.06, minGap: 0.34, maxNotesScale: 0.72 },
+    normal: { weakChance: 0.62, dragBoost: 0, minGap: 0.24, maxNotesScale: 1.0 },
+    hard: { weakChance: 0.88, dragBoost: 0.08, minGap: 0.18, maxNotesScale: 1.22 }
+  };
+  return map[name] || map.normal;
+}
+
+function buildPatternProfile(seg, difficultyCfg) {
+  const label = seg?.label || 'verse';
+  const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
+  if (label === 'intro') return { strongOnly: false, extraWeak: 0.15 * difficultyCfg.weakChance, dragBias: 0.06 + difficultyCfg.dragBoost, laneStep: [1, 2] };
+  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.48 * difficultyCfg.weakChance, dragBias: 0.24 + difficultyCfg.dragBoost, laneStep: [1, 2, 1] };
+  if (label === 'break') return { strongOnly: true, extraWeak: 0.0, dragBias: 0.04 + difficultyCfg.dragBoost, laneStep: [1] };
+  return { strongOnly: false, extraWeak: (dense ? 0.32 : 0.2) * difficultyCfg.weakChance, dragBias: 0.14 + difficultyCfg.dragBoost, laneStep: dense ? [1,2,1] : [1,2] };
+}
+
+function nearestDownbeatDistance(downbeats, t) {
+  if (!Array.isArray(downbeats) || !downbeats.length) return Infinity;
+  let best = Infinity;
+  for (const d of downbeats) best = Math.min(best, Math.abs(Number(d) - t));
+  return best;
+}
 function pickSegmentForTime(segments, t) {
   return (segments || []).find(seg => t >= Number(seg.start || 0) && t < Number(seg.end || 0)) || null;
 }
 
-function chartFromAnalysis(analysis) {
+function chartFromAnalysis(analysis, difficulty = "normal") {
   const beats = Array.isArray(analysis?.beats) ? analysis.beats.map(Number).filter(n => Number.isFinite(n)) : [];
   const segments = Array.isArray(analysis?.segments) ? analysis.segments : [];
+  const downbeats = Array.isArray(analysis?.downbeats) ? analysis.downbeats : [];
+  const difficultyCfg = getDifficultyConfig(difficulty);
   if (beats.length < 16) {
     const fallback = simpleChart(Number(analysis?.duration || 45), "librosa-fallback");
+    fallback.difficulty = difficulty;
     return fallback;
   }
 
@@ -356,28 +386,32 @@ function chartFromAnalysis(analysis) {
     const isPickup = mod4 === 2;
     const dense = seg.energy === 'high' || Number(seg.density || 0) > 1.8;
     const sparse = seg.label === 'intro' || seg.energy === 'low';
+    const profile = buildPatternProfile(seg, difficultyCfg);
+    const nearDownbeat = nearestDownbeatDistance(downbeats, t) < 0.08;
 
     let spawn = false;
-    if (isStrong) spawn = true;
-    else if (dense && (mod4 === 2 || mod8 === 6)) spawn = true;
-    else if (!sparse && isPickup && gapPrev < 0.9) spawn = Math.random() < 0.75;
-    else if (!sparse && mod8 === 7) spawn = Math.random() < 0.35;
+    if (isStrong || nearDownbeat) spawn = true;
+    else if (!profile.strongOnly && dense && (mod4 === 2 || mod8 === 6)) spawn = true;
+    else if (!profile.strongOnly && !sparse && isPickup && gapPrev < 0.9) spawn = Math.random() < profile.extraWeak;
+    else if (!profile.strongOnly && !sparse && mod8 === 7) spawn = Math.random() < (profile.extraWeak * 0.55);
 
     if (!spawn) continue;
-    if (t - lastTime < 0.22) continue;
+    if (t - lastTime < difficultyCfg.minGap) continue;
 
     let type = 'tap';
-    const segDrag = Number(seg.dragRatio || 0.16);
-    const dragWindow = isStrong && gapNext > 0.35 && gapNext < 1.4;
-    if (!lastWasDrag && dragWindow && (seg.label === 'chorus' ? mod8 === 0 || mod8 === 4 : mod8 === 0) && Math.random() < Math.min(0.45, segDrag + 0.08)) {
+    const segDrag = Number(seg.dragRatio || 0.16) + difficultyCfg.dragBoost;
+    const dragWindow = (isStrong || nearDownbeat) && gapNext > 0.35 && gapNext < 1.4;
+    if (!lastWasDrag && dragWindow && (seg.label === 'chorus' ? mod8 === 0 || mod8 === 4 : mod8 === 0) && Math.random() < Math.min(0.52, profile.dragBias + segDrag)) {
       type = 'drag';
     }
 
-    if (isStrong) lane = (lane + 1) % 4;
+    const laneSeq = profile.laneStep || [1,2];
+    const laneMove = laneSeq[notes.length % laneSeq.length] || 1;
+    if (isStrong || nearDownbeat) lane = (lane + 1) % 4;
     else if (type === 'drag') lane = (lane + 2) % 4;
-    else lane = (lane + (mod4 === 2 ? 2 : 1)) % 4;
+    else lane = (lane + laneMove) % 4;
 
-    const strength = isStrong ? 1.0 : (dense ? 0.78 : 0.68);
+    const strength = nearDownbeat ? 1.05 : (isStrong ? 1.0 : (dense ? 0.78 : 0.68));
     notes.push({
       time: t,
       type,
@@ -403,12 +437,13 @@ function chartFromAnalysis(analysis) {
     }
   }
 
+  const capped = notes.slice(0, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale)));
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: "librosa-phrase-chart-v2",
-    difficulty: "normal",
+    algorithm: "librosa-phrase-chart-v3",
+    difficulty,
     approachRateMs: 1250,
-    notes: notes.length >= 16 ? notes : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes
+    notes: capped.length >= 16 ? capped : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes
   };
 }
 
@@ -806,7 +841,7 @@ app.get("/api/debug/version", async (_req, res) => {
 });
 
 app.post("/api/resolve-source", (req, res) => {
-  const { url } = req.body ?? {};
+  const { url, difficulty } = req.body ?? {};
   if (!url || typeof url !== "string") return res.status(400).json({ error: "url is required" });
   const sourceType = isYouTubeUrl(url) ? "youtube" : (looksLikeDirectMedia(url) ? "direct-media" : (isBilibiliUrl(url) ? "bilibili" : "webpage"));
   const preferred = LINK_PLAY_ONLY ? "online" : (sourceType === "webpage" ? "online" : "offline");
@@ -850,11 +885,11 @@ app.get("/api/capture-job/:id", (req, res) => {
 });
 
 app.post("/api/analyze-link", async (req, res) => {
-  const { url } = req.body ?? {};
+  const { url, difficulty } = req.body ?? {};
   if (!url || typeof url !== "string") return res.status(400).json({ error: "url is required" });
   const id = nanoid(10);
   const now = new Date().toISOString();
-  const job = { id, status: "pending", step: "queued", url, createdAt: now, updatedAt: now, error: null, result: null };
+  const job = { id, status: "pending", step: "queued", url, difficulty: ["easy","normal","hard"].includes(difficulty) ? difficulty : "normal", createdAt: now, updatedAt: now, error: null, result: null };
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status });
 

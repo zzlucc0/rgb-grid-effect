@@ -165,8 +165,13 @@
             <input type="file" id="audioUpload" accept="audio/*">
         </div>
         <div id="statusText"></div>
-        <div style="margin-top: 12px;">
+        <div style="margin-top: 12px; display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap;">
             <input id="youtubeUrl" type="url" placeholder="Paste YouTube URL (<= 6 min)" style="width: 320px; padding: 8px; border-radius: 4px; border: 1px solid #19A336; background: #111; color: #fff;">
+            <select id="difficultySelect" style="padding:8px; border-radius:4px; border:1px solid #19A336; background:#111; color:#fff;">
+                <option value="easy">Easy</option>
+                <option value="normal" selected>Normal</option>
+                <option value="hard">Hard</option>
+            </select>
             <button id="analyzeYoutube" style="margin-left:8px;">Prepare Link Mode</button>
         </div>
         <button id="startGame" disabled>Start Game</button>
