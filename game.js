@@ -561,38 +561,14 @@ class RhythmGame {
                     continue;
                 }
 
-                const x = this.safeArea.x + Math.random() * this.safeArea.width;
-                const y = this.safeArea.y + Math.random() * this.safeArea.height;
-
-                const note = {
-                    x,
-                    y,
-                    createTime: currentTime,
-                    hitTime: chartNote.time,
-                    hit: false,
-                    score: null,
-                    approachProgress: 0,
-                    energy: 0.6,
-                    beatNumber: this.nextChartIndex,
-                    noteNumber: this.nextChartIndex,
-                    isDrag: chartNote.type === 'drag',
-                    held: false,
-                    completed: false,
-                    progress: 0
-                };
-
-                if (note.isDrag) {
-                    note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, x + (Math.random() * 2 - 1) * this.circleSize * 5));
-                    note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + (Math.random() * 2 - 1) * this.circleSize * 5));
-                    const dx = note.endX - note.x;
-                    const dy = note.endY - note.y;
-                    const d = Math.sqrt(dx * dx + dy * dy) || 1;
-                    const midX = (note.x + note.endX) / 2;
-                    const midY = (note.y + note.endY) / 2;
-                    note.controlX = midX - dy / d * d * 0.2;
-                    note.controlY = midY + dx / d * d * 0.2;
+                const wantsDrag = chartNote.type === 'drag';
+                if (!this.liveEngine) this.initLiveEngine();
+                const note = this.createLiveNote(currentTime, chartNote.time, wantsDrag);
+                if (!note) {
+                    continue;
                 }
-
+                note.beatNumber = this.nextChartIndex;
+                note.noteNumber = this.nextChartIndex;
                 this.notes.push(note);
             }
             return;

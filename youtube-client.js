@@ -107,6 +107,27 @@
       return;
     }
 
+    if (job.result.mode === "online-analyzed") {
+      game.liveMode = true;
+      game.chartMode = true;
+      game.audioBuffer = null;
+      game.chartData = job.result.chart;
+      game.nextChartIndex = 0;
+      game.liveConfig = {
+        bpm: (job.result.analysis && job.result.analysis.bpm) || 122,
+        density: 1.0,
+        pattern: "analyzed",
+        strictPlayback: true,
+        analysis: job.result.analysis,
+        player: job.result.player
+      };
+      game.readyMode = "online-analyzed";
+      startBtn.disabled = false;
+      setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-");
+      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)));
+      return;
+    }
+
     game.liveMode = true;
     game.chartMode = false;
     game.audioBuffer = null;
@@ -138,7 +159,7 @@
     var startBtn = el("startGame");
     startBtn.disabled = true;
     setReady("-", false, "-");
-    setStatus("loading", "Preparing link playback...");
+    setStatus("loading", "Analyzing link rhythm...");
     var resp = await fetch(API_BASE + "/api/analyze-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

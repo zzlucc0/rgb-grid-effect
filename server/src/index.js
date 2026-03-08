@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const JOBS_DIR = path.join(ROOT, "data", "jobs");
 const CACHE_DIR = path.join(ROOT, "data", "cache");
-const API_VERSION = "mvp-0.6.0";
+const API_VERSION = "mvp-0.7.0";
 const CHART_SCHEMA_VERSION = 4;
 const HLS_ENABLED = String(process.env.HLS_ENABLED || "true").toLowerCase() !== "false";
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
@@ -223,6 +223,86 @@ function dspChartFromWav(wavPath) {
   }
   if (notes.length < 20) return simpleChart(samples.length / sampleRate, "dsp-fallback");
   return { version: CHART_SCHEMA_VERSION, algorithm: "dsp-energy-flux-v2", difficulty: "normal", approachRateMs: 1250, notes };
+}
+
+function buildSegmentsFromChart(chart, durationSec) {
+  const total = Math.max(12, Math.floor(durationSec || 45));
+  const windowSec = 8;
+  const segments = [];
+  for (let start = 0; start < total; start += windowSec) {
+    const end = Math.min(total, start + windowSec);
+    const hits = (chart?.notes || []).filter(n => n.time >= start && n.time < end);
+    const density = hits.length / Math.max(1, end - start);
+    const energy = density > 2.3 ? 'high' : density > 1.2 ? 'mid' : 'low';
+    const label = start < 8 ? 'intro' : (energy === 'high' ? 'chorus' : energy === 'mid' ? 'verse' : 'break');
+    segments.push({ start, end, noteCount: hits.length, density: Number(density.toFixed(2)), energy, label });
+  }
+  return segments;
+}
+
+function estimateBpmFromChart(chart) {
+  const times = (chart?.notes || []).map(n => Number(n.time || 0)).filter(Boolean);
+  if (times.length < 4) return 122;
+  const deltas = [];
+  for (let i = 1; i < times.length; i++) {
+    const d = times[i] - times[i - 1];
+    if (d > 0.2 && d < 1.0) deltas.push(d);
+  }
+  if (!deltas.length) return 122;
+  deltas.sort((a,b)=>a-b);
+  const mid = deltas[Math.floor(deltas.length / 2)] || 0.49;
+  const bpm = 60 / Math.max(0.25, mid * 2);
+  return Math.max(72, Math.min(180, Number(bpm.toFixed(1))));
+}
+
+async function processOnlineAnalyzedJob(job) {
+  const sourceId = makeSourceId(job.url) + '_analysis';
+  const cacheDir = path.join(CACHE_DIR, sourceId);
+  const wavPath = path.join(cacheDir, 'analysis.wav');
+  const analysisFile = path.join(cacheDir, 'analysis.json');
+  fs.mkdirSync(cacheDir, { recursive: true });
+
+  job.status = 'processing';
+  job.step = 'resolving stream';
+  saveJob(job);
+
+  let meta = { title: '', duration: 0, extractor: 'unknown', webpageUrl: job.url };
+  if (isYouTubeUrl(job.url)) {
+    try { meta = await ytProbe(job.url); } catch {}
+  }
+
+  job.step = 'capturing preview audio';
+  job.captureMeta = meta;
+  saveJob(job);
+  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45);
+
+  job.step = 'analyzing rhythm';
+  saveJob(job);
+  const chart = dspChartFromWav(wavPath);
+  const durationSec = Number(meta.duration || job.captureSec || 45);
+  const bpm = estimateBpmFromChart(chart);
+  const analysis = {
+    sourceId,
+    bpm,
+    beats: (chart.notes || []).map(n => n.time),
+    segments: buildSegmentsFromChart(chart, durationSec),
+    captureSec: cap.captureSec,
+    method: cap.method,
+    extractor: meta.extractor || 'unknown',
+    title: meta.title || ''
+  };
+  fs.writeFileSync(analysisFile, JSON.stringify({ chart, analysis }, null, 2));
+
+  job.status = 'done';
+  job.step = 'analysis ready';
+  job.result = {
+    mode: 'online-analyzed',
+    player: buildOnlinePlayerFromUrl(job.url),
+    chart,
+    analysis,
+    chartSeed: { bpm, density: 1.0, pattern: 'analyzed' }
+  };
+  saveJob(job);
 }
 
 async function tryDownloadToWav(url, workDir) {
@@ -666,13 +746,20 @@ app.post("/api/analyze-link", async (req, res) => {
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status });
 
-  // Link-play mode: skip download/analyze pipeline and start from online player path
+  // In link-play-only mode, analyze temporary preview audio first, then start online player with analyzed chart.
   if (LINK_PLAY_ONLY || isYouTubeUrl(url)) {
-    job.status = "done";
-    job.step = "link play mode";
-    job.result = buildOnlineFallback(url, LINK_PLAY_ONLY ? "link-play-only mode" : "official player mode");
-    saveJob(job);
-    return;
+    try {
+      await processOnlineAnalyzedJob({ ...job, captureSec: 45, attempts: [] });
+      return;
+    } catch (err) {
+      job.status = "done";
+      job.step = "link play fallback";
+      job.errorCode = classifyError(err);
+      job.error = sanitizeError(err);
+      job.result = buildOnlineFallback(url, "analysis failed, using seed mode");
+      saveJob(job);
+      return;
+    }
   }
 
   try {
