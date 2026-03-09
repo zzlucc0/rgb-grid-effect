@@ -4,12 +4,25 @@
   var analyzeCancelled = false;
 
   function el(id) { return document.getElementById(id); }
-  function setStatus(type, text) {
+  function setStatus(type, text, metaHtml) {
     var box = el("statusText");
     if (!box) return;
     var cls = type === "error" ? "error-message" : (type === "success" ? "success-message" : "loading-message");
-    box.innerHTML = '<div class="' + cls + '">' + text + '</div>';
+    box.innerHTML = '<div class="' + cls + '">' + text + '</div>' + (metaHtml ? ('<div class="note-message" style="margin-top:6px;font-size:12px;opacity:0.9;">' + metaHtml + '</div>') : '');
   }
+
+  function formatAnalyzeMeta(job) {
+    if (!job) return '';
+    var bits = [];
+    var mode = (job.analysisMode || (job.result && job.result.analysis && job.result.analysis.analysisMode) || '').trim();
+    if (mode) bits.push('mode: ' + mode);
+    var sp = job.segmentProgress;
+    if (sp && sp.total) bits.push('segment ' + sp.index + '/' + sp.total + ' · ' + sp.start + '–' + sp.end + 's');
+    var capMeta = job.captureMeta || {};
+    if (capMeta.duration) bits.push('song: ' + Math.round(capMeta.duration) + 's');
+    return bits.join(' · ');
+  }
+
   function ensureReadyPanel() {
     var panel = el("readyPanel");
     if (panel) return;
@@ -61,9 +74,11 @@
       var stepText = j.status + " · " + (j.step || "");
       if (j.step === "resolving stream") stepText = "Analyzing… resolving source";
       else if (j.step === "capturing preview audio") stepText = "Analyzing… capturing preview audio";
+      else if (j.step === "capturing full audio") stepText = "Analyzing… capturing full song audio";
       else if (j.step === "analyzing rhythm") stepText = "Analyzing… detecting BPM / beats / segments";
+      else if (/^analyzing segment /.test(j.step || '')) stepText = "Analyzing… building segmented full-song chart";
       else if (j.step === "analysis ready") stepText = "Analysis complete";
-      setStatus("loading", stepText);
+      setStatus("loading", stepText, formatAnalyzeMeta(j));
 
       if (analyzeCancelled) throw new Error("analysis cancelled");
       if (j.status === "done") return j;
@@ -142,7 +157,8 @@
       if (game.updateHUD) game.updateHUD();
       startBtn.disabled = false;
       setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-");
-      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)));
+      var modeText = ((job.result.analysis && job.result.analysis.analysisMode) || job.analysisMode || 'full');
+      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), "mode: " + modeText + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
       return;
     }
 

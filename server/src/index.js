@@ -536,10 +536,14 @@ function chartFromAnalysis(analysis, difficulty = "normal") {
     }
   }
 
-  const capped = downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale)));
+  const capped = ensureTailCoverage(
+    downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale))),
+    Number(analysis?.duration || 45),
+    difficulty
+  );
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: "librosa-phrase-chart-v3",
+    algorithm: "librosa-phrase-chart-v4",
     difficulty,
     approachRateMs: 1250,
     notes: capped.length >= 16 ? capped : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes
@@ -576,6 +580,32 @@ function downsampleNotesSpread(notes, keepCount) {
   return picked.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
 }
 
+function ensureTailCoverage(notes, durationSec = 0, difficulty = 'normal') {
+  const duration = Number(durationSec || 0);
+  if (!Array.isArray(notes) || !notes.length || duration < 20) return Array.isArray(notes) ? notes.slice() : [];
+  const out = notes.slice().sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+  const lastTime = Number(out[out.length - 1]?.time || 0);
+  const gap = duration - lastTime;
+  if (gap <= 3.2) return out;
+
+  const difficultyCfg = getDifficultyConfig(difficulty);
+  const safeEnd = Math.max(lastTime + Math.max(0.6, difficultyCfg.minGap), duration - 0.9);
+  const insertAt = Number(Math.min(duration - 0.45, safeEnd).toFixed(3));
+  if (insertAt <= lastTime + difficultyCfg.minGap * 0.8) return out;
+
+  const prev = out[out.length - 1] || { laneHint: 0, phrase: 0, strength: 0.85, segmentLabel: 'outro', energy: 'mid' };
+  out.push({
+    time: insertAt,
+    type: gap > 5.5 ? 'drag' : 'tap',
+    laneHint: (Number(prev.laneHint || 0) + 1) % 4,
+    phrase: Number(prev.phrase || 0) + 1,
+    strength: 0.9,
+    segmentLabel: 'outro',
+    energy: 'mid'
+  });
+  return out.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+}
+
 function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0) {
   const merged = [];
   for (const chart of charts || []) {
@@ -592,10 +622,10 @@ function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0) {
   }
   const difficultyCfg = getDifficultyConfig(difficulty);
   const keepCount = Math.max(24, Math.floor(deduped.length * difficultyCfg.maxNotesScale));
-  const finalNotes = downsampleNotesSpread(deduped, keepCount);
+  const finalNotes = ensureTailCoverage(downsampleNotesSpread(deduped, keepCount), durationSec, difficulty);
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: 'hybrid-segment-chart-v1',
+    algorithm: 'hybrid-segment-chart-v2',
     difficulty,
     approachRateMs: 1250,
     notes: finalNotes.length >= 16 ? finalNotes : simpleChart(Number(durationSec || 45), 'hybrid-fallback').notes
