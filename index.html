@@ -92,9 +92,12 @@
         #score {
             position: fixed;
             top: 16px;
-            right: 16px;
+            right: 12px;
+            left: auto;
             z-index: 3;
-            width: 310px;
+            width: min(560px, calc(100vw - 24px));
+            max-width: calc(100vw - 24px);
+            box-sizing: border-box;
             padding: 16px 18px 18px;
             border-radius: 24px;
             border: 1px solid var(--line);
@@ -423,6 +426,8 @@
             display: flex;
             align-items: flex-start;
             gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
         .score-aux {
             min-width: 98px;
@@ -446,7 +451,7 @@
             position: relative;
             z-index: 1;
             display:grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
             gap: 10px;
             margin-top: 14px;
         }
@@ -504,7 +509,7 @@
         }
         @media (max-width: 1200px) {
             #score {
-                width: min(420px, calc(100vw - 24px));
+                width: min(480px, calc(100vw - 24px));
                 max-width: calc(100vw - 24px);
             }
         }
@@ -517,7 +522,7 @@
                 right: 12px;
                 top: 12px;
                 width: auto;
-                max-width: none;
+                max-width: calc(100vw - 24px);
                 min-width: 0;
                 padding: 14px;
             }
@@ -543,6 +548,9 @@
             }
             .score-main {
                 font-size: 38px;
+            }
+            .hud-control-btn {
+                width: 100%;
             }
         }
 
@@ -648,7 +656,7 @@
     <script src="rgb-effect.js?v=20260309a"></script>
     <script src="default-songs.js?v=20260307a"></script>
     <script src="music-api.js?v=20260307a"></script>
-    <script src="game.js?v=20260309e"></script>
+    <script src="game.js?v=20260309f"></script>
     <script src="youtube-client.js?v=20260309b"></script>
 </body>
 </html>
