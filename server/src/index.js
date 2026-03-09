@@ -606,26 +606,52 @@ function ensureTailCoverage(notes, durationSec = 0, difficulty = 'normal') {
   return out.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
 }
 
+function pickPreferredOverlapNote(prev, next) {
+  if (!prev) return next;
+  if (!next) return prev;
+  const prevStrength = Number(prev?.strength || 0);
+  const nextStrength = Number(next?.strength || 0);
+  const prevDrag = prev?.type === 'drag' ? 0.08 : 0;
+  const nextDrag = next?.type === 'drag' ? 0.08 : 0;
+  const prevScore = prevStrength + prevDrag;
+  const nextScore = nextStrength + nextDrag;
+  if (nextScore > prevScore + 0.04) return next;
+  if (prevScore > nextScore + 0.04) return prev;
+  const prevLabel = String(prev?.segmentLabel || '');
+  const nextLabel = String(next?.segmentLabel || '');
+  if (nextLabel === 'chorus' && prevLabel !== 'chorus') return next;
+  return prev;
+}
+
+function collapseOverlapNotes(notes) {
+  const sorted = (notes || []).slice().sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+  const out = [];
+  for (const note of sorted) {
+    const t = Number(note?.time || 0);
+    const prev = out[out.length - 1];
+    const prevTime = Number(prev?.time || -999);
+    if (prev && t - prevTime < 0.08) {
+      out[out.length - 1] = pickPreferredOverlapNote(prev, note);
+      continue;
+    }
+    out.push(note);
+  }
+  return out;
+}
+
 function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0) {
   const merged = [];
   for (const chart of charts || []) {
     for (const note of (chart?.notes || [])) merged.push(note);
   }
   merged.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
-  const deduped = [];
-  let lastTime = -999;
-  for (const note of merged) {
-    const t = Number(note?.time || 0);
-    if (t - lastTime < 0.08) continue;
-    deduped.push(note);
-    lastTime = t;
-  }
+  const deduped = collapseOverlapNotes(merged);
   const difficultyCfg = getDifficultyConfig(difficulty);
   const keepCount = Math.max(24, Math.floor(deduped.length * difficultyCfg.maxNotesScale));
   const finalNotes = ensureTailCoverage(downsampleNotesSpread(deduped, keepCount), durationSec, difficulty);
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: 'hybrid-segment-chart-v2',
+    algorithm: 'hybrid-segment-chart-v3',
     difficulty,
     approachRateMs: 1250,
     notes: finalNotes.length >= 16 ? finalNotes : simpleChart(Number(durationSec || 45), 'hybrid-fallback').notes

@@ -11,11 +11,19 @@
     box.innerHTML = '<div class="' + cls + '">' + text + '</div>' + (metaHtml ? ('<div class="note-message" style="margin-top:6px;font-size:12px;opacity:0.9;">' + metaHtml + '</div>') : '');
   }
 
+  function humanModeLabel(mode) {
+    var m = String(mode || '').trim();
+    if (m === 'full') return 'Full-song analysis';
+    if (m === 'segmented-full') return 'Segmented full-song analysis';
+    if (m === 'online-analyzed') return 'Analyzed link mode';
+    return m || '-';
+  }
+
   function formatAnalyzeMeta(job) {
     if (!job) return '';
     var bits = [];
     var mode = (job.analysisMode || (job.result && job.result.analysis && job.result.analysis.analysisMode) || '').trim();
-    if (mode) bits.push('mode: ' + mode);
+    if (mode) bits.push(humanModeLabel(mode));
     var sp = job.segmentProgress;
     if (sp && sp.total) bits.push('segment ' + sp.index + '/' + sp.total + ' · ' + sp.start + '–' + sp.end + 's');
     var capMeta = job.captureMeta || {};
@@ -158,7 +166,7 @@
       startBtn.disabled = false;
       setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-");
       var modeText = ((job.result.analysis && job.result.analysis.analysisMode) || job.analysisMode || 'full');
-      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), "mode: " + modeText + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
+      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), humanModeLabel(modeText) + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
       return;
     }
 
