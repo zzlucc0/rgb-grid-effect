@@ -58,6 +58,9 @@
             margin-top: 0;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
         }
+        .hidden {
+            display: none !important;
+        }
         #uploadContainer.hidden {
             display: none;
         }
@@ -361,6 +364,15 @@
             line-height: 1.55;
         }
         #pauseOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 12px;
+            font-size: 22px;
             background:
                 radial-gradient(circle at 50% 50%, rgba(84,241,255,.08), transparent 20%),
                 linear-gradient(180deg, rgba(4,7,13,.92), rgba(2,4,9,.94));
@@ -536,7 +548,7 @@
         </div>
     </div>
 
-    <div id="pauseOverlay" class="hidden" style="position:fixed;inset:0;z-index:4;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:22px;">
+    <div id="pauseOverlay" class="hidden">
         <div id="pauseOverlayText">Paused</div>
         <div id="pauseOverlaySubtext" style="font-size:14px;opacity:0.8;max-width:420px;text-align:center;">Resume will trigger a short countdown.</div>
             </div>

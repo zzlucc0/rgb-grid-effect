@@ -90,6 +90,8 @@
         game.chartData = job.result.chart;
         game.nextChartIndex = 0;
         game.readyMode = "offline";
+        if (game.syncReadyState) game.syncReadyState();
+        if (game.updateHUD) game.updateHUD();
         startBtn.disabled = false;
         setReady("offline", true, job.result.chart.notes.length);
         setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
@@ -109,6 +111,8 @@
           game.liveConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
         }
         game.readyMode = "offline";
+        if (game.syncReadyState) game.syncReadyState();
+        if (game.updateHUD) game.updateHUD();
         startBtn.disabled = false;
         setReady("offline", true, job.result.chart.notes.length + " notes");
         setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
@@ -134,6 +138,8 @@
         player: job.result.player
       };
       game.readyMode = "online-analyzed";
+      if (game.syncReadyState) game.syncReadyState();
+      if (game.updateHUD) game.updateHUD();
       startBtn.disabled = false;
       setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-");
       setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)));
@@ -152,6 +158,8 @@
       player: job.result.player
     };
     game.readyMode = "online";
+    if (game.syncReadyState) game.syncReadyState();
+    if (game.updateHUD) game.updateHUD();
     startBtn.disabled = false;
     setReady("online", true, "live");
     setStatus("success", "Link-play ready (" + job.result.player.type + ")");
@@ -199,6 +207,11 @@
       currentAnalyzeJobId = null;
       setStatus("error", e.message || "Unknown error");
       setReady("error", false, "-");
+      if (window.game) {
+        window.game.readyMode = null;
+        if (window.game.syncReadyState) window.game.syncReadyState();
+        if (window.game.updateHUD) window.game.updateHUD();
+      }
       if (el("startGame")) el("startGame").disabled = true;
     }
   }
@@ -216,6 +229,11 @@
     } catch (_) {}
     setStatus("error", "Analysis cancelled");
     setReady("cancelled", false, "-");
+    if (window.game) {
+      window.game.readyMode = null;
+      if (window.game.syncReadyState) window.game.syncReadyState();
+      if (window.game.updateHUD) window.game.updateHUD();
+    }
   }
 
   async function onSearchBiliClick() {

@@ -166,6 +166,8 @@ class RhythmGame {
         if (status && !status.innerHTML.trim()) {
             status.innerHTML = '<div class="info-message">System idle. Load local audio or prepare a playable link to arm the run.</div>';
         }
+        this.syncReadyState();
+        this.updatePauseUI();
         this.updateHUD();
     }
 
@@ -205,12 +207,16 @@ class RhythmGame {
                     const arrayBuffer = await file.arrayBuffer();
                     this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
                     this.readyMode = "offline";
-                    startButton.disabled = false;
+                    this.syncReadyState();
+                    this.updateHUD();
                     statusText.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
                 } catch (error) {
                     console.error('Error loading audio file:', error);
+                    this.readyMode = null;
+                    this.audioBuffer = null;
+                    this.syncReadyState();
+                    this.updateHUD();
                     statusText.innerHTML = '<div class="error-message">Failed to load audio file, please try another file</div>';
-                    startButton.disabled = true;
                 }
             }
         });
@@ -585,7 +591,24 @@ class RhythmGame {
         // Remove central pulse effect, only show vocal detection status in the upper right corner
     }
 
+    syncReadyState() {
+        const startButton = document.getElementById('startGame');
+        const hasOffline = Boolean(this.audioBuffer && this.readyMode === 'offline');
+        const hasLive = Boolean(this.readyMode && (this.liveMode || this.chartMode || this.liveConfig || this.chartData));
+        const ready = hasOffline || hasLive;
+        if (startButton && !this.isPlaying && this.gameState !== 'starting') {
+            startButton.disabled = !ready;
+        }
+        if (!this.isPlaying && this.gameState === 'idle' && ready) {
+            this.gameState = 'ready';
+        } else if (!this.isPlaying && (this.gameState === 'ready' || this.gameState === 'idle') && !ready) {
+            this.gameState = 'idle';
+        }
+        return ready;
+    }
+
     updateHUD() {
+        this.syncReadyState();
         const scoreNode = document.getElementById('scoreValue');
         const comboNode = document.getElementById('comboValue');
         const modeNode = document.getElementById('hudMode');
@@ -603,8 +626,8 @@ class RhythmGame {
         const score = Math.max(0, Math.floor(this.score || 0));
         const difficulty = String((this.liveConfig && this.liveConfig.difficulty) || difficultySelect?.value || 'normal').toUpperCase();
         const mode = String(this.playMode || (this.liveConfig && this.liveConfig.playMode) || 'casual').toUpperCase();
-        let runState = 'STABLE';
-        let runStateAttr = 'stable';
+        let runState = 'IDLE';
+        let runStateAttr = 'idle';
         if (this.runInvalid) {
             runState = 'INVALID';
             runStateAttr = 'invalid';
@@ -617,6 +640,9 @@ class RhythmGame {
         } else if (this.gameState === 'playing') {
             runState = 'LIVE';
             runStateAttr = 'live';
+        } else if (this.gameState === 'ready') {
+            runState = 'READY';
+            runStateAttr = 'ready';
         }
 
         if (scoreNode) scoreNode.textContent = String(score).padStart(6, '0');
@@ -626,7 +652,7 @@ class RhythmGame {
         if (accNode) accNode.textContent = accuracy == null ? '--' : `${accuracy.toFixed(1)}%`;
         if (runStateNode) runStateNode.textContent = runState;
         if (runStateWrap) runStateWrap.dataset.state = runStateAttr;
-        if (meterFill) meterFill.style.width = `${Math.max(12, Math.min(100, (accuracy == null ? 0.38 : accuracy / 100) * 100))}%`;
+        if (meterFill) meterFill.style.width = `${Math.max(12, Math.min(100, (accuracy == null ? 0.12 : accuracy / 100) * 100))}%`;
         if (legacyScore) legacyScore.setAttribute('data-run-state', runStateAttr);
     }
 
@@ -1860,6 +1886,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
         this.pausedAt = performance.now();
         this.frozenGameTime = this.getGameClockTime();
         this.updatePauseUI();
+        this.updateHUD();
         return;
     }
     this.pauseReason = reason;
@@ -1868,6 +1895,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
     this.frozenGameTime = this.getGameClockTime();
     this.pausePlaybackMedia();
     this.updatePauseUI();
+    this.updateHUD();
 };
 
 RhythmGame.prototype.resumeGame = async function () {
@@ -1884,6 +1912,7 @@ RhythmGame.prototype.resumeGame = async function () {
     this.pauseReason = 'none';
     this.resumePlaybackMedia();
     this.updatePauseUI();
+    this.updateHUD();
 };
 
 // Live playback helpers (patched)
