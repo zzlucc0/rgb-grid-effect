@@ -5,11 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RGB Grid Rhythm Game</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Archivo:wght@400;600;700;900&display=swap');
+        :root {
+            --bg-0: #05070b;
+            --bg-1: #0a0f17;
+            --bg-2: #111722;
+            --panel: rgba(8, 12, 18, 0.82);
+            --panel-soft: rgba(255,255,255,0.05);
+            --line: rgba(255,255,255,0.12);
+            --line-strong: rgba(84,241,255,0.28);
+            --cyan: #54f1ff;
+            --amber: #ffb84d;
+            --danger: #ff5f76;
+            --text: #f4fdff;
+            --muted: rgba(228, 241, 248, 0.68);
+        }
         body {
             margin: 0;
             overflow: hidden;
             background: #000;
-            font-family: 'Segoe UI', Arial, sans-serif;
+            font-family: 'Archivo', sans-serif;
             color: #fff;
         }
         #backgroundCanvas {
@@ -73,12 +88,26 @@
         }
         #score {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 2;
-            font-size: 24px;
-            color: #19A336;
-            text-shadow: 0 0 5px rgba(13, 111, 28, 0.7);
+            top: 16px;
+            right: 16px;
+            z-index: 3;
+            width: 310px;
+            padding: 16px 18px 18px;
+            border-radius: 24px;
+            border: 1px solid var(--line);
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)),
+                linear-gradient(180deg, rgba(10,15,23,0.94), rgba(5,8,12,0.82));
+            box-shadow: 0 24px 80px rgba(0,0,0,.46), inset 0 0 42px rgba(84,241,255,.05);
+            backdrop-filter: blur(20px);
+            overflow: hidden;
+        }
+        #score::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(130deg, rgba(84,241,255,.12), transparent 32%, transparent 68%, rgba(255,184,77,.12));
+            pointer-events: none;
         }
         /* Button styles moved below */
         .file-upload {
@@ -176,33 +205,160 @@
             letter-spacing: .04em;
         }
         #uploadContainer {
-            background: linear-gradient(180deg, rgba(7,11,18,.90), rgba(8,11,18,.74));
-            border: 1px solid rgba(255,255,255,.12);
-            border-radius: 24px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)),
+                linear-gradient(180deg, rgba(7,11,18,.92), rgba(8,11,18,.76));
+            border: 1px solid var(--line);
+            border-radius: 28px;
             box-shadow: 0 30px 90px rgba(0,0,0,.46), inset 0 0 48px rgba(84,241,255,.04);
             backdrop-filter: blur(24px);
-            min-width: 720px;
+            min-width: 820px;
+            max-width: min(92vw, 980px);
+            padding: 26px 28px 24px;
+            overflow: hidden;
+        }
+        #uploadContainer::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(transparent calc(100% - 1px), rgba(255,255,255,.04) 0),
+                linear-gradient(90deg, transparent calc(100% - 1px), rgba(255,255,255,.04) 0);
+            background-size: 30px 30px;
+            opacity: .26;
+            pointer-events: none;
         }
         #uploadContainer h2 {
             color: #e9fdff;
-            letter-spacing: .08em;
+            letter-spacing: .14em;
             text-transform: uppercase;
-            font-size: 28px;
+            font-size: 30px;
+            font-family: 'Rajdhani', sans-serif;
+            margin-bottom: 18px;
         }
         #youtubeUrl, #difficultySelect, #playModeSelect {
             box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 0 1px rgba(84,241,255,.08);
+            background: rgba(8,12,18,.86) !important;
+            color: var(--text);
+            border: 1px solid rgba(255,255,255,.12) !important;
+            border-radius: 14px !important;
+            min-height: 46px;
+            font: 600 14px 'Rajdhani', sans-serif;
+            letter-spacing: .05em;
+        }
+        #youtubeUrl::placeholder {
+            color: rgba(228,241,248,.46);
         }
         button {
             background: linear-gradient(180deg, #182734, #0e1722);
             border: 1px solid rgba(255,255,255,.14);
             border-radius: 14px;
             box-shadow: 0 10px 24px rgba(0,0,0,.28), inset 0 0 18px rgba(84,241,255,.05);
+            font: 700 14px 'Rajdhani', sans-serif;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            min-height: 46px;
         }
         button:hover {
             background: linear-gradient(180deg, #21384a, #132230);
+            transform: translateY(-1px);
         }
         .note-message, .info-message, .loading-message, .success-message, .error-message {
             border-radius: 14px;
+        }
+        .shell-grid {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: minmax(280px, 1.05fr) minmax(360px, 1.4fr);
+            gap: 18px;
+            align-items: stretch;
+        }
+        .intro-panel, .control-panel {
+            position: relative;
+            border-radius: 22px;
+            border: 1px solid rgba(255,255,255,.08);
+            background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+            padding: 18px;
+        }
+        .intro-panel::after, .control-panel::after {
+            content: '';
+            position: absolute;
+            left: 18px;
+            right: 18px;
+            top: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(84,241,255,.4), transparent);
+        }
+        .eyebrow {
+            font: 700 12px 'Rajdhani', sans-serif;
+            letter-spacing: .2em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-bottom: 10px;
+        }
+        .intro-copy {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.65;
+            max-width: 34ch;
+        }
+        .chip-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+        .chip {
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.05);
+            border: 1px solid rgba(255,255,255,.08);
+            font: 700 11px 'Rajdhani', sans-serif;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: rgba(244,253,255,.8);
+        }
+        .control-grid {
+            display: grid;
+            gap: 12px;
+        }
+        .control-row {
+            display:flex;
+            gap:10px;
+            align-items:center;
+            justify-content:center;
+            flex-wrap:wrap;
+        }
+        .control-row.actions { margin-top: 4px; }
+        .control-row .wide { flex: 1 1 320px; }
+        .control-row > * { min-width: 0; }
+        .status-panel {
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,.08);
+            background: rgba(0,0,0,.24);
+        }
+        .tip-strip {
+            display:grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .tip-card {
+            padding: 12px 13px;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,.07);
+            background: rgba(255,255,255,.035);
+        }
+        .tip-card b {
+            display:block;
+            margin-bottom:6px;
+            font: 700 12px 'Rajdhani', sans-serif;
+            letter-spacing: .13em;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+        .tip-card span {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.55;
         }
         #pauseOverlay {
             background:
@@ -223,42 +379,160 @@
             background: rgba(255,255,255,.05);
             border: 1px solid rgba(255,255,255,.08);
         }
+        .hud-topline {
+            position: relative;
+            z-index: 1;
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap: 16px;
+        }
+        .score-stack small,
+        .hud-module small,
+        .score-aux small {
+            display:block;
+            font: 700 11px 'Rajdhani', sans-serif;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: rgba(228,241,248,.54);
+            margin-bottom: 6px;
+        }
+        .score-main {
+            font: 900 56px 'Archivo', sans-serif;
+            line-height: .92;
+            color: var(--text);
+            text-shadow: 0 0 24px rgba(84,241,255,.18);
+        }
+        .score-aux {
+            min-width: 98px;
+            text-align: right;
+        }
+        .score-aux strong {
+            display:block;
+            font: 900 34px 'Archivo', sans-serif;
+            color: #fff2d1;
+            line-height: 1;
+        }
+        .score-modules {
+            position: relative;
+            z-index: 1;
+            display:grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .hud-module {
+            padding: 11px 12px 12px;
+            border-radius: 16px;
+            background: rgba(255,255,255,.045);
+            border: 1px solid rgba(255,255,255,.08);
+        }
+        .hud-module strong {
+            display:block;
+            font: 700 18px 'Rajdhani', sans-serif;
+            letter-spacing: .06em;
+            color: var(--text);
+        }
+        .hud-module.emphasis strong { color: var(--cyan); }
+        .hud-module.alert strong { color: #ffd1d7; }
+        #runState[data-state="invalid"] strong { color: var(--danger); }
+        .score-meter {
+            position: relative;
+            z-index: 1;
+            margin-top: 14px;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.06);
+            overflow: hidden;
+        }
+        .score-meter-fill {
+            width: 38%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--cyan), var(--amber));
+            box-shadow: 0 0 24px rgba(84,241,255,.34);
+        }
+        @media (max-width: 940px) {
+            #uploadContainer { min-width: 0; width: min(94vw, 760px); }
+            .shell-grid { grid-template-columns: 1fr; }
+            .tip-strip { grid-template-columns: 1fr; }
+            #score { width: calc(100vw - 32px); max-width: 420px; }
+            .score-modules { grid-template-columns: repeat(2, 1fr); }
+        }
 
     </style>
 </head>
 <body>
     <canvas id="backgroundCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
-    <div id="score">0</div>
+    <div id="score">
+        <div class="hud-topline">
+            <div class="score-stack">
+                <small>System Score</small>
+                <div class="score-main" id="scoreValue">000000</div>
+            </div>
+            <div class="score-aux">
+                <small>Combo</small>
+                <strong id="comboValue">0x</strong>
+            </div>
+        </div>
+        <div class="score-modules">
+            <div class="hud-module emphasis"><small>Mode</small><strong id="hudMode">CASUAL</strong></div>
+            <div class="hud-module"><small>Difficulty</small><strong id="hudDifficulty">NORMAL</strong></div>
+            <div class="hud-module"><small>Accuracy</small><strong id="hudAccuracy">--</strong></div>
+            <div class="hud-module alert" id="runState" data-state="stable"><small>Run State</small><strong id="hudRunState">STABLE</strong></div>
+        </div>
+        <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
+    </div>
     <div id="uploadContainer">
         <h2>RGB Grid Rhythm Game</h2>
-        <div class="file-upload">
-            <span class="file-upload-btn">Choose Local Audio File</span>
-            <input type="file" id="audioUpload" accept="audio/*">
-        </div>
-        <div id="statusText"></div>
-        <div style="margin-top: 12px; display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap;">
-            <input id="youtubeUrl" type="url" placeholder="Paste YouTube URL (<= 6 min)" style="width: 320px; padding: 8px; border-radius: 4px; border: 1px solid #19A336; background: #111; color: #fff;">
-            <select id="difficultySelect" style="padding:8px; border-radius:4px; border:1px solid #19A336; background:#111; color:#fff;">
-                <option value="easy">Easy</option>
-                <option value="normal" selected>Normal</option>
-                <option value="hard">Hard</option>
-            </select>
-            <select id="playModeSelect" style="padding:8px; border-radius:4px; border:1px solid #19A336; background:#111; color:#fff;">
-                <option value="casual" selected>Casual</option>
-                <option value="strict">Strict</option>
-            </select>
-            <button id="analyzeYoutube" style="margin-left:8px;">Prepare Link Mode</button>
-        </div>
-        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
-        <button id="startGame" disabled>Start Game</button>
-        <button id="cancelAnalyze" disabled>Cancel Analysis</button>
-        <button id="pauseGameBtn" disabled>Pause</button>
-        <button id="resumeGameBtn" disabled style="display:none;">Resume</button>
-    </div>
-        
-        <div class="note-message" style="margin-top: 20px; font-size: 14px; opacity: 0.8;">
-            Tip: Paste a playable link (recommended: YouTube). Video runs in hidden background mode.
+        <div class="shell-grid">
+            <section class="intro-panel">
+                <div class="eyebrow">industrial pulse / gameplay shell</div>
+                <div class="intro-copy">把 playable link、difficulty、strict/casual 和开局控制统一成一块机舱控制台。目标不是“表单能用”而已，而是让准备阶段也像进入一台节奏机器。</div>
+                <div class="chip-row">
+                    <span class="chip">Hidden Video Mode</span>
+                    <span class="chip">Drag Rail Notes</span>
+                    <span class="chip">Strict Validation</span>
+                </div>
+                <div class="tip-strip">
+                    <div class="tip-card"><b>Link Play</b><span>推荐 YouTube，可走 hidden background playback。</span></div>
+                    <div class="tip-card"><b>Strict Mode</b><span>检测暂停、停滞、seek-back；更适合可比对成绩。</span></div>
+                    <div class="tip-card"><b>Chart Feel</b><span>当前方向偏工业机械感，drag note 会继续做成轨道主角。</span></div>
+                </div>
+            </section>
+            <section class="control-panel">
+                <div class="control-grid">
+                    <div class="control-row">
+                        <div class="file-upload wide">
+                            <span class="file-upload-btn">Choose Local Audio File</span>
+                            <input type="file" id="audioUpload" accept="audio/*">
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <input class="wide" id="youtubeUrl" type="url" placeholder="Paste YouTube URL (<= 6 min)">
+                        <select id="difficultySelect">
+                            <option value="easy">Easy</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                        <select id="playModeSelect">
+                            <option value="casual" selected>Casual</option>
+                            <option value="strict">Strict</option>
+                        </select>
+                    </div>
+                    <div class="control-row actions">
+                        <button id="analyzeYoutube">Prepare Link Mode</button>
+                        <button id="startGame" disabled>Start Game</button>
+                        <button id="cancelAnalyze" disabled>Cancel Analysis</button>
+                        <button id="pauseGameBtn" disabled>Pause</button>
+                        <button id="resumeGameBtn" disabled style="display:none;">Resume</button>
+                    </div>
+                    <div id="statusText" class="status-panel"></div>
+                    <div class="note-message" style="margin-top: 6px; font-size: 13px; opacity: 0.88;">
+                        Tip: Paste a playable link (recommended: YouTube). Video runs in hidden background mode.
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
 

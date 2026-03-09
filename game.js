@@ -162,6 +162,11 @@ class RhythmGame {
         
         this.setupCanvas();
         this.setupEventListeners();
+        const status = document.getElementById('statusText');
+        if (status && !status.innerHTML.trim()) {
+            status.innerHTML = '<div class="info-message">System idle. Load local audio or prepare a playable link to arm the run.</div>';
+        }
+        this.updateHUD();
     }
 
     setupCanvas() {
@@ -180,6 +185,8 @@ class RhythmGame {
         const statusText = document.getElementById('statusText');
         const pauseBtn = document.getElementById('pauseGameBtn');
         const resumeBtn = document.getElementById('resumeGameBtn');
+        const difficultySelect = document.getElementById('difficultySelect');
+        const playModeSelect = document.getElementById('playModeSelect');
 
         // File upload functionality
         audioUpload.addEventListener('change', async (e) => {
@@ -227,6 +234,11 @@ class RhythmGame {
 
         if (pauseBtn) pauseBtn.addEventListener('click', () => this.pauseGame('user'));
         if (resumeBtn) resumeBtn.addEventListener('click', () => this.resumeGame());
+        if (difficultySelect) difficultySelect.addEventListener('change', () => this.updateHUD());
+        if (playModeSelect) playModeSelect.addEventListener('change', () => {
+            this.playMode = playModeSelect.value || this.playMode;
+            this.updateHUD();
+        });
         document.addEventListener('visibilitychange', () => {
             if (document.hidden && this.isPlaying && this.gameState === 'playing') this.pauseGame('system');
         });
@@ -275,16 +287,16 @@ class RhythmGame {
         this.globalNoteSeq = 0;
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
         this.gameState = 'starting';
-        this.playMode = (this.liveConfig && this.liveConfig.playMode) || 'casual';
+        this.playMode = (this.liveConfig && this.liveConfig.playMode) || document.getElementById('playModeSelect')?.value || 'casual';
         this.pauseReason = 'none';
         this.pausedAt = 0;
         this.pauseAccumulated = 0;
         this.frozenGameTime = 0;
-        this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
         this.visualBursts = [];
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
+        this.updateHUD();
         
         // Create offline audio context to pre-analyze the song (only when needed)
         const statusText = document.getElementById('statusText');
@@ -514,18 +526,41 @@ class RhythmGame {
             
             const countdownInterval = setInterval(() => {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // Draw countdown number
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '120px Arial';
+                const panelW = Math.min(560, this.canvas.width * 0.72);
+                const panelH = 270;
+                const x = this.canvas.width / 2 - panelW / 2;
+                const y = this.canvas.height / 2 - panelH / 2;
+
+                this.ctx.fillStyle = 'rgba(5,8,12,.78)';
+                this.ctx.strokeStyle = 'rgba(255,255,255,.1)';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.roundRect(x, y, panelW, panelH, 24);
+                this.ctx.fill();
+                this.ctx.stroke();
+
+                this.ctx.strokeStyle = 'rgba(84,241,255,.22)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + 24, y + 42);
+                this.ctx.lineTo(x + panelW - 24, y + 42);
+                this.ctx.stroke();
+
+                this.ctx.fillStyle = 'rgba(255,184,77,.92)';
+                this.ctx.font = '700 14px Rajdhani';
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText(remaining, this.canvas.width / 2, this.canvas.height / 2);
-                
-                // Show analysis results
-                this.ctx.font = '24px Arial';
-                this.ctx.fillText(`Analyzed: ${totalVocalSections} vocal sections`, this.canvas.width / 2, this.canvas.height / 2 + 80);
-                this.ctx.fillText(`Average buttons per group: ${avgButtonsPerGroup}`, this.canvas.width / 2, this.canvas.height / 2 + 120);
-                this.ctx.fillText(`Getting ready to start...`, this.canvas.width / 2, this.canvas.height / 2 + 160);
+                this.ctx.fillText('SYSTEM ARMING', this.canvas.width / 2, y + 28);
+
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = '900 110px Archivo';
+                this.ctx.fillText(remaining, this.canvas.width / 2, this.canvas.height / 2 + 12);
+
+                this.ctx.fillStyle = 'rgba(228,241,248,.88)';
+                this.ctx.font = '700 18px Rajdhani';
+                this.ctx.fillText(`VOCAL SEGMENTS  ${totalVocalSections}`, this.canvas.width / 2, y + 174);
+                this.ctx.fillText(`AVG GROUP LOAD  ${avgButtonsPerGroup}`, this.canvas.width / 2, y + 202);
+                this.ctx.fillStyle = 'rgba(228,241,248,.58)';
+                this.ctx.font = '600 14px Rajdhani';
+                this.ctx.fillText('Synchronizing track and gameplay shell...', this.canvas.width / 2, y + 232);
                 
                 remaining--;
                 
@@ -548,6 +583,51 @@ class RhythmGame {
         }
         
         // Remove central pulse effect, only show vocal detection status in the upper right corner
+    }
+
+    updateHUD() {
+        const scoreNode = document.getElementById('scoreValue');
+        const comboNode = document.getElementById('comboValue');
+        const modeNode = document.getElementById('hudMode');
+        const diffNode = document.getElementById('hudDifficulty');
+        const accNode = document.getElementById('hudAccuracy');
+        const runStateNode = document.getElementById('hudRunState');
+        const runStateWrap = document.getElementById('runState');
+        const meterFill = document.getElementById('scoreMeterFill');
+        const legacyScore = document.getElementById('score');
+        const difficultySelect = document.getElementById('difficultySelect');
+
+        const total = this.judgementStats.perfect + this.judgementStats.good + this.judgementStats.miss;
+        const accuracy = total ? ((this.judgementStats.perfect + this.judgementStats.good * 0.6) / total) * 100 : null;
+        const combo = Math.max(0, Math.floor(this.combo || 0));
+        const score = Math.max(0, Math.floor(this.score || 0));
+        const difficulty = String((this.liveConfig && this.liveConfig.difficulty) || difficultySelect?.value || 'normal').toUpperCase();
+        const mode = String(this.playMode || (this.liveConfig && this.liveConfig.playMode) || 'casual').toUpperCase();
+        let runState = 'STABLE';
+        let runStateAttr = 'stable';
+        if (this.runInvalid) {
+            runState = 'INVALID';
+            runStateAttr = 'invalid';
+        } else if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
+            runState = 'PAUSED';
+            runStateAttr = 'paused';
+        } else if (this.gameState === 'starting') {
+            runState = 'ARMING';
+            runStateAttr = 'arming';
+        } else if (this.gameState === 'playing') {
+            runState = 'LIVE';
+            runStateAttr = 'live';
+        }
+
+        if (scoreNode) scoreNode.textContent = String(score).padStart(6, '0');
+        if (comboNode) comboNode.textContent = `${combo}x`;
+        if (modeNode) modeNode.textContent = mode;
+        if (diffNode) diffNode.textContent = difficulty;
+        if (accNode) accNode.textContent = accuracy == null ? '--' : `${accuracy.toFixed(1)}%`;
+        if (runStateNode) runStateNode.textContent = runState;
+        if (runStateWrap) runStateWrap.dataset.state = runStateAttr;
+        if (meterFill) meterFill.style.width = `${Math.max(12, Math.min(100, (accuracy == null ? 0.38 : accuracy / 100) * 100))}%`;
+        if (legacyScore) legacyScore.setAttribute('data-run-state', runStateAttr);
     }
 
     gameLoop(dataArray) {
@@ -1509,7 +1589,7 @@ class RhythmGame {
                     note.held = false;
                     note.hit = true;
                     this.currentDragNote = null;
-                    document.getElementById('score').textContent = Math.floor(this.score);
+                    this.updateHUD();
                 }
                 return;
             }
@@ -1557,7 +1637,7 @@ class RhythmGame {
                         note.hit = true;
                     }
                     
-                    document.getElementById('score').textContent = Math.floor(this.score);
+                    this.updateHUD();
                 }
             });
         }
@@ -1567,7 +1647,7 @@ class RhythmGame {
         note.hit = true;
         this.combo++;
         this.score += 100 * (1 + this.combo * 0.1);
-        document.getElementById('score').textContent = Math.floor(this.score);
+        this.updateHUD();
 
         // Create hit effect
         this.createHitEffect(note.x, note.y);
@@ -1700,19 +1780,21 @@ RhythmGame.prototype.pushBurst = function (x, y, type) {
         miss: { color: 'rgba(255,95,118,ALPHA)', inner: 'rgba(255,170,180,ALPHA)' }
     };
     this.visualBursts.push({ x, y, at: performance.now(), ...(map[type] || map.perfect) });
+    this.updateHUD();
 };
 
 RhythmGame.prototype.drawComboHUD = function () {
+    this.updateHUD();
     this.ctx.textAlign = 'center';
     if (this.combo > 1) {
         this.ctx.fillStyle = 'rgba(255,255,255,.92)';
-        this.ctx.font = '700 28px Arial';
+        this.ctx.font = '700 28px Rajdhani';
         this.ctx.fillText(`${this.combo}x COMBO`, this.canvas.width / 2, 56);
         this.ctx.fillStyle = 'rgba(84,241,255,.22)';
         this.ctx.fillRect(this.canvas.width / 2 - 90, 68, 180, 4);
     }
     this.ctx.fillStyle = this.runInvalid ? 'rgba(255,95,118,.92)' : 'rgba(255,255,255,.84)';
-    this.ctx.font = '600 18px Arial';
+    this.ctx.font = '600 18px Rajdhani';
     const modeText = `${String(this.playMode || 'casual').toUpperCase()}${this.runInvalid ? ' · INVALID RUN' : ''}`;
     this.ctx.fillText(modeText, this.canvas.width / 2, 92);
 };
@@ -1743,6 +1825,7 @@ RhythmGame.prototype.updatePauseUI = function () {
     }
     if (overlay) overlay.classList.toggle('hidden', !paused);
     if (overlayText && paused) overlayText.textContent = this.pauseReason === 'system' ? 'Playback paused automatically' : 'Game paused';
+    this.updateHUD();
     if (overlaySubtext) {
         if (!paused) overlaySubtext.textContent = 'Resume will trigger a short countdown.';
         else if (this.pauseReason === 'invalid-strict') overlaySubtext.textContent = 'Strict mode detected a forbidden pause/seek. This run is now invalid.';
@@ -2125,6 +2208,7 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
 RhythmGame.prototype.recordJudgement = function (score) {
     if (!score || !this.judgementStats[score] && score !== 'miss') return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
+    this.updateHUD();
 };
 
 // Initialize the game
