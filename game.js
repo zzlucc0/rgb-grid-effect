@@ -187,6 +187,7 @@ class RhythmGame {
         const statusText = document.getElementById('statusText');
         const pauseBtn = document.getElementById('pauseGameBtn');
         const resumeBtn = document.getElementById('resumeGameBtn');
+        const overlayResumeBtn = document.getElementById('overlayResumeBtn');
         const difficultySelect = document.getElementById('difficultySelect');
         const playModeSelect = document.getElementById('playModeSelect');
 
@@ -240,6 +241,7 @@ class RhythmGame {
 
         if (pauseBtn) pauseBtn.addEventListener('click', () => this.pauseGame('user'));
         if (resumeBtn) resumeBtn.addEventListener('click', () => this.resumeGame());
+        if (overlayResumeBtn) overlayResumeBtn.addEventListener('click', () => this.resumeGame());
         if (difficultySelect) difficultySelect.addEventListener('change', () => this.updateHUD());
         if (playModeSelect) playModeSelect.addEventListener('change', () => {
             this.playMode = playModeSelect.value || this.playMode;
@@ -1829,6 +1831,7 @@ RhythmGame.prototype.getGameClockTime = function () {
 RhythmGame.prototype.updatePauseUI = function () {
     const pauseBtn = document.getElementById('pauseGameBtn');
     const resumeBtn = document.getElementById('resumeGameBtn');
+    const overlayResumeBtn = document.getElementById('overlayResumeBtn');
     const overlay = document.getElementById('pauseOverlay');
     const overlayText = document.getElementById('pauseOverlayText');
     const overlaySubtext = document.getElementById('pauseOverlaySubtext');
@@ -1838,12 +1841,18 @@ RhythmGame.prototype.updatePauseUI = function () {
         resumeBtn.disabled = !paused;
         resumeBtn.style.display = paused ? 'inline-block' : 'none';
     }
+    if (overlayResumeBtn) {
+        overlayResumeBtn.disabled = !paused;
+        overlayResumeBtn.style.display = paused ? 'inline-block' : 'none';
+    }
     if (overlay) overlay.classList.toggle('hidden', !paused);
     if (overlayText && paused) overlayText.textContent = this.pauseReason === 'system' ? 'Playback paused automatically' : 'Game paused';
     this.updateHUD();
     if (overlaySubtext) {
         if (!paused) overlaySubtext.textContent = 'Resume will trigger a short countdown.';
         else if (this.pauseReason === 'invalid-strict') overlaySubtext.textContent = 'Strict mode detected a forbidden pause/seek. This run is now invalid.';
+        else if (this.pauseReason === 'system-yt-paused') overlaySubtext.textContent = 'Hidden YouTube playback paused unexpectedly. Tap resume to continue after countdown.';
+        else if (this.pauseReason === 'system-stalled') overlaySubtext.textContent = 'Playback stalled for too long. Tap resume to continue after countdown.';
         else if (this.pauseReason === 'system') overlaySubtext.textContent = 'Playback stalled or tab focus changed. Resume will continue after countdown.';
         else overlaySubtext.textContent = this.playMode === 'strict' ? 'Strict mode pauses will invalidate the run.' : 'Resume will trigger a short countdown.';
     }
@@ -2244,9 +2253,12 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
     if (this.liveMonitorTimer) clearInterval(this.liveMonitorTimer);
     let prevT = -1;
     let stagnantTicks = 0;
+    let ytPausedTicks = 0;
     this.liveMonitorTimer = setInterval(() => {
         if (!this.isPlaying || !this.liveMode || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
         const t = this.getLiveCurrentTime();
+        const runSec = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
+        const startupGrace = runSec < 6;
         if (prevT >= 0 && t + 0.35 < prevT) {
             this.runInvalid = true;
             this.playbackViolations.push({ type: 'seek-back', at: Date.now() });
@@ -2256,22 +2268,24 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
         prevT = t;
         if (this._ytPlayer && this._ytPlayer.getPlayerState) {
             const st = this._ytPlayer.getPlayerState();
-            if (st === 2) {
+            if (st === 2) ytPausedTicks += 1; else ytPausedTicks = 0;
+            if (!startupGrace && ytPausedTicks >= 4) {
                 this.playbackViolations.push({ type: 'paused', at: Date.now() });
                 if (this.playMode === 'strict') {
                     this.runInvalid = true;
                     this.pauseGame('invalid-strict');
                 } else {
-                    this.pauseGame('system');
+                    this.pauseGame('system-yt-paused');
                 }
+                ytPausedTicks = 0;
                 return;
             }
         }
         const a = document.getElementById('liveAudio');
         if (a && !a.paused && !a.ended) this.lastPlaybackHealthyAt = Date.now();
-        if (stagnantTicks >= 6) {
+        if (!startupGrace && stagnantTicks >= 10) {
             this.playbackViolations.push({ type: 'stalled', at: Date.now() });
-            this.pauseGame('system');
+            this.pauseGame('system-stalled');
             stagnantTicks = 0;
         }
     }, 500);
