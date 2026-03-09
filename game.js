@@ -686,30 +686,19 @@ class RhythmGame {
         if (this.chartMode && this.chartData?.notes?.length) {
             if (this.liveMode) this.applySegmentProfile(currentTime);
             while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
-                const chartNote = this.chartData.notes[this.nextChartIndex];
-                this.nextChartIndex += 1;
+                const chartIndex = this.nextChartIndex;
+                const chartNote = this.chartData.notes[chartIndex];
 
                 if (chartNote.time < currentTime - (this.goodRange / 1000)) {
+                    this.nextChartIndex += 1;
                     continue;
                 }
 
-                const wantsDrag = chartNote.type === 'drag';
-                if (!this.liveEngine) this.initLiveEngine();
-                const note = this.createLiveNote(currentTime, chartNote.time, wantsDrag);
+                const note = this.createChartNoteFromData(currentTime, chartNote, chartIndex);
                 if (!note) {
-                    continue;
+                    break;
                 }
-                note.beatNumber = this.nextChartIndex;
-                note.noteNumber = this.nextChartIndex;
-                note.energy = chartNote.strength || note.energy;
-                note.segmentLabel = chartNote.segmentLabel || null;
-                note.laneHint = chartNote.laneHint;
-                if (Number.isFinite(chartNote.laneHint) && !note.isDrag) {
-                    const laneCount = 4;
-                    const laneWidth = this.safeArea.width / laneCount;
-                    const laneCenterX = this.safeArea.x + laneWidth * (chartNote.laneHint + 0.5);
-                    note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, laneCenterX));
-                }
+                this.nextChartIndex += 1;
                 this.notes.push(note);
             }
             return;
@@ -2123,6 +2112,60 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     this.liveEngine.lastSpawnX = note.x;
     this.liveEngine.lastSpawnY = note.y;
     this.liveEngine.phrase.left -= 1;
+    return note;
+};
+
+RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote, chartIndex) {
+    const seq = chartIndex + 1;
+    const laneCount = 4;
+    const laneWidth = this.safeArea.width / laneCount;
+    const laneIndex = Number.isFinite(chartNote.laneHint) ? Math.max(0, Math.min(laneCount - 1, chartNote.laneHint)) : (chartIndex % laneCount);
+    const x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (laneIndex + 0.5)));
+
+    const rowBand = chartNote.segmentLabel === 'chorus' ? 0.34 : (chartNote.segmentLabel === 'verse' ? 0.52 : 0.42);
+    const rowJitter = ((chartIndex % 3) - 1) * this.circleSize * 0.85;
+    const y = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, this.safeArea.y + this.safeArea.height * rowBand + rowJitter));
+
+    const note = {
+        x,
+        y,
+        createTime: currentTime,
+        hitTime: chartNote.time,
+        hit: false,
+        score: null,
+        approachProgress: 0,
+        energy: chartNote.strength || 0.65,
+        beatNumber: seq,
+        noteNumber: seq,
+        isDrag: chartNote.type === 'drag',
+        held: false,
+        completed: false,
+        progress: 0,
+        segmentLabel: chartNote.segmentLabel || null,
+        laneHint: laneIndex
+    };
+
+    if (note.isDrag) {
+        const dragLanes = [laneIndex - 1, laneIndex + 1, laneIndex + (chartIndex % 2 === 0 ? 1 : -1), laneIndex];
+        let endLane = laneIndex;
+        for (const candidate of dragLanes) {
+            if (candidate >= 0 && candidate < laneCount && candidate !== laneIndex) {
+                endLane = candidate;
+                break;
+            }
+        }
+        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
+        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * 1.8)));
+        const dx = note.endX - note.x;
+        const dy = note.endY - note.y;
+        const L = Math.sqrt(dx * dx + dy * dy) || 1;
+        const midX = (note.x + note.endX) / 2;
+        const midY = (note.y + note.endY) / 2;
+        const curve = Math.min(this.circleSize * 1.6, L * 0.24);
+        note.controlX = midX - dy / L * curve;
+        note.controlY = midY + dx / L * curve;
+    }
+
     return note;
 };
 
