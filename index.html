@@ -419,6 +419,11 @@
             color: var(--text);
             text-shadow: 0 0 24px rgba(84,241,255,.18);
         }
+        .hud-top-actions {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
         .score-aux {
             min-width: 98px;
             text-align: right;
@@ -428,6 +433,14 @@
             font: 900 34px 'Archivo', sans-serif;
             color: #fff2d1;
             line-height: 1;
+        }
+        .hud-control-btn {
+            margin-top: 0;
+            min-height: 40px;
+            min-width: 88px;
+            padding: 10px 14px;
+            font-size: 12px;
+            border-radius: 12px;
         }
         .score-modules {
             position: relative;
@@ -461,18 +474,76 @@
             background: rgba(255,255,255,.06);
             overflow: hidden;
         }
+        .debug-strip {
+            position: relative;
+            z-index: 1;
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+            font: 700 11px 'Rajdhani', sans-serif;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: rgba(228,241,248,.72);
+        }
+        .debug-strip span {
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(255,255,255,.04);
+            border: 1px solid rgba(255,255,255,.06);
+        }
+        .debug-strip b {
+            color: #f6fdff;
+            font-weight: 700;
+        }
         .score-meter-fill {
             width: 38%;
             height: 100%;
             background: linear-gradient(90deg, var(--cyan), var(--amber));
             box-shadow: 0 0 24px rgba(84,241,255,.34);
         }
+        @media (max-width: 1200px) {
+            #score {
+                width: min(420px, calc(100vw - 24px));
+                max-width: calc(100vw - 24px);
+            }
+        }
         @media (max-width: 940px) {
             #uploadContainer { min-width: 0; width: min(94vw, 760px); }
             .shell-grid { grid-template-columns: 1fr; }
             .tip-strip { grid-template-columns: 1fr; }
-            #score { width: calc(100vw - 32px); max-width: 420px; }
-            .score-modules { grid-template-columns: repeat(2, 1fr); }
+            #score {
+                left: 12px;
+                right: 12px;
+                top: 12px;
+                width: auto;
+                max-width: none;
+                min-width: 0;
+                padding: 14px;
+            }
+            .score-main { font-size: 44px; }
+            .score-modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .debug-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 640px) {
+            .hud-topline {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .hud-top-actions {
+                justify-content: space-between;
+                align-items: center;
+            }
+            .score-aux {
+                text-align: left;
+            }
+            .score-modules,
+            .debug-strip {
+                grid-template-columns: 1fr;
+            }
+            .score-main {
+                font-size: 38px;
+            }
         }
 
     </style>
@@ -486,9 +557,12 @@
                 <small>System Score</small>
                 <div class="score-main" id="scoreValue">000000</div>
             </div>
-            <div class="score-aux">
-                <small>Combo</small>
-                <strong id="comboValue">0x</strong>
+            <div class="hud-top-actions">
+                <div class="score-aux">
+                    <small>Combo</small>
+                    <strong id="comboValue">0x</strong>
+                </div>
+                <button id="hudPauseBtn" class="hud-control-btn" aria-label="Pause game">Pause</button>
             </div>
         </div>
         <div class="score-modules">
@@ -498,6 +572,12 @@
             <div class="hud-module alert" id="runState" data-state="stable"><small>Run State</small><strong id="hudRunState">STABLE</strong></div>
         </div>
         <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
+        <div id="debugStrip" class="debug-strip hidden">
+            <span>Clock <b id="debugGameClock">0.00</b></span>
+            <span>Player <b id="debugPlayerClock">0.00</b></span>
+            <span>Chart <b id="debugChartProgress">0/0</b></span>
+            <span>Notes <b id="debugActiveNotes">0</b></span>
+        </div>
     </div>
     <div id="uploadContainer">
         <h2>RGB Grid Rhythm Game</h2>
@@ -568,7 +648,7 @@
     <script src="rgb-effect.js?v=20260309a"></script>
     <script src="default-songs.js?v=20260307a"></script>
     <script src="music-api.js?v=20260307a"></script>
-    <script src="game.js?v=20260309d"></script>
+    <script src="game.js?v=20260309e"></script>
     <script src="youtube-client.js?v=20260309b"></script>
 </body>
 </html>

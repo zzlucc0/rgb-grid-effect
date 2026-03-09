@@ -187,6 +187,7 @@ class RhythmGame {
         const statusText = document.getElementById('statusText');
         const pauseBtn = document.getElementById('pauseGameBtn');
         const resumeBtn = document.getElementById('resumeGameBtn');
+        const hudPauseBtn = document.getElementById('hudPauseBtn');
         const overlayResumeBtn = document.getElementById('overlayResumeBtn');
         const difficultySelect = document.getElementById('difficultySelect');
         const playModeSelect = document.getElementById('playModeSelect');
@@ -241,6 +242,7 @@ class RhythmGame {
 
         if (pauseBtn) pauseBtn.addEventListener('click', () => this.pauseGame('user'));
         if (resumeBtn) resumeBtn.addEventListener('click', () => this.resumeGame());
+        if (hudPauseBtn) hudPauseBtn.addEventListener('click', () => this.pauseGame('user'));
         if (overlayResumeBtn) overlayResumeBtn.addEventListener('click', () => this.resumeGame());
         if (difficultySelect) difficultySelect.addEventListener('change', () => this.updateHUD());
         if (playModeSelect) playModeSelect.addEventListener('change', () => {
@@ -249,6 +251,13 @@ class RhythmGame {
         });
         document.addEventListener('visibilitychange', () => {
             if (document.hidden && this.isPlaying && this.gameState === 'playing') this.pauseGame('system');
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (this.gameState === 'playing') this.pauseGame('user');
+                else if (this.gameState === 'paused-user' || this.gameState === 'paused-system') this.resumeGame();
+            }
         });
 
         // Add game control events
@@ -612,6 +621,11 @@ class RhythmGame {
     updateHUD() {
         this.syncReadyState();
         const scoreNode = document.getElementById('scoreValue');
+        const debugStrip = document.getElementById('debugStrip');
+        const debugGameClock = document.getElementById('debugGameClock');
+        const debugPlayerClock = document.getElementById('debugPlayerClock');
+        const debugChartProgress = document.getElementById('debugChartProgress');
+        const debugActiveNotes = document.getElementById('debugActiveNotes');
         const comboNode = document.getElementById('comboValue');
         const modeNode = document.getElementById('hudMode');
         const diffNode = document.getElementById('hudDifficulty');
@@ -656,6 +670,11 @@ class RhythmGame {
         if (runStateWrap) runStateWrap.dataset.state = runStateAttr;
         if (meterFill) meterFill.style.width = `${Math.max(12, Math.min(100, (accuracy == null ? 0.12 : accuracy / 100) * 100))}%`;
         if (legacyScore) legacyScore.setAttribute('data-run-state', runStateAttr);
+        if (debugStrip) debugStrip.classList.toggle('hidden', !this.isPlaying && this.gameState === 'idle');
+        if (debugGameClock) debugGameClock.textContent = this.getGameClockTime().toFixed(2);
+        if (debugPlayerClock) debugPlayerClock.textContent = this.liveMode ? this.getLiveCurrentTime().toFixed(2) : this.getGameClockTime().toFixed(2);
+        if (debugChartProgress) debugChartProgress.textContent = `${this.nextChartIndex}/${this.chartData?.notes?.length || 0}`;
+        if (debugActiveNotes) debugActiveNotes.textContent = String((this.notes || []).filter(n => !n.hit && !n.completed).length);
     }
 
     gameLoop(dataArray) {
@@ -1831,12 +1850,17 @@ RhythmGame.prototype.getGameClockTime = function () {
 RhythmGame.prototype.updatePauseUI = function () {
     const pauseBtn = document.getElementById('pauseGameBtn');
     const resumeBtn = document.getElementById('resumeGameBtn');
+    const hudPauseBtn = document.getElementById('hudPauseBtn');
     const overlayResumeBtn = document.getElementById('overlayResumeBtn');
     const overlay = document.getElementById('pauseOverlay');
     const overlayText = document.getElementById('pauseOverlayText');
     const overlaySubtext = document.getElementById('pauseOverlaySubtext');
     const paused = this.gameState === 'paused-user' || this.gameState === 'paused-system';
     if (pauseBtn) pauseBtn.disabled = !this.isPlaying || paused;
+    if (hudPauseBtn) {
+        hudPauseBtn.disabled = !this.isPlaying || paused;
+        hudPauseBtn.textContent = paused ? 'Paused' : 'Pause';
+    }
     if (resumeBtn) {
         resumeBtn.disabled = !paused;
         resumeBtn.style.display = paused ? 'inline-block' : 'none';
