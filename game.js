@@ -1935,6 +1935,8 @@ RhythmGame.prototype.resumeGame = async function () {
     this.resumePlaybackMedia();
     this.updatePauseUI();
     this.updateHUD();
+    const resumeArray = new Uint8Array(this.analyser.frequencyBinCount);
+    requestAnimationFrame(() => this.gameLoop(resumeArray));
 };
 
 // Live playback helpers (patched)
