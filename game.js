@@ -320,7 +320,7 @@ class RhythmGame {
         }
 
         if (this.chartMode && this.chartData?.notes?.length) {
-            if (this.liveMode) this.applySegmentProfile(currentTime);
+            if (this.liveMode) this.applySegmentProfile(0);
             const avgVocalEnergy = (this.vocalSections || []).length
                 ? this.vocalSections.reduce((sum, sec) => sum + (sec.avgEnergy || 0), 0) / this.vocalSections.length
                 : 120;
