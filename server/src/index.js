@@ -20,6 +20,11 @@ const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").map(s => s.t
 const CACHE_TTL_HOURS = Math.max(1, Number(process.env.CACHE_TTL_HOURS || 168));
 const CACHE_CLEANUP_INTERVAL_MIN = Math.max(5, Number(process.env.CACHE_CLEANUP_INTERVAL_MIN || 60));
 const LINK_PLAY_ONLY = String(process.env.LINK_PLAY_ONLY || "true").toLowerCase() !== "false";
+const FULL_ANALYSIS_MAX_SEC = Math.max(30, Number(process.env.FULL_ANALYSIS_MAX_SEC || 240));
+const SEGMENT_ANALYSIS_THRESHOLD_SEC = Math.max(60, Number(process.env.SEGMENT_ANALYSIS_THRESHOLD_SEC || 240));
+const SEGMENT_WINDOW_SEC = Math.max(20, Number(process.env.SEGMENT_WINDOW_SEC || 60));
+const SEGMENT_OVERLAP_SEC = Math.max(2, Number(process.env.SEGMENT_OVERLAP_SEC || 5));
+const MAX_CAPTURE_SEC = Math.max(120, Number(process.env.MAX_CAPTURE_SEC || 1200));
 
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -318,37 +323,84 @@ async function processOnlineAnalyzedJob(job) {
     try { meta = await ytProbe(job.url); } catch {}
   }
 
-  job.step = 'capturing preview audio';
+  const fullDuration = Number(job.fullDuration || meta.duration || 0);
+  const mode = fullDuration > SEGMENT_ANALYSIS_THRESHOLD_SEC ? 'segmented-full' : 'full';
   job.captureMeta = meta;
+  job.analysisMode = mode;
   saveJob(job);
-  const cap = await captureAudioToWav(job.url, wavPath, cacheDir, job.captureSec || 45, job.id);
 
-  job.step = 'analyzing rhythm';
-  saveJob(job);
-  let analysis;
   let chart;
-  try {
-    analysis = await analyzeRhythmWithPython(wavPath, cacheDir, job.id);
-    chart = chartFromAnalysis(analysis, job.difficulty || "normal");
-  } catch (_err) {
-    chart = dspChartFromWav(wavPath);
-    chart.difficulty = job.difficulty || "normal";
-    const durationSec = Number(meta.duration || job.captureSec || 45);
-    analysis = {
-      duration: durationSec,
+  let analysis;
+  let captureSec = 0;
+  let method = 'unknown';
+
+  if (mode === 'segmented-full' && fullDuration > 0) {
+    const windows = buildSegmentWindows(fullDuration, SEGMENT_WINDOW_SEC, SEGMENT_OVERLAP_SEC);
+    const charts = [];
+    const allSegments = [];
+    const allBeats = [];
+    const allDownbeats = [];
+    for (let i = 0; i < windows.length; i++) {
+      const win = windows[i];
+      job.step = `analyzing segment ${i + 1}/${windows.length}`;
+      job.segmentProgress = { index: i + 1, total: windows.length, start: win.start, end: win.end };
+      saveJob(job);
+      const part = await analyzeChartWindow(job.url, cacheDir, meta, job.difficulty || 'normal', win.start, win.end, job.id);
+      charts.push(part.chart);
+      allSegments.push(...(part.analysis?.segments || []));
+      allBeats.push(...(part.analysis?.beats || []));
+      allDownbeats.push(...(part.analysis?.downbeats || []));
+      captureSec += Math.max(0, Number(win.end) - Number(win.start));
+      method = part.analysis?.analyzer || method;
+    }
+    chart = mergeChartNotes(charts, job.difficulty || 'normal', fullDuration || captureSec);
+    analysis = mergeAnalysisWithChart(chart, {
+      ok: true,
+      duration: fullDuration || captureSec,
       bpm: estimateBpmFromChart(chart),
-      beats: (chart.notes || []).map(n => n.time),
-      segments: buildSegmentsFromChart(chart, durationSec),
-      analyzer: 'dsp-fallback'
-    };
+      beats: allBeats.sort((a,b)=>a-b),
+      downbeats: allDownbeats.sort((a,b)=>a-b),
+      segments: allSegments.sort((a,b)=>Number(a.start||0)-Number(b.start||0)),
+      analyzer: 'hybrid-segmented',
+      segmented: true,
+      windows
+    });
+  } else {
+    const targetSec = Math.max(8, Math.min(MAX_CAPTURE_SEC, Number(job.captureSec || fullDuration || FULL_ANALYSIS_MAX_SEC || 45)));
+    job.step = targetSec >= Math.max(60, fullDuration - 1) ? 'capturing full audio' : 'capturing preview audio';
+    saveJob(job);
+    const cap = await captureAudioToWav(job.url, wavPath, cacheDir, targetSec, job.id);
+    captureSec = cap.captureSec;
+    method = cap.method;
+
+    job.step = 'analyzing rhythm';
+    saveJob(job);
+    try {
+      analysis = await analyzeRhythmWithPython(wavPath, cacheDir, job.id);
+      chart = chartFromAnalysis(analysis, job.difficulty || 'normal');
+    } catch (_err) {
+      chart = dspChartFromWav(wavPath);
+      chart.difficulty = job.difficulty || 'normal';
+      const durationSec = Number(fullDuration || targetSec || 45);
+      analysis = {
+        duration: durationSec,
+        bpm: estimateBpmFromChart(chart),
+        beats: (chart.notes || []).map(n => n.time),
+        segments: buildSegmentsFromChart(chart, durationSec),
+        analyzer: 'dsp-fallback'
+      };
+    }
   }
+
   analysis = mergeAnalysisWithChart(chart, {
     ...analysis,
     sourceId,
-    captureSec: cap.captureSec,
-    method: cap.method,
+    captureSec,
+    method,
     extractor: meta.extractor || 'unknown',
-    title: meta.title || ''
+    title: meta.title || '',
+    fullDuration: fullDuration || Number(analysis?.duration || 0),
+    analysisMode: mode
   });
   const bpm = Number(analysis.bpm || estimateBpmFromChart(chart));
   fs.writeFileSync(analysisFile, JSON.stringify({ chart, analysis }, null, 2));
@@ -361,7 +413,7 @@ async function processOnlineAnalyzedJob(job) {
     chart,
     analysis,
     chartSeed: { bpm, density: 1.0, pattern: 'analyzed' },
-    difficulty: job.difficulty || "normal"
+    difficulty: job.difficulty || 'normal'
   };
   saveJob(job);
 }
@@ -484,7 +536,7 @@ function chartFromAnalysis(analysis, difficulty = "normal") {
     }
   }
 
-  const capped = notes.slice(0, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale)));
+  const capped = downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale)));
   return {
     version: CHART_SCHEMA_VERSION,
     algorithm: "librosa-phrase-chart-v3",
@@ -499,6 +551,110 @@ function mergeAnalysisWithChart(chart, analysis) {
   if (!segments.length) return { ...analysis, segments: buildSegmentsFromChart(chart, Number(analysis?.duration || 45)) };
   return analysis;
 }
+
+function downsampleNotesSpread(notes, keepCount) {
+  if (!Array.isArray(notes) || notes.length <= keepCount) return Array.isArray(notes) ? notes.slice() : [];
+  if (keepCount <= 1) return [notes[0]];
+  const picked = [];
+  const seen = new Set();
+  const step = (notes.length - 1) / (keepCount - 1);
+  for (let i = 0; i < keepCount; i++) {
+    const idx = Math.max(0, Math.min(notes.length - 1, Math.round(i * step)));
+    if (!seen.has(idx)) {
+      picked.push(notes[idx]);
+      seen.add(idx);
+    }
+  }
+  if (picked.length < keepCount) {
+    for (let i = 0; i < notes.length && picked.length < keepCount; i++) {
+      if (!seen.has(i)) {
+        picked.push(notes[i]);
+        seen.add(i);
+      }
+    }
+  }
+  return picked.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+}
+
+function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0) {
+  const merged = [];
+  for (const chart of charts || []) {
+    for (const note of (chart?.notes || [])) merged.push(note);
+  }
+  merged.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+  const deduped = [];
+  let lastTime = -999;
+  for (const note of merged) {
+    const t = Number(note?.time || 0);
+    if (t - lastTime < 0.08) continue;
+    deduped.push(note);
+    lastTime = t;
+  }
+  const difficultyCfg = getDifficultyConfig(difficulty);
+  const keepCount = Math.max(24, Math.floor(deduped.length * difficultyCfg.maxNotesScale));
+  const finalNotes = downsampleNotesSpread(deduped, keepCount);
+  return {
+    version: CHART_SCHEMA_VERSION,
+    algorithm: 'hybrid-segment-chart-v1',
+    difficulty,
+    approachRateMs: 1250,
+    notes: finalNotes.length >= 16 ? finalNotes : simpleChart(Number(durationSec || 45), 'hybrid-fallback').notes
+  };
+}
+
+function buildSegmentWindows(durationSec, windowSec = SEGMENT_WINDOW_SEC, overlapSec = SEGMENT_OVERLAP_SEC) {
+  const duration = Math.max(0, Number(durationSec || 0));
+  if (!duration) return [{ start: 0, end: 45 }];
+  if (duration <= windowSec) return [{ start: 0, end: duration }];
+  const stride = Math.max(5, windowSec - overlapSec);
+  const windows = [];
+  let start = 0;
+  while (start < duration) {
+    const end = Math.min(duration, start + windowSec);
+    windows.push({ start: Number(start.toFixed(3)), end: Number(end.toFixed(3)) });
+    if (end >= duration) break;
+    start += stride;
+  }
+  return windows;
+}
+
+async function analyzeChartWindow(url, cacheDir, meta, difficulty, startSec, endSec, jobId = null) {
+  const idxLabel = `${String(startSec).replace(/\./g,'_')}_${String(endSec).replace(/\./g,'_')}`;
+  const wavPath = path.join(cacheDir, `analysis_${idxLabel}.wav`);
+  await captureAudioToWav(url, wavPath, cacheDir, endSec - startSec, jobId, startSec);
+
+  let analysis;
+  let chart;
+  try {
+    analysis = await analyzeRhythmWithPython(wavPath, cacheDir, jobId);
+    chart = chartFromAnalysis(analysis, difficulty || 'normal');
+  } catch (_err) {
+    chart = dspChartFromWav(wavPath);
+    chart.difficulty = difficulty || 'normal';
+    const durationSec = Number(endSec - startSec || 45);
+    analysis = {
+      duration: durationSec,
+      bpm: estimateBpmFromChart(chart),
+      beats: (chart.notes || []).map(n => n.time),
+      segments: buildSegmentsFromChart(chart, durationSec),
+      analyzer: 'dsp-fallback'
+    };
+  }
+
+  const shiftedChart = {
+    ...chart,
+    notes: (chart.notes || []).map(n => ({ ...n, time: Number((Number(n.time || 0) + startSec).toFixed(3)) }))
+  };
+  const shiftedAnalysis = {
+    ...analysis,
+    duration: Number(meta?.duration || 0) || Number(endSec),
+    beats: (analysis?.beats || []).map(t => Number((Number(t || 0) + startSec).toFixed(3))),
+    downbeats: (analysis?.downbeats || []).map(t => Number((Number(t || 0) + startSec).toFixed(3))),
+    segments: (analysis?.segments || []).map(seg => ({ ...seg, start: Number((Number(seg.start || 0) + startSec).toFixed(3)), end: Number((Number(seg.end || 0) + startSec).toFixed(3)) }))
+  };
+  return { chart: shiftedChart, analysis: shiftedAnalysis };
+}
+
 async function tryDownloadToWav(url, workDir, jobId = null) {
   const sourceTpl = path.join(workDir, "source.%(ext)s");
   const wavPath = path.join(workDir, "audio.wav");
@@ -636,17 +792,24 @@ async function buildHlsFromWav(wavPath, outDir) {
   return playlist;
 }
 
-async function captureAudioToWav(url, wavPath, workDir, captureSec = 45, jobId = null) {
-  const sec = Math.max(8, Math.min(180, Number(captureSec || 45)));
+async function captureAudioToWav(url, wavPath, workDir, captureSec = 45, jobId = null, startSec = 0) {
+  const sec = Math.max(8, Math.min(MAX_CAPTURE_SEC, Number(captureSec || 45)));
+  const seek = Math.max(0, Number(startSec || 0));
   if (isYouTubeUrl(url)) {
     const streamUrl = await ytResolveAudioUrl(url);
-    await run("ffmpeg", ["-y", "-t", String(sec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath], workDir, 180000, jobId);
-    return { captureSec: sec, method: "youtube-stream" };
+    const args = ["-y"];
+    if (seek > 0) args.push("-ss", String(seek));
+    args.push("-t", String(sec), "-i", streamUrl, "-vn", "-ac", "1", "-ar", "44100", wavPath);
+    await run("ffmpeg", args, workDir, Math.max(180000, sec * 1200), jobId);
+    return { captureSec: sec, method: "youtube-stream", startSec: seek };
   }
 
   const downloadedWav = await tryDownloadToWav(url, workDir, jobId);
-  await run("ffmpeg", ["-y", "-t", String(sec), "-i", downloadedWav, "-ac", "1", "-ar", "44100", wavPath], workDir, 120000, jobId);
-  return { captureSec: sec, method: "download-transcode" };
+  const args = ["-y"];
+  if (seek > 0) args.push("-ss", String(seek));
+  args.push("-t", String(sec), "-i", downloadedWav, "-ac", "1", "-ar", "44100", wavPath);
+  await run("ffmpeg", args, workDir, Math.max(120000, sec * 1000), jobId);
+  return { captureSec: sec, method: "download-transcode", startSec: seek };
 }
 
 async function processCaptureJob(job) {
@@ -933,7 +1096,7 @@ app.get("/api/capture-job/:id", (req, res) => {
 });
 
 app.post("/api/analyze-link", async (req, res) => {
-  const { url, difficulty } = req.body ?? {};
+  const { url, difficulty, captureSec } = req.body ?? {};
   if (!url || typeof url !== "string") return res.status(400).json({ error: "url is required" });
   const id = nanoid(10);
   const now = new Date().toISOString();
@@ -945,7 +1108,7 @@ app.post("/api/analyze-link", async (req, res) => {
   // In link-play-only mode, analyze temporary preview audio first, then start online player with analyzed chart.
   if (LINK_PLAY_ONLY || isYouTubeUrl(url)) {
     try {
-      await processOnlineAnalyzedJob({ ...job, captureSec: 45, attempts: [] });
+      await processOnlineAnalyzedJob({ ...job, captureSec: Number(captureSec || 0), attempts: [] });
       return;
     } catch (err) {
       job.status = "done";
