@@ -39,6 +39,8 @@ class RhythmGame {
         this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
         this.visualBursts = [];
+        this.groupHistory = [];
+        this.activeGroupState = null;
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -313,6 +315,8 @@ class RhythmGame {
         this.frozenGameTime = 0;
         this.lastPlaybackHealthyAt = 0;
         this.visualBursts = [];
+        this.groupHistory = [];
+        this.activeGroupState = null;
         this.recentBeatStrengths = []; // Used to store recent beat strengths
         this.analyzedSections = []; // Store pre-analyzed song sections
         this.updateHUD();
@@ -631,12 +635,14 @@ class RhythmGame {
 
     updateHUD() {
         this.syncReadyState();
+        this.refreshGroupState();
         const scoreNode = document.getElementById('scoreValue');
         const debugStrip = document.getElementById('debugStrip');
         const debugGameClock = document.getElementById('debugGameClock');
         const debugPlayerClock = document.getElementById('debugPlayerClock');
         const debugChartProgress = document.getElementById('debugChartProgress');
         const debugActiveNotes = document.getElementById('debugActiveNotes');
+        const debugGroupState = document.getElementById('debugGroupState');
         const comboNode = document.getElementById('comboValue');
         const modeNode = document.getElementById('hudMode');
         const diffNode = document.getElementById('hudDifficulty');
@@ -686,6 +692,10 @@ class RhythmGame {
         if (debugPlayerClock) debugPlayerClock.textContent = this.liveMode ? this.getLiveCurrentTime().toFixed(2) : this.getGameClockTime().toFixed(2);
         if (debugChartProgress) debugChartProgress.textContent = `${this.nextChartIndex}/${this.chartData?.notes?.length || 0}`;
         if (debugActiveNotes) debugActiveNotes.textContent = String((this.notes || []).filter(n => !n.hit && !n.completed).length);
+        if (debugGroupState) {
+            const active = this.activeGroupState;
+            debugGroupState.textContent = active ? `${active.pattern}:${active.size}` : '--';
+        }
     }
 
     gameLoop(dataArray) {
@@ -1307,7 +1317,10 @@ class RhythmGame {
         const currentTime = this.getGameClockTime();
         
         this.notes = this.notes.filter(note => {
-            if (note.hit && !note.score) return false;
+            if (note.hit && !note.score) {
+                if (note.groupKey) this.registerGroupCompletion(note.groupKey, note);
+                return false;
+            }
 
             if ((note.isDrag || note.noteType === 'ribbon') && note.completed) {
                 if (note.score && (currentTime - note.hitTime > 1)) {
@@ -1573,10 +1586,14 @@ class RhythmGame {
                         this.ctx.beginPath();
                         this.ctx.moveTo(prevNote.x, prevNote.y);
                         this.ctx.lineTo(note.x, note.y);
-                        const sameGroup = prevNote.groupIndex === note.groupIndex;
-                        this.ctx.strokeStyle = sameGroup ? 'rgba(255,215,168,0.22)' : 'rgba(84,241,255,0.14)';
-                        this.ctx.lineWidth = sameGroup ? 2.2 : 1.2;
+                        const sameGroup = prevNote.groupKey && prevNote.groupKey === note.groupKey;
+                        this.ctx.strokeStyle = sameGroup ? 'rgba(255,215,168,0.30)' : 'rgba(84,241,255,0.14)';
+                        this.ctx.lineWidth = sameGroup ? 2.8 : 1.2;
+                        if (sameGroup && note.groupPattern === 'diamond') this.ctx.setLineDash([8, 6]);
+                        else if (sameGroup && note.groupPattern === 'ladder') this.ctx.setLineDash([2, 7]);
+                        else this.ctx.setLineDash([]);
                         this.ctx.stroke();
+                        this.ctx.setLineDash([]);
                     }
                 }
 
@@ -1587,6 +1604,13 @@ class RhythmGame {
                 this.ctx.textBaseline = 'middle';
                 const marker = note.noteType === 'flick' ? '↗' : note.noteType === 'cut' ? '✦' : note.noteType === 'pulseHold' ? '◎' : note.noteType === 'ribbon' ? '≈' : note.noteType === 'gate' ? '▣' : note.noteNumber.toString();
                 this.ctx.fillText(marker, note.x, note.y);
+            }
+
+            if (note.groupRole === 'lead' && note.groupSize > 1 && !note.hit) {
+                this.ctx.fillStyle = 'rgba(255, 215, 168, .82)';
+                this.ctx.font = '700 11px Rajdhani';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(`${String(note.groupPattern || 'group').toUpperCase()} · ${note.groupSize}`, note.x, note.y - this.circleSize - 16);
             }
 
             // If there is a score, display the score text
@@ -2272,7 +2296,8 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     };
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'live', note.groupIndex);
-    this.applyNoteMechanicProfile(note);
+    note.groupPattern = this.pickGroupPattern(note.groupIndex, note.segmentLabel || 'live');
+    this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
 
     if (note.isDrag) {
         const d = this.circleSize * (3.4 + Math.random() * 1.3);
@@ -2335,11 +2360,12 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         groupIndex: phrase,
         groupSlot,
         holdDuration: noteType === 'pulseHold' ? Math.max(0.6, (chartNote.duration || 0.82)) : 0,
-        gateWidth: noteType === 'gate' ? this.circleSize * (2.4 + (chartIndex % 3) * 0.2) : null
+        gateWidth: noteType === 'gate' ? this.circleSize * (2.4 + (chartIndex % 3) * 0.2) : null,
+        groupPattern: basePos.pattern
     };
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex);
-    this.applyNoteMechanicProfile(note);
+    this.applyGroupMechanics([note], { pattern: basePos.pattern, groupIndex: phrase, segmentLabel: note.segmentLabel || 'verse' });
 
     if (note.isDrag) {
         const dragLanes = [laneIndex - 1, laneIndex + 1, laneIndex + (chartIndex % 2 === 0 ? 1 : -1), laneIndex];
@@ -2397,12 +2423,16 @@ RhythmGame.prototype.spawnBurstCluster = function (anchorNote, clusterSize = 3) 
             groupSlot: slot,
             score: null,
             hit: false,
-            createTime: this.getGameClockTime()
+            createTime: this.getGameClockTime(),
+            groupPattern: pos.pattern
         };
-        this.applyNoteMechanicProfile(note);
         notes.push(note);
     }
-    return notes;
+    return this.applyGroupMechanics(notes, {
+        pattern: anchorNote.groupPattern || 'burst',
+        groupIndex: anchorNote.groupIndex || 0,
+        segmentLabel: anchorNote.segmentLabel || 'chorus'
+    });
 };
 
 RhythmGame.prototype.generateLiveGridNotes = function (currentTime) {
@@ -2438,15 +2468,20 @@ RhythmGame.prototype.generateLiveGridNotes = function (currentTime) {
             const note = this.createLiveNote(currentTime, eng.nextTime, wantDrag);
             if (note) {
                 note.laneHint = Math.abs(note.groupSlot || 0) % 4;
-                this.notes.push(note);
-                if (note.isDrag) eng.dragSpawnedInBar += 1;
-                eng.lastWasDrag = note.isDrag;
-
+                let groupNotes = [note];
                 const chorusBurst = note.segmentLabel === 'chorus' && (idx === 0 || idx === 8) && note.noteType !== 'pulseHold';
                 if (chorusBurst) {
                     const extras = this.spawnBurstCluster(note, 3);
-                    this.notes.push(...extras);
+                    groupNotes = [note, ...extras];
                 }
+                this.applyGroupMechanics(groupNotes, {
+                    pattern: note.groupPattern,
+                    groupIndex: note.groupIndex,
+                    segmentLabel: note.segmentLabel || 'live'
+                });
+                this.notes.push(...groupNotes);
+                if (groupNotes.some(n => n.isDrag)) eng.dragSpawnedInBar += 1;
+                eng.lastWasDrag = groupNotes.some(n => n.isDrag);
             }
         }
 
@@ -2525,6 +2560,74 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
     }, 500);
 };
 
+RhythmGame.prototype.refreshGroupState = function () {
+    const activeNotes = (this.notes || []).filter(n => !n.hit && !n.completed);
+    if (!activeNotes.length) {
+        this.activeGroupState = null;
+        return null;
+    }
+    const groups = new Map();
+    for (const note of activeNotes) {
+        const key = `${note.segmentLabel || 'none'}:${note.groupIndex || 0}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(note);
+    }
+    let chosen = null;
+    for (const [key, notes] of groups.entries()) {
+        if (!chosen || notes.length > chosen.notes.length) chosen = { key, notes };
+    }
+    if (!chosen) {
+        this.activeGroupState = null;
+        return null;
+    }
+    const pattern = chosen.notes[0]?.groupPattern || 'fan';
+    this.activeGroupState = {
+        key: chosen.key,
+        pattern,
+        size: chosen.notes.length,
+        segmentLabel: chosen.notes[0]?.segmentLabel || 'unknown'
+    };
+    return this.activeGroupState;
+};
+
+RhythmGame.prototype.registerGroupCompletion = function (groupKey, note) {
+    if (!groupKey || !note) return;
+    const tail = this.groupHistory[this.groupHistory.length - 1];
+    if (tail && tail.key === groupKey) return;
+    this.groupHistory.push({
+        key: groupKey,
+        at: performance.now(),
+        pattern: note.groupPattern || 'fan',
+        segmentLabel: note.segmentLabel || 'unknown',
+        size: note.groupSize || 1
+    });
+    if (this.groupHistory.length > 8) this.groupHistory.shift();
+};
+
+RhythmGame.prototype.pickGroupPattern = function (phrase, segmentLabel) {
+    const chorusPatterns = ['burst', 'diamond', 'fan', 'ladder'];
+    const versePatterns = ['ladder', 'fan', 'diamond', 'burst'];
+    const pool = segmentLabel === 'chorus' ? chorusPatterns : versePatterns;
+    return pool[Math.abs(Number(phrase || 0)) % pool.length];
+};
+
+RhythmGame.prototype.applyGroupMechanics = function (notes, context = {}) {
+    if (!Array.isArray(notes) || !notes.length) return notes;
+    const pattern = context.pattern || this.pickGroupPattern(context.groupIndex || notes[0]?.groupIndex || 0, context.segmentLabel || notes[0]?.segmentLabel || 'verse');
+    const size = notes.length;
+    notes.forEach((note, idx) => {
+        note.groupPattern = pattern;
+        note.groupSize = size;
+        note.groupRole = idx === 0 ? 'lead' : (idx === size - 1 ? 'accent' : 'body');
+        note.groupKey = `${note.segmentLabel || context.segmentLabel || 'none'}:${note.groupIndex || context.groupIndex || 0}`;
+        if (pattern === 'burst' && idx === size - 1 && note.noteType === 'tap') note.noteType = 'cut';
+        if (pattern === 'diamond' && idx === 1 && note.noteType === 'tap') note.noteType = 'flick';
+        if (pattern === 'ladder' && idx === 0 && note.noteType === 'tap') note.noteType = 'pulseHold';
+        this.applyNoteMechanicProfile(note);
+    });
+    return notes;
+};
+
 RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0) {
     if (note && note.type) return note.type;
     const segment = note?.segmentLabel || 'verse';
@@ -2552,7 +2655,7 @@ RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCo
     const baseX = this.safeArea.x + laneWidth * (laneIndex + 0.5);
     const rowBand = segmentLabel === 'chorus' ? 0.34 : (segmentLabel === 'verse' ? 0.52 : 0.42);
     const baseY = this.safeArea.y + this.safeArea.height * rowBand;
-    const pattern = ['fan', 'burst', 'ladder', 'diamond'][Math.abs(Number(phrase || 0)) % 4];
+    const pattern = this.pickGroupPattern(phrase, segmentLabel);
     const offsets = {
         fan: [
             { x: -1.1, y: 0.7 }, { x: -0.38, y: -0.15 }, { x: 0.42, y: -0.72 }, { x: 1.06, y: 0.08 }
