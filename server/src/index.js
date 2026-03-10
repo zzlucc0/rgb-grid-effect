@@ -25,6 +25,8 @@ const SEGMENT_ANALYSIS_THRESHOLD_SEC = Math.max(60, Number(process.env.SEGMENT_A
 const SEGMENT_WINDOW_SEC = Math.max(20, Number(process.env.SEGMENT_WINDOW_SEC || 60));
 const SEGMENT_OVERLAP_SEC = Math.max(2, Number(process.env.SEGMENT_OVERLAP_SEC || 5));
 const MAX_CAPTURE_SEC = Math.max(120, Number(process.env.MAX_CAPTURE_SEC || 1200));
+const ANALYSIS_STRATEGY = String(process.env.ANALYSIS_STRATEGY || 'auto').toLowerCase();
+const DEFAULT_CHART_DENSITY = String(process.env.DEFAULT_CHART_DENSITY || 'normal').toLowerCase();
 
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -311,7 +313,8 @@ async function processOnlineAnalyzedJob(job) {
   const sourceId = makeSourceId(job.url) + '_analysis';
   const cacheDir = path.join(CACHE_DIR, sourceId);
   const wavPath = path.join(cacheDir, 'analysis.wav');
-  const analysisFile = path.join(cacheDir, 'analysis.json');
+  const optionsKey = buildOptionsKey(job);
+  const analysisFile = path.join(cacheDir, `analysis_${optionsKey}.json`);
   fs.mkdirSync(cacheDir, { recursive: true });
 
   job.status = 'processing';
@@ -324,9 +327,20 @@ async function processOnlineAnalyzedJob(job) {
   }
 
   const fullDuration = Number(job.fullDuration || meta.duration || 0);
-  const mode = fullDuration > SEGMENT_ANALYSIS_THRESHOLD_SEC ? 'segmented-full' : 'full';
+  const chartDensity = sanitizeDensity(job.chartDensity || DEFAULT_CHART_DENSITY);
+  const mode = decideAnalysisMode(fullDuration, job.analysisStrategy || ANALYSIS_STRATEGY);
   job.captureMeta = meta;
   job.analysisMode = mode;
+  job.chartDensity = chartDensity;
+  job.optionsKey = optionsKey;
+  const cachedWhole = readJsonIfExists(analysisFile);
+  if (cachedWhole?.chart?.notes?.length && cachedWhole?.analysis) {
+    job.status = 'done';
+    job.step = 'analysis ready';
+    job.result = { mode: 'online-analyzed', player: buildOnlinePlayerFromUrl(job.url), chart: cachedWhole.chart, analysis: cachedWhole.analysis, chartSeed: { bpm: Number(cachedWhole.analysis?.bpm || estimateBpmFromChart(cachedWhole.chart)), density: 1.0, pattern: 'analyzed' }, difficulty: job.difficulty || 'normal' };
+    saveJob(job);
+    return;
+  }
   saveJob(job);
 
   let chart;
@@ -345,7 +359,7 @@ async function processOnlineAnalyzedJob(job) {
       job.step = `analyzing segment ${i + 1}/${windows.length}`;
       job.segmentProgress = { index: i + 1, total: windows.length, start: win.start, end: win.end };
       saveJob(job);
-      const part = await analyzeChartWindow(job.url, cacheDir, meta, job.difficulty || 'normal', win.start, win.end, job.id);
+      const part = await analyzeChartWindow(job.url, cacheDir, meta, job.difficulty || 'normal', chartDensity, optionsKey, win.start, win.end, job.id);
       charts.push(part.chart);
       allSegments.push(...(part.analysis?.segments || []));
       allBeats.push(...(part.analysis?.beats || []));
@@ -353,7 +367,7 @@ async function processOnlineAnalyzedJob(job) {
       captureSec += Math.max(0, Number(win.end) - Number(win.start));
       method = part.analysis?.analyzer || method;
     }
-    chart = mergeChartNotes(charts, job.difficulty || 'normal', fullDuration || captureSec);
+    chart = mergeChartNotes(charts, job.difficulty || 'normal', fullDuration || captureSec, chartDensity);
     analysis = mergeAnalysisWithChart(chart, {
       ok: true,
       duration: fullDuration || captureSec,
@@ -377,7 +391,7 @@ async function processOnlineAnalyzedJob(job) {
     saveJob(job);
     try {
       analysis = await analyzeRhythmWithPython(wavPath, cacheDir, job.id);
-      chart = chartFromAnalysis(analysis, job.difficulty || 'normal');
+      chart = chartFromAnalysis(analysis, job.difficulty || 'normal', chartDensity);
     } catch (_err) {
       chart = dspChartFromWav(wavPath);
       chart.difficulty = job.difficulty || 'normal';
@@ -400,7 +414,9 @@ async function processOnlineAnalyzedJob(job) {
     extractor: meta.extractor || 'unknown',
     title: meta.title || '',
     fullDuration: fullDuration || Number(analysis?.duration || 0),
-    analysisMode: mode
+    analysisMode: mode,
+    chartDensity,
+    optionsKey
   });
   const bpm = Number(analysis.bpm || estimateBpmFromChart(chart));
   fs.writeFileSync(analysisFile, JSON.stringify({ chart, analysis }, null, 2));
@@ -437,13 +453,62 @@ function getDifficultyConfig(name = 'normal') {
   return map[name] || map.normal;
 }
 
-function buildPatternProfile(seg, difficultyCfg) {
+function getDensityConfig(name = 'normal') {
+  const key = String(name || 'normal').toLowerCase();
+  const map = {
+    relaxed: { noteScale: 0.84, extraWeakScale: 0.82, dragBoost: -0.03, tailGapTarget: 2.4 },
+    normal: { noteScale: 1.0, extraWeakScale: 1.0, dragBoost: 0, tailGapTarget: 3.2 },
+    dense: { noteScale: 1.18, extraWeakScale: 1.15, dragBoost: 0.04, tailGapTarget: 4.0 }
+  };
+  return map[key] || map.normal;
+}
+
+function sanitizeStrategy(name = 'auto') {
+  const v = String(name || 'auto').toLowerCase();
+  return ['auto','full','segmented'].includes(v) ? v : 'auto';
+}
+
+function sanitizeDensity(name = 'normal') {
+  const v = String(name || 'normal').toLowerCase();
+  return ['relaxed','normal','dense'].includes(v) ? v : 'normal';
+}
+
+function buildOptionsKey(opts = {}) {
+  const raw = JSON.stringify({
+    difficulty: opts.difficulty || 'normal',
+    density: sanitizeDensity(opts.chartDensity || DEFAULT_CHART_DENSITY),
+    strategy: sanitizeStrategy(opts.analysisStrategy || ANALYSIS_STRATEGY),
+    fullMax: FULL_ANALYSIS_MAX_SEC,
+    segThreshold: SEGMENT_ANALYSIS_THRESHOLD_SEC,
+    segWindow: SEGMENT_WINDOW_SEC,
+    segOverlap: SEGMENT_OVERLAP_SEC,
+    maxCapture: MAX_CAPTURE_SEC,
+    schema: CHART_SCHEMA_VERSION
+  });
+  return createHash('sha1').update(raw).digest('hex').slice(0, 12);
+}
+
+function decideAnalysisMode(fullDuration, requestedStrategy = 'auto') {
+  const strategy = sanitizeStrategy(requestedStrategy || ANALYSIS_STRATEGY);
+  if (strategy === 'full') return 'full';
+  if (strategy === 'segmented') return 'segmented-full';
+  return Number(fullDuration || 0) > SEGMENT_ANALYSIS_THRESHOLD_SEC ? 'segmented-full' : 'full';
+}
+
+function readJsonIfExists(file) {
+  try { if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  return null;
+}
+
+function buildPatternProfile(seg, difficultyCfg, densityCfg = getDensityConfig('normal')) {
   const label = seg?.label || 'verse';
   const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
-  if (label === 'intro') return { strongOnly: false, extraWeak: 0.15 * difficultyCfg.weakChance, dragBias: 0.06 + difficultyCfg.dragBoost, laneStep: [1, 2] };
-  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.48 * difficultyCfg.weakChance, dragBias: 0.24 + difficultyCfg.dragBoost, laneStep: [1, 2, 1] };
-  if (label === 'break') return { strongOnly: true, extraWeak: 0.0, dragBias: 0.04 + difficultyCfg.dragBoost, laneStep: [1] };
-  return { strongOnly: false, extraWeak: (dense ? 0.32 : 0.2) * difficultyCfg.weakChance, dragBias: 0.14 + difficultyCfg.dragBoost, laneStep: dense ? [1,2,1] : [1,2] };
+  const weakScale = Number(densityCfg.extraWeakScale || 1);
+  const dragDensityBoost = Number(densityCfg.dragBoost || 0);
+  if (label === 'intro') return { strongOnly: false, extraWeak: 0.15 * difficultyCfg.weakChance * weakScale, dragBias: 0.06 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: [1, 2] };
+  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.48 * difficultyCfg.weakChance * weakScale, dragBias: 0.24 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: [1, 2, 1] };
+  if (label === 'break') return { strongOnly: true, extraWeak: 0.0, dragBias: 0.04 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: [1] };
+  return { strongOnly: false, extraWeak: (dense ? 0.32 : 0.2) * difficultyCfg.weakChance * weakScale, dragBias: 0.14 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: dense ? [1,2,1] : [1,2] };
 }
 
 function nearestDownbeatDistance(downbeats, t) {
@@ -456,13 +521,15 @@ function pickSegmentForTime(segments, t) {
   return (segments || []).find(seg => t >= Number(seg.start || 0) && t < Number(seg.end || 0)) || null;
 }
 
-function chartFromAnalysis(analysis, difficulty = "normal") {
+function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'normal') {
   const beats = Array.isArray(analysis?.beats) ? analysis.beats.map(Number).filter(n => Number.isFinite(n)) : [];
   const segments = Array.isArray(analysis?.segments) ? analysis.segments : [];
   const downbeats = Array.isArray(analysis?.downbeats) ? analysis.downbeats : [];
   const difficultyCfg = getDifficultyConfig(difficulty);
+  const densityCfg = getDensityConfig(chartDensity);
   if (beats.length < 16) {
     const fallback = simpleChart(Number(analysis?.duration || 45), "librosa-fallback");
+    fallback.chartDensity = sanitizeDensity(chartDensity);
     fallback.difficulty = difficulty;
     return fallback;
   }
@@ -485,7 +552,7 @@ function chartFromAnalysis(analysis, difficulty = "normal") {
     const isPickup = mod4 === 2;
     const dense = seg.energy === 'high' || Number(seg.density || 0) > 1.8;
     const sparse = seg.label === 'intro' || seg.energy === 'low';
-    const profile = buildPatternProfile(seg, difficultyCfg);
+    const profile = buildPatternProfile(seg, difficultyCfg, densityCfg);
     const nearDownbeat = nearestDownbeatDistance(downbeats, t) < 0.08;
 
     let spawn = false;
@@ -498,7 +565,7 @@ function chartFromAnalysis(analysis, difficulty = "normal") {
     if (t - lastTime < difficultyCfg.minGap) continue;
 
     let type = 'tap';
-    const segDrag = Number(seg.dragRatio || 0.16) + difficultyCfg.dragBoost;
+    const segDrag = Number(seg.dragRatio || 0.16) + difficultyCfg.dragBoost + Number(densityCfg.dragBoost || 0);
     const dragWindow = (isStrong || nearDownbeat) && gapNext > 0.35 && gapNext < 1.4;
     if (!lastWasDrag && dragWindow && (seg.label === 'chorus' ? mod8 === 0 || mod8 === 4 : mod8 === 0) && Math.random() < Math.min(0.52, profile.dragBias + segDrag)) {
       type = 'drag';
@@ -537,16 +604,17 @@ function chartFromAnalysis(analysis, difficulty = "normal") {
   }
 
   const capped = ensureTailCoverage(
-    downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale))),
+    downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale * Number(densityCfg.noteScale || 1)))),
     Number(analysis?.duration || 45),
     difficulty
   );
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: "librosa-phrase-chart-v4",
+    algorithm: "librosa-phrase-chart-v5",
     difficulty,
     approachRateMs: 1250,
-    notes: capped.length >= 16 ? capped : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes
+    notes: capped.length >= 16 ? capped : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes,
+    chartDensity: sanitizeDensity(chartDensity)
   };
 }
 
@@ -580,13 +648,14 @@ function downsampleNotesSpread(notes, keepCount) {
   return picked.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
 }
 
-function ensureTailCoverage(notes, durationSec = 0, difficulty = 'normal') {
+function ensureTailCoverage(notes, durationSec = 0, difficulty = 'normal', chartDensity = 'normal') {
   const duration = Number(durationSec || 0);
   if (!Array.isArray(notes) || !notes.length || duration < 20) return Array.isArray(notes) ? notes.slice() : [];
   const out = notes.slice().sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
   const lastTime = Number(out[out.length - 1]?.time || 0);
   const gap = duration - lastTime;
-  if (gap <= 3.2) return out;
+  const densityCfg = getDensityConfig(chartDensity);
+  if (gap <= Number(densityCfg.tailGapTarget || 3.2)) return out;
 
   const difficultyCfg = getDifficultyConfig(difficulty);
   const safeEnd = Math.max(lastTime + Math.max(0.6, difficultyCfg.minGap), duration - 0.9);
@@ -639,7 +708,7 @@ function collapseOverlapNotes(notes) {
   return out;
 }
 
-function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0) {
+function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0, chartDensity = 'normal') {
   const merged = [];
   for (const chart of charts || []) {
     for (const note of (chart?.notes || [])) merged.push(note);
@@ -647,14 +716,16 @@ function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0) {
   merged.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
   const deduped = collapseOverlapNotes(merged);
   const difficultyCfg = getDifficultyConfig(difficulty);
-  const keepCount = Math.max(24, Math.floor(deduped.length * difficultyCfg.maxNotesScale));
-  const finalNotes = ensureTailCoverage(downsampleNotesSpread(deduped, keepCount), durationSec, difficulty);
+  const densityCfg = getDensityConfig(chartDensity);
+  const keepCount = Math.max(24, Math.floor(deduped.length * difficultyCfg.maxNotesScale * Number(densityCfg.noteScale || 1)));
+  const finalNotes = ensureTailCoverage(downsampleNotesSpread(deduped, keepCount), durationSec, difficulty, chartDensity);
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: 'hybrid-segment-chart-v3',
+    algorithm: 'hybrid-segment-chart-v4',
     difficulty,
     approachRateMs: 1250,
-    notes: finalNotes.length >= 16 ? finalNotes : simpleChart(Number(durationSec || 45), 'hybrid-fallback').notes
+    notes: finalNotes.length >= 16 ? finalNotes : simpleChart(Number(durationSec || 45), 'hybrid-fallback').notes,
+    chartDensity: sanitizeDensity(chartDensity)
   };
 }
 
@@ -674,16 +745,19 @@ function buildSegmentWindows(durationSec, windowSec = SEGMENT_WINDOW_SEC, overla
   return windows;
 }
 
-async function analyzeChartWindow(url, cacheDir, meta, difficulty, startSec, endSec, jobId = null) {
-  const idxLabel = `${String(startSec).replace(/\./g,'_')}_${String(endSec).replace(/\./g,'_')}`;
+async function analyzeChartWindow(url, cacheDir, meta, difficulty, chartDensity, optionsKey, startSec, endSec, jobId = null) {
+  const idxLabel = `${optionsKey}_${String(startSec).replace(/\./g,'_')}_${String(endSec).replace(/\./g,'_')}`;
   const wavPath = path.join(cacheDir, `analysis_${idxLabel}.wav`);
+  const cacheFile = path.join(cacheDir, `analysis_${idxLabel}.json`);
+  const cached = readJsonIfExists(cacheFile);
+  if (cached?.chart?.notes?.length && cached?.analysis) return cached;
   await captureAudioToWav(url, wavPath, cacheDir, endSec - startSec, jobId, startSec);
 
   let analysis;
   let chart;
   try {
     analysis = await analyzeRhythmWithPython(wavPath, cacheDir, jobId);
-    chart = chartFromAnalysis(analysis, difficulty || 'normal');
+    chart = chartFromAnalysis(analysis, difficulty || 'normal', chartDensity || 'normal');
   } catch (_err) {
     chart = dspChartFromWav(wavPath);
     chart.difficulty = difficulty || 'normal';
@@ -708,7 +782,9 @@ async function analyzeChartWindow(url, cacheDir, meta, difficulty, startSec, end
     downbeats: (analysis?.downbeats || []).map(t => Number((Number(t || 0) + startSec).toFixed(3))),
     segments: (analysis?.segments || []).map(seg => ({ ...seg, start: Number((Number(seg.start || 0) + startSec).toFixed(3)), end: Number((Number(seg.end || 0) + startSec).toFixed(3)) }))
   };
-  return { chart: shiftedChart, analysis: shiftedAnalysis };
+  const result = { chart: shiftedChart, analysis: shiftedAnalysis };
+  try { fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2)); } catch {}
+  return result;
 }
 
 async function tryDownloadToWav(url, workDir, jobId = null) {
@@ -1152,11 +1228,11 @@ app.get("/api/capture-job/:id", (req, res) => {
 });
 
 app.post("/api/analyze-link", async (req, res) => {
-  const { url, difficulty, captureSec } = req.body ?? {};
+  const { url, difficulty, captureSec, analysisStrategy, chartDensity } = req.body ?? {};
   if (!url || typeof url !== "string") return res.status(400).json({ error: "url is required" });
   const id = nanoid(10);
   const now = new Date().toISOString();
-  const job = { id, status: "pending", step: "queued", url, difficulty: ["easy","normal","hard"].includes(difficulty) ? difficulty : "normal", createdAt: now, updatedAt: now, error: null, result: null };
+  const job = { id, status: "pending", step: "queued", url, difficulty: ["easy","normal","hard"].includes(difficulty) ? difficulty : "normal", analysisStrategy: sanitizeStrategy(analysisStrategy || ANALYSIS_STRATEGY), chartDensity: sanitizeDensity(chartDensity || DEFAULT_CHART_DENSITY), createdAt: now, updatedAt: now, error: null, result: null };
   ensureJobController(id);
   saveJob(job);
   res.status(202).json({ jobId: id, status: job.status });

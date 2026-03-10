@@ -11,6 +11,13 @@ services:
     environment:
       - YTDLP_COOKIES_PATH=/app/cookies/youtube.txt
       - LINK_PLAY_ONLY=true
+      - ANALYSIS_STRATEGY=auto
+      - DEFAULT_CHART_DENSITY=normal
+      - FULL_ANALYSIS_MAX_SEC=240
+      - SEGMENT_ANALYSIS_THRESHOLD_SEC=240
+      - SEGMENT_WINDOW_SEC=60
+      - SEGMENT_OVERLAP_SEC=5
+      - MAX_CAPTURE_SEC=1200
 
   rgb-grid-web:
     build:

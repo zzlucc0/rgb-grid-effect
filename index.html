@@ -242,7 +242,7 @@
             font-family: 'Rajdhani', sans-serif;
             margin-bottom: 18px;
         }
-        #youtubeUrl, #difficultySelect, #playModeSelect {
+        #youtubeUrl, #difficultySelect, #playModeSelect, #analysisStrategySelect, #chartDensitySelect {
             box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 0 1px rgba(84,241,255,.08);
             background: rgba(8,12,18,.86) !important;
             color: var(--text);
@@ -623,6 +623,16 @@
                             <option value="casual" selected>Casual</option>
                             <option value="strict">Strict</option>
                         </select>
+                        <select id="analysisStrategySelect">
+                            <option value="auto" selected>Auto Strategy</option>
+                            <option value="full">Force Full-song</option>
+                            <option value="segmented">Force Segmented</option>
+                        </select>
+                        <select id="chartDensitySelect">
+                            <option value="relaxed">Relaxed Density</option>
+                            <option value="normal" selected>Normal Density</option>
+                            <option value="dense">Dense Density</option>
+                        </select>
                     </div>
                     <div class="control-row actions">
                         <button id="analyzeYoutube">Prepare Link Mode</button>
@@ -657,6 +667,6 @@
     <script src="default-songs.js?v=20260307a"></script>
     <script src="music-api.js?v=20260307a"></script>
     <script src="game.js?v=20260309g"></script>
-    <script src="youtube-client.js?v=20260309b"></script>
+    <script src="youtube-client.js?v=20260310c"></script>
 </body>
 </html>

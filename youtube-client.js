@@ -19,6 +19,15 @@
     return m || '-';
   }
 
+
+  function humanDensityLabel(mode) {
+    var m = String(mode || '').trim();
+    if (m === 'relaxed') return 'Relaxed density';
+    if (m === 'dense') return 'Dense density';
+    if (m === 'normal') return 'Normal density';
+    return m || '-';
+  }
+
   function formatAnalyzeMeta(job) {
     if (!job) return '';
     var bits = [];
@@ -26,6 +35,8 @@
     if (mode) bits.push(humanModeLabel(mode));
     var sp = job.segmentProgress;
     if (sp && sp.total) bits.push('segment ' + sp.index + '/' + sp.total + ' · ' + sp.start + '–' + sp.end + 's');
+    var density = (job.chartDensity || (job.result && job.result.analysis && job.result.analysis.chartDensity) || '').trim();
+    if (density) bits.push(humanDensityLabel(density));
     var capMeta = job.captureMeta || {};
     if (capMeta.duration) bits.push('song: ' + Math.round(capMeta.duration) + 's');
     return bits.join(' · ');
@@ -39,14 +50,15 @@
     panel.id = "readyPanel";
     panel.className = "info-message";
     panel.style.fontSize = "13px";
-    panel.innerHTML = 'Mode: <span id="modeBadge">-</span> · Ready: <span id="readyBadge">no</span> · Notes: <span id="notesBadge">-</span>';
+    panel.innerHTML = 'Mode: <span id="modeBadge">-</span> · Ready: <span id="readyBadge">no</span> · Notes: <span id="notesBadge">-</span> · Density: <span id="densityBadge">-</span>';
     if (status) status.insertAdjacentElement("afterend", panel);
   }
-  function setReady(mode, ready, notes) {
+  function setReady(mode, ready, notes, density) {
     ensureReadyPanel();
     if (el("modeBadge")) el("modeBadge").textContent = mode || "-";
     if (el("readyBadge")) el("readyBadge").textContent = ready ? "yes" : "no";
     if (el("notesBadge")) el("notesBadge").textContent = String(notes == null ? "-" : notes);
+    if (el("densityBadge")) el("densityBadge").textContent = density ? humanDensityLabel(density) : '-';
   }
 
   function ensureSearchPanel() {
@@ -116,7 +128,7 @@
         if (game.syncReadyState) game.syncReadyState();
         if (game.updateHUD) game.updateHUD();
         startBtn.disabled = false;
-        setReady("offline", true, job.result.chart.notes.length);
+        setReady("offline", true, job.result.chart.notes.length, job.result.chart && job.result.chart.chartDensity);
         setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
       } catch (e) {
         // fallback to live stream mode when decode path fails
@@ -137,7 +149,7 @@
         if (game.syncReadyState) game.syncReadyState();
         if (game.updateHUD) game.updateHUD();
         startBtn.disabled = false;
-        setReady("offline", true, job.result.chart.notes.length + " notes");
+        setReady("offline", true, job.result.chart.notes.length + " notes", job.result.chart && job.result.chart.chartDensity);
         setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
       }
       if (el("searchPanel")) el("searchPanel").style.display = "none";
@@ -164,7 +176,7 @@
       if (game.syncReadyState) game.syncReadyState();
       if (game.updateHUD) game.updateHUD();
       startBtn.disabled = false;
-      setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-");
+      setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-", job.result.analysis && job.result.analysis.chartDensity);
       var modeText = ((job.result.analysis && job.result.analysis.analysisMode) || job.analysisMode || 'full');
       setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), humanModeLabel(modeText) + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
       return;
@@ -185,7 +197,7 @@
     if (game.syncReadyState) game.syncReadyState();
     if (game.updateHUD) game.updateHUD();
     startBtn.disabled = false;
-    setReady("online", true, "live");
+    setReady("online", true, "live", null);
     setStatus("success", "Link-play ready (" + job.result.player.type + ")");
     if (job.result.player.type === "web" || job.result.player.type === "bilibili") {
       setStatus("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
@@ -205,12 +217,12 @@
     startBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = false;
     analyzeCancelled = false;
-    setReady("-", false, "-");
+    setReady("-", false, "-", (el("chartDensitySelect") && el("chartDensitySelect").value) || "normal");
     setStatus("loading", "Analyzing link rhythm...");
     var resp = await fetch(API_BASE + "/api/analyze-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: url, difficulty: ((el("difficultySelect") && el("difficultySelect").value) || "normal"), playMode: ((el("playModeSelect") && el("playModeSelect").value) || "casual") })
+      body: JSON.stringify({ url: url, difficulty: ((el("difficultySelect") && el("difficultySelect").value) || "normal"), playMode: ((el("playModeSelect") && el("playModeSelect").value) || "casual"), analysisStrategy: ((el("analysisStrategySelect") && el("analysisStrategySelect").value) || "auto"), chartDensity: ((el("chartDensitySelect") && el("chartDensitySelect").value) || "normal") })
     });
     var created = await resp.json();
     currentAnalyzeJobId = created.jobId || null;
@@ -230,7 +242,7 @@
       if (el("cancelAnalyze")) el("cancelAnalyze").disabled = true;
       currentAnalyzeJobId = null;
       setStatus("error", e.message || "Unknown error");
-      setReady("error", false, "-");
+      setReady("error", false, "-", null);
       if (window.game) {
         window.game.readyMode = null;
         if (window.game.syncReadyState) window.game.syncReadyState();
@@ -252,7 +264,7 @@
       }
     } catch (_) {}
     setStatus("error", "Analysis cancelled");
-    setReady("cancelled", false, "-");
+    setReady("cancelled", false, "-", null);
     if (window.game) {
       window.game.readyMode = null;
       if (window.game.syncReadyState) window.game.syncReadyState();
