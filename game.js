@@ -39,6 +39,7 @@ class RhythmGame {
         this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
         this.visualBursts = [];
+        this.signatureBursts = [];
         this.groupHistory = [];
         this.activeGroupState = null;
         
@@ -160,6 +161,7 @@ class RhythmGame {
         this.dragNoteFrequency = 0.25; // Probability of drag note appearance reduced to 25%
         this.currentDragNote = null; // Currently dragged button
         this.currentHoldNote = null;
+        this.currentGateNote = null;
         this.pointerState = { down: false, x: 0, y: 0, startedAt: 0, startX: 0, startY: 0 };
         this.dragNoteMinDistance = this.circleSize * 4; // Minimum distance for drag notes
         this.dragNoteMaxDistance = this.circleSize * 6; // Maximum distance for drag notes
@@ -315,6 +317,7 @@ class RhythmGame {
         this.frozenGameTime = 0;
         this.lastPlaybackHealthyAt = 0;
         this.visualBursts = [];
+        this.signatureBursts = [];
         this.groupHistory = [];
         this.activeGroupState = null;
         this.recentBeatStrengths = []; // Used to store recent beat strengths
@@ -1437,9 +1440,17 @@ class RhythmGame {
                 const gateWidth = note.gateWidth || this.circleSize * 2.6;
                 const gateHeight = this.circleSize * 1.35;
                 const gateAlpha = 0.18 + note.approachProgress * 0.18;
+                const gatePulse = 1 + Math.sin(performance.now() / 120) * 0.06;
                 this.ctx.strokeStyle = `rgba(255, 215, 168, ${gateAlpha})`;
                 this.ctx.lineWidth = 3;
-                this.ctx.strokeRect(note.x - gateWidth / 2, note.y - gateHeight / 2, gateWidth, gateHeight);
+                this.ctx.strokeRect(note.x - (gateWidth * gatePulse) / 2, note.y - gateHeight / 2, gateWidth * gatePulse, gateHeight);
+                this.ctx.beginPath();
+                this.ctx.moveTo(note.x, note.y - gateHeight * 0.75);
+                this.ctx.lineTo(note.x, note.y + gateHeight * 0.75);
+                this.ctx.strokeStyle = `rgba(255, 244, 217, ${Math.min(0.42, gateAlpha + 0.08)})`;
+                this.ctx.setLineDash([8, 8]);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]);
             }
 
             if (note.noteType === 'pulseHold') {
@@ -1466,6 +1477,25 @@ class RhythmGame {
             if (note.isDrag) {
                 // Draw curved track
                 const palette = this.getNotePalette(note);
+                if (note.noteType === 'ribbon') {
+                    const ribbonPts = [];
+                    for (let i = 0; i <= 40; i++) {
+                        const t = i / 40;
+                        const px = Math.pow(1-t, 2) * note.x + 2 * (1-t) * t * note.controlX + Math.pow(t, 2) * note.endX;
+                        const py = Math.pow(1-t, 2) * note.y + 2 * (1-t) * t * note.controlY + Math.pow(t, 2) * note.endY;
+                        ribbonPts.push({ x: px, y: py, wobble: Math.sin(t * Math.PI * 4 + performance.now() / 220) * this.circleSize * 0.08 });
+                    }
+                    this.ctx.beginPath();
+                    ribbonPts.forEach((pt, idx) => {
+                        const y = pt.y + pt.wobble;
+                        if (idx === 0) this.ctx.moveTo(pt.x, y);
+                        else this.ctx.lineTo(pt.x, y);
+                    });
+                    this.ctx.strokeStyle = 'rgba(255,215,168,.16)';
+                    this.ctx.lineWidth = this.circleSize * 0.92;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.stroke();
+                }
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
                 this.ctx.lineWidth = this.circleSize * (note.noteType === 'ribbon' ? 0.82 : 0.55);
@@ -1680,10 +1710,11 @@ class RhythmGame {
                     if (note.progress > 0.9) {
                         note.completed = true;
                         note.score = 'perfect';
-                        this.score += 1500 * (1 + this.combo * 0.1);
+                        this.score += (note.noteType === 'ribbon' ? 1850 : 1500) * (1 + this.combo * 0.1);
                         this.combo++;
                         this.recordJudgement('perfect');
                         this.createHitEffect(note.endX, note.endY, 'perfect');
+                        if (note.noteType === 'ribbon') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
                     } else if (note.progress > 0.7) {
                         note.completed = true;
                         note.score = 'good';
@@ -1765,6 +1796,29 @@ class RhythmGame {
                     note.holdProgress = 0;
                     this.currentHoldNote = note;
                     return;
+                }
+
+                if (note.noteType === 'gate') {
+                    const gateWidth = note.gateWidth || this.circleSize * 2.6;
+                    if (Math.abs(x - note.x) <= gateWidth * 0.32) {
+                        note.held = true;
+                        note.completed = true;
+                        note.hit = true;
+                        note.score = timingDiff <= this.perfectRange ? 'perfect' : (timingDiff <= this.goodRange ? 'good' : 'miss');
+                        if (note.score === 'miss') {
+                            this.combo = 0;
+                            this.recordJudgement('miss');
+                        } else {
+                            this.score += (note.score === 'perfect' ? 1450 : 900) * (1 + this.combo * 0.1);
+                            this.recordJudgement(note.score);
+                            this.combo++;
+                            this.createHitEffect(note.x, note.y, note.score);
+                            this.pushSignatureBurst(note.x, note.y, 'gate');
+                        }
+                        this.currentGateNote = null;
+                        this.updateHUD();
+                        return;
+                    }
                 }
 
                 if (note.noteType === 'flick' || note.noteType === 'cut') {
@@ -1948,6 +2002,7 @@ RhythmGame.prototype.getNotePalette = function (note) {
 RhythmGame.prototype.drawEnergyBurst = function () {
     const now = performance.now();
     this.visualBursts = this.visualBursts.filter(b => now - b.at < 550);
+    this.signatureBursts = this.signatureBursts.filter(b => now - b.at < 900);
     for (const b of this.visualBursts) {
         const t = Math.min(1, (now - b.at) / 550);
         const alpha = (1 - t) * 0.22;
@@ -1963,6 +2018,17 @@ RhythmGame.prototype.drawEnergyBurst = function () {
         this.ctx.lineWidth = 1.5;
         this.ctx.stroke();
     }
+    for (const b of this.signatureBursts) {
+        const t = Math.min(1, (now - b.at) / 900);
+        const alpha = (1 - t) * 0.28;
+        this.ctx.save();
+        this.ctx.translate(b.x, b.y);
+        this.ctx.rotate((b.rotate || 0) + t * 0.6);
+        this.ctx.strokeStyle = `rgba(255, 230, 183, ${alpha.toFixed(3)})`;
+        this.ctx.lineWidth = 2.5;
+        this.ctx.strokeRect(-b.size * (0.4 + t * 0.8), -b.size * 0.28, b.size * (0.8 + t * 1.6), b.size * 0.56);
+        this.ctx.restore();
+    }
 };
 
 RhythmGame.prototype.pushBurst = function (x, y, type) {
@@ -1973,6 +2039,17 @@ RhythmGame.prototype.pushBurst = function (x, y, type) {
     };
     this.visualBursts.push({ x, y, at: performance.now(), ...(map[type] || map.perfect) });
     this.updateHUD();
+};
+
+RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'gate') {
+    this.signatureBursts.push({
+        x,
+        y,
+        at: performance.now(),
+        kind,
+        size: kind === 'ribbon' ? this.circleSize * 2.2 : this.circleSize * 1.9,
+        rotate: kind === 'ribbon' ? 0.4 : 0
+    });
 };
 
 RhythmGame.prototype.drawComboHUD = function () {
@@ -2504,6 +2581,7 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
     const key = seg.start + ':' + seg.end;
     if (this.liveEngine.segmentKey === key) return;
     this.liveEngine.segmentKey = key;
+    this.liveEngine.signatureMode = seg.label === 'chorus' ? 'ribbon' : (seg.label === 'bridge' ? 'gate' : 'mixed');
     this.liveEngine.density = seg.energy === 'high' ? 1.2 : (seg.energy === 'mid' ? 0.95 : 0.72);
     this.liveEngine.dragQuotaPerBar = seg.dragRatio >= 0.24 ? 3 : (seg.dragRatio >= 0.16 ? 2 : 1);
     this.liveEngine.phrase.radius = seg.phraseRadius || (seg.label === 'chorus' ? 260 : seg.label === 'verse' ? 220 : 185);
@@ -2632,8 +2710,8 @@ RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0)
     if (note && note.type) return note.type;
     const segment = note?.segmentLabel || 'verse';
     const cycle = idx % 16;
-    if (segment === 'chorus' && cycle === 12) return 'ribbon';
-    if (segment === 'chorus' && cycle === 6) return 'gate';
+    if (segment === 'chorus' && (cycle === 12 || cycle === 13)) return 'ribbon';
+    if ((segment === 'chorus' && cycle === 6) || (segment === 'bridge' && cycle === 7)) return 'gate';
     if (cycle === 10) return 'pulseHold';
     if (cycle === 4) return 'flick';
     if (cycle === 14) return 'cut';
@@ -2642,6 +2720,8 @@ RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0)
 };
 
 RhythmGame.prototype.pickLiveNoteType = function (seq, groupIndex, preferDrag) {
+    if (groupIndex % 4 === 3 && seq % 4 === 0) return 'ribbon';
+    if (groupIndex % 3 === 2 && seq % 5 === 0) return 'gate';
     if (preferDrag && seq % 6 === 0) return seq % 12 === 0 ? 'ribbon' : 'drag';
     if (seq % 15 === 0) return 'gate';
     if (seq % 11 === 0) return 'pulseHold';
@@ -2692,9 +2772,11 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
     }
     if (note.noteType === 'ribbon') {
         note.ribbonWidth = this.circleSize * 0.9;
+        note.traceStrictness = 0.16;
     }
     if (note.noteType === 'gate') {
         note.gateWidth = note.gateWidth || this.circleSize * 2.6;
+        note.gateWindow = this.circleSize * 0.32;
     }
     return note;
 };
