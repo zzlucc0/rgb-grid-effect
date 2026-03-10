@@ -1780,13 +1780,32 @@ class RhythmGame {
 
 
 
+RhythmGame.prototype.getSegmentPalette = function (segmentLabel, groupIndex) {
+    const key = segmentLabel && this.segmentGroupPalettes[segmentLabel] ? segmentLabel : 'verse';
+    const arr = this.segmentGroupPalettes[key] || this.segmentGroupPalettes.verse;
+    const idx = Math.abs(Number(groupIndex || 0)) % arr.length;
+    return arr[idx] || arr[0];
+};
+
+RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
+    const palette = { ...(base || this.segmentGroupPalettes.verse[0]) };
+    if (note && note.isDrag) {
+        palette.core = palette.core;
+        palette.edge = palette.edge;
+        palette.glow = palette.glow.replace('.34', '.42').replace('.32', '.4').replace('.3', '.38').replace('.26', '.34').replace('.24', '.32');
+    }
+    if (note && note.energy >= 0.95) {
+        palette.glow = palette.glow.replace('.34', '.42').replace('.32', '.4').replace('.3', '.38').replace('.26', '.32').replace('.24', '.3');
+    }
+    return palette;
+};
+
 RhythmGame.prototype.getNotePalette = function (note) {
-    if (note.score === 'perfect') return { core: '#8dfff4', edge: '#54f1ff', glow: 'rgba(84,241,255,.45)' };
-    if (note.score === 'good') return { core: '#ffe89b', edge: '#ffb84d', glow: 'rgba(255,184,77,.4)' };
+    if (note.score === 'perfect') return { core: '#fff3cf', edge: '#ffd978', glow: 'rgba(255,217,120,.45)' };
+    if (note.score === 'good') return { core: '#ffd9e5', edge: '#ff9bb4', glow: 'rgba(255,155,180,.4)' };
     if (note.score === 'miss') return { core: '#ff899f', edge: '#ff5f76', glow: 'rgba(255,95,118,.35)' };
-    if (note.isDrag) return { core: '#ffd38a', edge: '#ffb84d', glow: 'rgba(255,184,77,.36)' };
-    if (note.energy >= 0.95) return { core: '#ffe9a8', edge: '#54f1ff', glow: 'rgba(84,241,255,.4)' };
-    return { core: '#e9f8ff', edge: '#54f1ff', glow: 'rgba(84,241,255,.26)' };
+    const base = note.groupPalette || this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex || note.phrase || 0);
+    return this.decoratePaletteForNote(base, note);
 };
 
 RhythmGame.prototype.drawEnergyBurst = function () {
@@ -2113,6 +2132,7 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     const pos = this.pickSpawnPosition();
     if (!pos) return null;
     this.globalNoteSeq += 1;
+    const liveSeg = this.getCurrentSegment(hitTime) || { label: 'live' };
     const note = {
         x: pos.x,
         y: pos.y,
@@ -2127,8 +2147,12 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         isDrag: Boolean(isDrag),
         held: false,
         completed: false,
-        progress: 0
+        progress: 0,
+        segmentLabel: liveSeg.label || 'live',
+        groupIndex: this.liveEngine ? (this.liveEngine.bar || 0) : 0
     };
+
+    note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'live', note.groupIndex);
 
     if (note.isDrag) {
         const d = this.circleSize * (3.4 + Math.random() * 1.3);
@@ -2177,8 +2201,12 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         completed: false,
         progress: 0,
         segmentLabel: chartNote.segmentLabel || null,
-        laneHint: laneIndex
+        laneHint: laneIndex,
+        phrase: Number.isFinite(chartNote.phrase) ? chartNote.phrase : Math.floor(chartIndex / 6),
+        groupIndex: Number.isFinite(chartNote.phrase) ? chartNote.phrase : Math.floor(chartIndex / 6)
     };
+
+    note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex);
 
     if (note.isDrag) {
         const dragLanes = [laneIndex - 1, laneIndex + 1, laneIndex + (chartIndex % 2 === 0 ? 1 : -1), laneIndex];
