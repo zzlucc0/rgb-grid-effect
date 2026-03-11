@@ -346,6 +346,14 @@ class RhythmGame {
     }
 
     async startGame() {
+        await this.prepareRun();
+        await this.runCountdown();
+        const dataArray = this.beginRun();
+        this.startPlaybackBackend();
+        this.gameLoop(dataArray);
+    }
+
+    async prepareRun() {
         try {
             if (this.audioContext && this.audioContext.state !== 'running') {
                 await this.audioContext.resume();
@@ -357,10 +365,10 @@ class RhythmGame {
         this.score = 0;
         this.combo = 0;
         this.notes = [];
-        this.beatCount = 0; // Reset beat count
-        this.noteCount = 0; // Reset note count
+        this.beatCount = 0;
+        this.noteCount = 0;
         this.nextChartIndex = 0;
-        this.isGroupPaused = false; // Reset pause state
+        this.isGroupPaused = false;
         this.playbackViolations = [];
         this.runInvalid = false;
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
@@ -368,7 +376,7 @@ class RhythmGame {
         this.livePlaybackStarted = false;
         this.livePlaybackState = 'idle';
         this.spawnedChartNotes = 0;
-        this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
+        this.currentGroupSize = this.notesPerGroup;
         this.gameState = 'starting';
         this.playMode = (this.liveConfig && this.liveConfig.playMode) || document.getElementById('playModeSelect')?.value || 'casual';
         this.pauseReason = 'none';
@@ -380,11 +388,10 @@ class RhythmGame {
         this.signatureBursts = [];
         this.groupHistory = [];
         this.activeGroupState = null;
-        this.recentBeatStrengths = []; // Used to store recent beat strengths
-        this.analyzedSections = []; // Store pre-analyzed song sections
+        this.recentBeatStrengths = [];
+        this.analyzedSections = [];
         this.updateHUD();
-        
-        // Create offline audio context to pre-analyze the song (only when needed)
+
         const statusText = document.getElementById('statusText');
         if (!this.chartMode && !this.liveMode) {
             if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Analyzing beats (preAnalyzeSong)...</div>";
@@ -393,8 +400,7 @@ class RhythmGame {
             this.analyzedSections = [];
             this.vocalSections = [];
         }
-        
-        // Chart mode uses backend chart timing; no client-side pre-analysis required
+
         if (this.liveMode) {
             this.initLiveEngine();
         }
@@ -436,12 +442,14 @@ class RhythmGame {
             })));
             if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Chart loaded: " + this.chartData.notes.length + " notes · first @ " + this.chartData.notes[0].time + "s</div>";
         }
+    }
 
-        // Display countdown while showing analysis results
+    async runCountdown() {
         this.setScene('countdown');
-        await this.showCountdown(3); // 3-second countdown
-        
-        // Start the game after countdown ends
+        await this.showCountdown(3);
+    }
+
+    beginRun() {
         this.isPlaying = true;
         this.gameState = 'playing';
         this.setScene('playing');
@@ -449,11 +457,8 @@ class RhythmGame {
         this._liveStartWall = performance.now();
         this.updatePauseUI();
 
-        // Start game source
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-        if (this.liveMode) {
-            this.startLivePlayback();
-        } else {
+        if (!this.liveMode) {
             const source = this.audioContext.createBufferSource();
             source.buffer = this.audioBuffer;
             source.connect(this.analyser);
@@ -462,9 +467,20 @@ class RhythmGame {
             dataArray = new Uint8Array(this.analyser.frequencyBinCount);
             source.start();
         }
+        return dataArray;
+    }
 
-        // Start game loop
-        this.gameLoop(dataArray);
+    startPlaybackBackend() {
+        if (!this.liveMode) return;
+        try {
+            this.startLivePlayback();
+        } catch (err) {
+            console.error('startLivePlayback failed:', err);
+            this.livePlaybackState = 'backend-error';
+            const statusText = document.getElementById('statusText');
+            if (statusText) statusText.innerHTML = '<div class="error-message">Playback backend failed: ' + (err?.message || err) + '</div>';
+            this.updateHUD();
+        }
     }
     
     // Pre-analyze the song, identify vocal parts and plan button generation
@@ -782,7 +798,8 @@ class RhythmGame {
         }
         if (debugPlaybackState) {
             const mode = this.liveMode ? (this.livePlaybackState || 'idle') : 'offline';
-            debugPlaybackState.textContent = `${this.scene || 'input'}:${mode}/${this.spawnedChartNotes || 0}`;
+            const phase = this.gameState || 'idle';
+            debugPlaybackState.textContent = `${this.scene || 'input'}:${phase}:${mode}/${this.spawnedChartNotes || 0}`;
         }
     }
 
@@ -2314,7 +2331,7 @@ RhythmGame.prototype.startLivePlayback = function () {
         if (!PlayerCtor) {
             this.markLivePlaybackState('yt-api-missing');
             const statusText = document.getElementById('statusText');
-            if (statusText) statusText.innerHTML = '<div class="error-message">YouTube player API not ready yet. Please wait a moment and press Start again.</div>';
+            if (statusText) statusText.innerHTML = '<div class="error-message">YouTube player API not ready yet. Game has entered play state; playback attach is still pending.</div>';
             return;
         }
         const playerConfig = {
