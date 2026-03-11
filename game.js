@@ -236,6 +236,7 @@ class RhythmGame {
 
     setupLoadedState(mode) {
         this.readyMode = mode || null;
+        if (!this.isPlaying) this.gameState = 'ready';
         this.syncReadyState();
         this.updateHUD();
     }
@@ -303,6 +304,7 @@ class RhythmGame {
         this.chartMode = false;
         this.liveMode = false;
         this.readyMode = null;
+        if (!this.isPlaying) this.gameState = 'idle';
         this.setScene('input', { error: errorMessage || '' });
         this.syncReadyState();
         this.updateHUD();
@@ -791,14 +793,6 @@ class RhythmGame {
         if (startButton && !this.isPlaying && this.gameState !== 'starting') {
             startButton.disabled = !ready;
         }
-        if (!this.isPlaying && this.gameState === 'idle' && ready) {
-            this.gameState = 'ready';
-        } else if (!this.isPlaying && (this.gameState === 'ready' || this.gameState === 'idle') && !ready) {
-            this.gameState = 'idle';
-        }
-        const sceneCanAutoSwitch = !this.isPlaying && (this.gameState === 'idle' || this.gameState === 'ready');
-        if (sceneCanAutoSwitch && ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'ready';
-        if (sceneCanAutoSwitch && !ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'input';
         this.renderScene();
         return ready;
     }
