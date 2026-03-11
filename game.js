@@ -719,20 +719,24 @@ class RhythmGame {
             return;
         }
 
-        // Get audio data
-        if (!this.liveMode) this.analyser.getByteFrequencyData(dataArray);
+        try {
+            if (!this.liveMode) this.analyser.getByteFrequencyData(dataArray);
+            this.generateNotes(dataArray);
+            this.updateNotes();
+            this.drawNotes();
+            this.updateVisualEffects();
+            this.updateHUD();
+        } catch (err) {
+            console.error('gameLoop runtime error:', err);
+            const statusText = document.getElementById('statusText');
+            if (statusText) {
+                statusText.innerHTML = '<div class="error-message">Runtime error: ' + (err?.message || err) + '</div>';
+            }
+            this.livePlaybackState = 'runtime-error';
+            this.updateHUD();
+            return;
+        }
 
-        // Generate notes based on audio data
-        this.generateNotes(dataArray);
-
-        // Update and draw notes
-        this.updateNotes();
-        this.drawNotes();
-        
-        // Update visual effects
-        this.updateVisualEffects();
-
-        // Continue loop
         requestAnimationFrame(() => this.gameLoop(dataArray));
     }
 
