@@ -257,11 +257,24 @@ class RhythmGame {
         }
     }
 
-    setStatusMessage(type, text) {
+    setStatusMessage(type, text, metaHtml = '') {
         const statusText = document.getElementById('statusText');
         if (!statusText) return;
         const cls = type === 'error' ? 'error-message' : (type === 'success' ? 'success-message' : (type === 'info' ? 'info-message' : 'loading-message'));
-        statusText.innerHTML = `<div class="${cls}">${text}</div>`;
+        statusText.innerHTML = `<div class="${cls}">${text}</div>` + (metaHtml ? `<div class="note-message" style="margin-top:6px;font-size:12px;opacity:0.9;">${metaHtml}</div>` : '');
+    }
+
+    setReadySummary(mode, ready, notes, densityLabel) {
+        const panel = document.getElementById('readyPanel');
+        if (!panel) return;
+        const modeBadge = document.getElementById('modeBadge');
+        const readyBadge = document.getElementById('readyBadge');
+        const notesBadge = document.getElementById('notesBadge');
+        const densityBadge = document.getElementById('densityBadge');
+        if (modeBadge) modeBadge.textContent = mode || '-';
+        if (readyBadge) readyBadge.textContent = ready ? 'yes' : 'no';
+        if (notesBadge) notesBadge.textContent = String(notes == null ? '-' : notes);
+        if (densityBadge) densityBadge.textContent = densityLabel || '-';
     }
 
     setupLoadedState(mode) {

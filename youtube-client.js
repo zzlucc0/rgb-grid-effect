@@ -98,7 +98,8 @@
       else if (j.step === "analyzing rhythm") stepText = "Analyzing… detecting BPM / beats / segments";
       else if (/^analyzing segment /.test(j.step || '')) stepText = "Analyzing… building segmented full-song chart";
       else if (j.step === "analysis ready") stepText = "Analysis complete";
-      setStatus("loading", stepText, formatAnalyzeMeta(j));
+      if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("loading", stepText, formatAnalyzeMeta(j));
+      else setStatus("loading", stepText, formatAnalyzeMeta(j));
 
       if (analyzeCancelled) throw new Error("analysis cancelled");
       if (j.status === "done") return j;
@@ -157,9 +158,12 @@
       };
       if (game.loadOnlineAnalyzedRuntime) game.loadOnlineAnalyzedRuntime(job.result.chart, analyzedConfig);
       startBtn.disabled = false;
-      setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-", job.result.analysis && job.result.analysis.chartDensity);
+      var analyzedNotes = (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-";
+      if (game.setReadySummary) game.setReadySummary("online-analyzed", true, analyzedNotes, humanDensityLabel(job.result.analysis && job.result.analysis.chartDensity));
+      else setReady("online-analyzed", true, analyzedNotes, job.result.analysis && job.result.analysis.chartDensity);
       var modeText = ((job.result.analysis && job.result.analysis.analysisMode) || job.analysisMode || 'full');
-      setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), humanModeLabel(modeText) + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
+      if (game.setStatusMessage) game.setStatusMessage("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), humanModeLabel(modeText) + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
+      else setStatus("success", "Analysis ready · BPM " + (((job.result.analysis && job.result.analysis.bpm) || 122)) + " · " + ((job.result.chart && job.result.chart.difficulty) || "normal") + " · " + ((((el("playModeSelect") && el("playModeSelect").value) || "casual")) ) + " · notes: " + (((job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || 0)), humanModeLabel(modeText) + ((job.result.analysis && job.result.analysis.fullDuration) ? (" · cover ≈ " + Math.round(job.result.analysis.fullDuration) + "s") : ''));
       return;
     }
 
@@ -216,8 +220,10 @@
     } catch (e) {
       if (el("cancelAnalyze")) el("cancelAnalyze").disabled = true;
       currentAnalyzeJobId = null;
-      setStatus("error", e.message || "Unknown error");
-      setReady("error", false, "-", null);
+      if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", e.message || "Unknown error");
+      else setStatus("error", e.message || "Unknown error");
+      if (window.game && window.game.setReadySummary) window.game.setReadySummary("error", false, "-", '-');
+      else setReady("error", false, "-", null);
       if (window.game && window.game.clearLoadedState) {
         window.game.clearLoadedState(e.message || 'Unknown error');
       }
@@ -236,8 +242,10 @@
         await fetch(API_BASE + "/api/job/" + jid + "/cancel", { method: "POST" });
       }
     } catch (_) {}
-    setStatus("error", "Analysis cancelled");
-    setReady("cancelled", false, "-", null);
+    if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Analysis cancelled");
+    else setStatus("error", "Analysis cancelled");
+    if (window.game && window.game.setReadySummary) window.game.setReadySummary("cancelled", false, "-", '-');
+    else setReady("cancelled", false, "-", null);
     if (window.game && window.game.clearLoadedState) {
       window.game.clearLoadedState('Analysis cancelled');
     }
