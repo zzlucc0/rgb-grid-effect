@@ -792,23 +792,7 @@ class RhythmGame {
 
         if (this.chartMode && this.chartData?.notes?.length) {
             if (this.liveMode) this.applySegmentProfile(currentTime);
-            while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= currentTime + this.approachRate / 1000) {
-                const chartIndex = this.nextChartIndex;
-                const chartNote = this.chartData.notes[chartIndex];
-
-                if (chartNote.time < currentTime - (this.goodRange / 1000)) {
-                    this.nextChartIndex += 1;
-                    continue;
-                }
-
-                const note = this.createChartNoteFromData(currentTime, chartNote, chartIndex);
-                if (!note) {
-                    break;
-                }
-                this.nextChartIndex += 1;
-                this.notes.push(note);
-                this.spawnedChartNotes += 1;
-            }
+            this.spawnChartNotesUpTo(currentTime);
             return;
         }
 
@@ -2139,11 +2123,38 @@ RhythmGame.prototype.drawComboHUD = function () {
 
 
 
+RhythmGame.prototype.getChartWallClockTime = function () {
+    return Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
+};
+
+RhythmGame.prototype.spawnChartNotesUpTo = function (currentTime) {
+    const chartTime = Number.isFinite(Number(currentTime)) ? Number(currentTime) : 0;
+    if (!(this.chartMode && this.chartData?.notes?.length)) return 0;
+    let spawned = 0;
+    while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= chartTime + this.approachRate / 1000) {
+        const chartIndex = this.nextChartIndex;
+        const chartNote = this.chartData.notes[chartIndex];
+
+        if (chartNote.time < chartTime - (this.goodRange / 1000)) {
+            this.nextChartIndex += 1;
+            continue;
+        }
+
+        const note = this.createChartNoteFromData(chartTime, chartNote, chartIndex);
+        if (!note) break;
+        this.nextChartIndex += 1;
+        this.notes.push(note);
+        this.spawnedChartNotes += 1;
+        spawned += 1;
+    }
+    return spawned;
+};
+
 RhythmGame.prototype.getGameClockTime = function () {
     if (this.gameState === 'paused-user' || this.gameState === 'paused-system') return this.frozenGameTime || 0;
     if (this.liveMode) {
         const liveT = this.getLiveCurrentTime();
-        const wallT = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
+        const wallT = this.getChartWallClockTime();
         if (this.chartMode) {
             if (this.livePlaybackStarted) return Math.max(liveT || 0, wallT || 0);
             return wallT || 0;
@@ -2720,8 +2731,14 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
     this.liveMonitorTimer = setInterval(() => {
         if (!this.isPlaying || !this.liveMode || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
         const t = this.getLiveCurrentTime();
-        const runSec = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
+        const runSec = this.getChartWallClockTime();
         const startupGrace = runSec < 6;
+        if (this.chartMode && this.chartData?.notes?.length) {
+            this.spawnChartNotesUpTo(runSec);
+            if (this.nextChartIndex === 0 && runSec >= 1.25) {
+                this.spawnChartNotesUpTo(Math.max(runSec, Number(this.chartData.notes[0]?.time || 0)));
+            }
+        }
         if (prevT >= 0 && t + 0.35 < prevT) {
             this.runInvalid = true;
             this.playbackViolations.push({ type: 'seek-back', at: Date.now() });
