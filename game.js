@@ -430,11 +430,19 @@ class RhythmGame {
     }
 
     async startGame() {
+        await this.enterRunStartSequence();
+    }
+
+    async enterRunStartSequence() {
         await this.prepareRun();
         await this.runCountdown();
         const dataArray = this.beginRun();
         this.startPlaybackBackend();
-        this.gameLoop(dataArray);
+        this.armGameLoop(dataArray);
+    }
+
+    armGameLoop(dataArray) {
+        requestAnimationFrame(() => this.gameLoop(dataArray));
     }
 
     async prepareRun() {
@@ -564,6 +572,23 @@ class RhythmGame {
             if (statusText) statusText.innerHTML = '<div class="error-message">Playback backend failed: ' + (err?.message || err) + '</div>';
             this.updateHUD();
         }
+    }
+
+    async resumeRunSequence() {
+        const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
+        this.pauseAccumulated += pausedFor;
+        const overlayText = document.getElementById('pauseOverlayText');
+        for (const n of [3,2,1]) {
+            if (overlayText) overlayText.textContent = 'Resuming in ' + n;
+            await new Promise(r => setTimeout(r, 600));
+        }
+        this.setRunPhase('playing');
+        this.pauseReason = 'none';
+        this.resumePlaybackMedia();
+        this.updatePauseUI();
+        this.updateHUD();
+        const resumeArray = new Uint8Array(this.analyser.frequencyBinCount);
+        this.armGameLoop(resumeArray);
     }
     
     // Pre-analyze the song, identify vocal parts and plan button generation
@@ -2358,21 +2383,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
 
 RhythmGame.prototype.resumeGame = async function () {
     if (!(this.gameState === 'paused-user' || this.gameState === 'paused-system')) return;
-    const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
-    this.pauseAccumulated += pausedFor;
-    const overlayText = document.getElementById('pauseOverlayText');
-    const overlaySubtext = document.getElementById('pauseOverlaySubtext');
-    for (const n of [3,2,1]) {
-        if (overlayText) overlayText.textContent = 'Resuming in ' + n;
-        await new Promise(r => setTimeout(r, 600));
-    }
-    this.setRunPhase('playing');
-    this.pauseReason = 'none';
-    this.resumePlaybackMedia();
-    this.updatePauseUI();
-    this.updateHUD();
-    const resumeArray = new Uint8Array(this.analyser.frequencyBinCount);
-    requestAnimationFrame(() => this.gameLoop(resumeArray));
+    return this.resumeRunSequence();
 };
 
 // Live playback helpers (patched)
