@@ -35,6 +35,8 @@ class RhythmGame {
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
         this.globalNoteSeq = 0;
         this.gameState = 'idle';
+        this.scene = 'input';
+        this.lastStartError = '';
         this.pauseReason = 'none';
         this.pausedAt = 0;
         this.pauseAccumulated = 0;
@@ -212,6 +214,25 @@ class RhythmGame {
         this.updateHUD();
     }
 
+    setScene(scene, meta = {}) {
+        this.scene = scene || this.scene || 'input';
+        if (Object.prototype.hasOwnProperty.call(meta, 'error')) {
+            this.lastStartError = meta.error || '';
+        }
+        this.renderScene();
+        this.updateHUD();
+    }
+
+    renderScene() {
+        const uploadContainer = document.getElementById('uploadContainer');
+        const pauseOverlay = document.getElementById('pauseOverlay');
+        const showSetup = this.scene === 'input' || this.scene === 'ready';
+        if (uploadContainer) uploadContainer.classList.toggle('hidden', !showSetup);
+        if (pauseOverlay && (this.scene === 'countdown' || this.scene === 'playing' || this.scene === 'error')) {
+            pauseOverlay.classList.toggle('hidden', !(this.gameState === 'paused-user' || this.gameState === 'paused-system'));
+        }
+    }
+
     setupCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
@@ -269,15 +290,13 @@ class RhythmGame {
             console.log('Start button clicked', this.audioBuffer);
             if (this.audioBuffer || this.liveMode || this.readyMode) {
                 try {
-                    uploadContainer.classList.add('hidden');
+                    this.setScene('countdown', { error: '' });
                     await this.startGame();
                 } catch (err) {
                     console.error('startGame failed:', err);
-                    const alreadyTransitioned = this.isPlaying || this.gameState === 'playing' || this.gameState === 'paused-user' || this.gameState === 'paused-system';
-                    if (!alreadyTransitioned) uploadContainer.classList.remove('hidden');
                     statusText.innerHTML = '<div class="error-message">Start failed: ' + (err?.message || 'unknown error') + '</div>';
                     this.livePlaybackState = 'start-error';
-                    this.updateHUD();
+                    this.setScene('ready', { error: err?.message || 'unknown error' });
                 }
             } else {
                 statusText.innerHTML = '<div class="error-message">Please analyze or select media first</div>';
@@ -419,11 +438,13 @@ class RhythmGame {
         }
 
         // Display countdown while showing analysis results
+        this.setScene('countdown');
         await this.showCountdown(3); // 3-second countdown
         
         // Start the game after countdown ends
         this.isPlaying = true;
         this.gameState = 'playing';
+        this.setScene('playing');
         this.startTime = this.audioContext.currentTime;
         this._liveStartWall = performance.now();
         this.updatePauseUI();
@@ -689,6 +710,9 @@ class RhythmGame {
         } else if (!this.isPlaying && (this.gameState === 'ready' || this.gameState === 'idle') && !ready) {
             this.gameState = 'idle';
         }
+        if (!this.isPlaying && ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'ready';
+        if (!this.isPlaying && !ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'input';
+        this.renderScene();
         return ready;
     }
 
@@ -758,7 +782,7 @@ class RhythmGame {
         }
         if (debugPlaybackState) {
             const mode = this.liveMode ? (this.livePlaybackState || 'idle') : 'offline';
-            debugPlaybackState.textContent = `${mode}/${this.spawnedChartNotes || 0}`;
+            debugPlaybackState.textContent = `${this.scene || 'input'}:${mode}/${this.spawnedChartNotes || 0}`;
         }
     }
 

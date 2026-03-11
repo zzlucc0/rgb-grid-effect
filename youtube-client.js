@@ -125,6 +125,7 @@
         game.chartData = job.result.chart;
         game.nextChartIndex = 0;
         game.readyMode = "offline";
+        if (game.setScene) game.setScene('ready', { error: '' });
         if (game.syncReadyState) game.syncReadyState();
         if (game.updateHUD) game.updateHUD();
         startBtn.disabled = false;
@@ -146,6 +147,7 @@
           game.liveConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
         }
         game.readyMode = "offline";
+        if (game.setScene) game.setScene('ready', { error: '' });
         if (game.syncReadyState) game.syncReadyState();
         if (game.updateHUD) game.updateHUD();
         startBtn.disabled = false;
@@ -173,6 +175,7 @@
         player: job.result.player
       };
       game.readyMode = "online-analyzed";
+      if (game.setScene) game.setScene('ready', { error: '' });
       if (game.syncReadyState) game.syncReadyState();
       if (game.updateHUD) game.updateHUD();
       startBtn.disabled = false;
@@ -194,6 +197,7 @@
       player: job.result.player
     };
     game.readyMode = "online";
+    if (game.setScene) game.setScene('ready', { error: '' });
     if (game.syncReadyState) game.syncReadyState();
     if (game.updateHUD) game.updateHUD();
     startBtn.disabled = false;
@@ -245,6 +249,7 @@
       setReady("error", false, "-", null);
       if (window.game) {
         window.game.readyMode = null;
+        if (window.game.setScene) window.game.setScene('input', { error: e.message || 'Unknown error' });
         if (window.game.syncReadyState) window.game.syncReadyState();
         if (window.game.updateHUD) window.game.updateHUD();
       }
@@ -267,6 +272,7 @@
     setReady("cancelled", false, "-", null);
     if (window.game) {
       window.game.readyMode = null;
+      if (window.game.setScene) window.game.setScene('input', { error: 'Analysis cancelled' });
       if (window.game.syncReadyState) window.game.syncReadyState();
       if (window.game.updateHUD) window.game.updateHUD();
     }
