@@ -257,6 +257,13 @@ class RhythmGame {
         }
     }
 
+    setStatusMessage(type, text) {
+        const statusText = document.getElementById('statusText');
+        if (!statusText) return;
+        const cls = type === 'error' ? 'error-message' : (type === 'success' ? 'success-message' : (type === 'info' ? 'info-message' : 'loading-message'));
+        statusText.innerHTML = `<div class="${cls}">${text}</div>`;
+    }
+
     setupLoadedState(mode) {
         this.readyMode = mode || null;
         if (!this.isPlaying) this.setRunPhase('ready');
@@ -346,8 +353,6 @@ class RhythmGame {
     setupEventListeners() {
         const audioUpload = document.getElementById('audioUpload');
         const startButton = document.getElementById('startGame');
-        const uploadContainer = document.getElementById('uploadContainer');
-        const statusText = document.getElementById('statusText');
         const pauseBtn = document.getElementById('pauseGameBtn');
         const resumeBtn = document.getElementById('resumeGameBtn');
         const hudPauseBtn = document.getElementById('hudPauseBtn');
@@ -368,15 +373,15 @@ class RhythmGame {
                             file.name;
                     }
                     
-                    statusText.innerHTML = `<div class="loading-message">Loading...</div>`;
+                    this.setStatusMessage('loading', 'Loading...');
                     const arrayBuffer = await file.arrayBuffer();
                     const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
                     this.loadOfflineAudioBuffer(audioBuffer);
-                    statusText.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
+                    this.setStatusMessage('success', 'File loaded successfully!');
                 } catch (error) {
                     console.error('Error loading audio file:', error);
                     this.clearLoadedState('Failed to load audio file');
-                    statusText.innerHTML = '<div class="error-message">Failed to load audio file, please try another file</div>';
+                    this.setStatusMessage('error', 'Failed to load audio file, please try another file');
                 }
             }
         });
@@ -390,12 +395,12 @@ class RhythmGame {
                     await this.startGame();
                 } catch (err) {
                     console.error('startGame failed:', err);
-                    statusText.innerHTML = '<div class="error-message">Start failed: ' + (err?.message || 'unknown error') + '</div>';
+                    this.setStatusMessage('error', 'Start failed: ' + (err?.message || 'unknown error'));
                     this.livePlaybackState = 'start-error';
                     this.setScene('ready', { error: err?.message || 'unknown error' });
                 }
             } else {
-                statusText.innerHTML = '<div class="error-message">Please analyze or select media first</div>';
+                this.setStatusMessage('error', 'Please analyze or select media first');
             }
         });
 
@@ -496,9 +501,8 @@ class RhythmGame {
         this.analyzedSections = [];
         this.updateHUD();
 
-        const statusText = document.getElementById('statusText');
         if (!this.chartMode && !this.liveMode) {
-            if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Analyzing beats (preAnalyzeSong)...</div>";
+            this.setStatusMessage('loading', 'Analyzing beats (preAnalyzeSong)...');
             await this.preAnalyzeSong();
         } else {
             this.analyzedSections = [];
@@ -544,7 +548,7 @@ class RhythmGame {
                 phrase: n.phrase,
                 slot: n.groupSlot
             })));
-            if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Chart loaded: " + this.chartData.notes.length + " notes · first @ " + this.chartData.notes[0].time + "s</div>";
+            this.setStatusMessage('loading', 'Chart loaded: ' + this.chartData.notes.length + ' notes · first @ ' + this.chartData.notes[0].time + 's');
         }
     }
 
@@ -580,8 +584,7 @@ class RhythmGame {
         } catch (err) {
             console.error('startLivePlayback failed:', err);
             this.livePlaybackState = 'backend-error';
-            const statusText = document.getElementById('statusText');
-            if (statusText) statusText.innerHTML = '<div class="error-message">Playback backend failed: ' + (err?.message || err) + '</div>';
+            this.setStatusMessage('error', 'Playback backend failed: ' + (err?.message || err));
             this.updateHUD();
         }
     }
@@ -932,10 +935,7 @@ class RhythmGame {
             this.updateHUD();
         } catch (err) {
             console.error('gameLoop runtime error:', err);
-            const statusText = document.getElementById('statusText');
-            if (statusText) {
-                statusText.innerHTML = '<div class="error-message">Runtime error: ' + (err?.message || err) + '</div>';
-            }
+            this.setStatusMessage('error', 'Runtime error: ' + (err?.message || err));
             this.livePlaybackState = 'runtime-error';
             this.updateHUD();
             return;
@@ -2450,8 +2450,7 @@ RhythmGame.prototype.startLivePlayback = function () {
         const PlayerCtor = YTApi && YTApi.Player;
         if (!PlayerCtor) {
             this.markLivePlaybackState('yt-api-missing');
-            const statusText = document.getElementById('statusText');
-            if (statusText) statusText.innerHTML = '<div class="error-message">YouTube player API not ready yet. Game has entered play state; playback attach is still pending.</div>';
+            this.setStatusMessage('error', 'YouTube player API not ready yet. Game has entered play state; playback attach is still pending.');
             return;
         }
         const playerConfig = {
@@ -2495,8 +2494,7 @@ RhythmGame.prototype.startLivePlayback = function () {
         } catch (err) {
             console.error('YouTube player init failed:', err);
             this.markLivePlaybackState('yt-init-error');
-            const statusText = document.getElementById('statusText');
-            if (statusText) statusText.innerHTML = '<div class="error-message">YouTube player init failed: ' + (err?.message || err) + '</div>';
+            this.setStatusMessage('error', 'YouTube player init failed: ' + (err?.message || err));
         }
         return;
     }
