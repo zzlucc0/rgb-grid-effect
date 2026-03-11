@@ -27,6 +27,9 @@ class RhythmGame {
         this._liveStartWall = 0;
         this.liveEngine = null;
         this.liveMonitorTimer = null;
+        this.livePlaybackStarted = false;
+        this.livePlaybackState = 'idle';
+        this.spawnedChartNotes = 0;
         this.playbackViolations = [];
         this.runInvalid = false;
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
@@ -308,6 +311,9 @@ class RhythmGame {
         this.runInvalid = false;
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
         this.globalNoteSeq = 0;
+        this.livePlaybackStarted = false;
+        this.livePlaybackState = 'idle';
+        this.spawnedChartNotes = 0;
         this.currentGroupSize = this.notesPerGroup; // Initialize to minimum value
         this.gameState = 'starting';
         this.playMode = (this.liveConfig && this.liveConfig.playMode) || document.getElementById('playModeSelect')?.value || 'casual';
@@ -646,6 +652,7 @@ class RhythmGame {
         const debugChartProgress = document.getElementById('debugChartProgress');
         const debugActiveNotes = document.getElementById('debugActiveNotes');
         const debugGroupState = document.getElementById('debugGroupState');
+        const debugPlaybackState = document.getElementById('debugPlaybackState');
         const comboNode = document.getElementById('comboValue');
         const modeNode = document.getElementById('hudMode');
         const diffNode = document.getElementById('hudDifficulty');
@@ -699,6 +706,10 @@ class RhythmGame {
             const active = this.activeGroupState;
             debugGroupState.textContent = active ? `${active.pattern}:${active.size}` : '--';
         }
+        if (debugPlaybackState) {
+            const mode = this.liveMode ? (this.livePlaybackState || 'idle') : 'offline';
+            debugPlaybackState.textContent = `${mode}/${this.spawnedChartNotes || 0}`;
+        }
     }
 
     gameLoop(dataArray) {
@@ -745,6 +756,7 @@ class RhythmGame {
                 }
                 this.nextChartIndex += 1;
                 this.notes.push(note);
+                this.spawnedChartNotes += 1;
             }
             return;
         }
@@ -2075,6 +2087,10 @@ RhythmGame.prototype.getGameClockTime = function () {
     if (this.liveMode) {
         const liveT = this.getLiveCurrentTime();
         const wallT = Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
+        if (this.chartMode) {
+            if (this.livePlaybackStarted) return Math.max(liveT || 0, wallT || 0);
+            return wallT || 0;
+        }
         return Math.max(liveT || 0, wallT || 0);
     }
     return Math.max(0, this.audioContext.currentTime - this.startTime - (this.pauseAccumulated || 0));
@@ -2173,30 +2189,71 @@ RhythmGame.prototype.resumeGame = async function () {
 };
 
 // Live playback helpers (patched)
+RhythmGame.prototype.markLivePlaybackState = function (state) {
+    this.livePlaybackState = state || this.livePlaybackState || 'idle';
+    if (state === 'playing') this.livePlaybackStarted = true;
+    this.updateHUD();
+};
+
+RhythmGame.prototype.bindLiveAudioEvents = function (audioEl) {
+    if (!audioEl || audioEl._rgbBound) return;
+    audioEl._rgbBound = true;
+    audioEl.addEventListener('playing', () => this.markLivePlaybackState('playing'));
+    audioEl.addEventListener('play', () => this.markLivePlaybackState('play'));
+    audioEl.addEventListener('waiting', () => this.markLivePlaybackState('waiting'));
+    audioEl.addEventListener('pause', () => { if (this.isPlaying) this.markLivePlaybackState('paused'); });
+    audioEl.addEventListener('error', () => this.markLivePlaybackState('error'));
+    audioEl.addEventListener('timeupdate', () => {
+        if ((audioEl.currentTime || 0) > 0.05) this.livePlaybackStarted = true;
+    });
+};
+
 RhythmGame.prototype.startLivePlayback = function () {
     const holder = document.getElementById("livePlayerHolder");
 
-    if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "youtube" && window.YT && window.YT.Player) {
-        // Keep hidden for YouTube "background" mode (no user seek/controls)
+    if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "youtube") {
         if (holder) holder.classList.add("hidden");
+        this.markLivePlaybackState('loading');
+        if (!(window.YT && window.YT.Player)) {
+            this.markLivePlaybackState('yt-api-missing');
+            return;
+        }
+        const playerConfig = {
+            height: "1",
+            width: "1",
+            videoId: this.liveConfig.player.videoId,
+            playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                rel: 0,
+                modestbranding: 1,
+                iv_load_policy: 3,
+                fs: 0,
+                playsinline: 1
+            },
+            events: {
+                onReady: (ev) => {
+                    this.markLivePlaybackState('ready');
+                    try { ev.target.playVideo(); } catch (_) {}
+                },
+                onStateChange: (ev) => {
+                    const YTState = window.YT && window.YT.PlayerState;
+                    if (!YTState) return;
+                    if (ev.data === YTState.PLAYING) this.markLivePlaybackState('playing');
+                    else if (ev.data === YTState.BUFFERING) this.markLivePlaybackState('buffering');
+                    else if (ev.data === YTState.PAUSED) this.markLivePlaybackState('paused');
+                    else if (ev.data === YTState.ENDED) this.markLivePlaybackState('ended');
+                    else if (ev.data === YTState.CUED) this.markLivePlaybackState('cued');
+                },
+                onError: () => this.markLivePlaybackState('error')
+            }
+        };
         if (!this._ytPlayer) {
-            this._ytPlayer = new YT.Player("ytPlayer", {
-                height: "1",
-                width: "1",
-                videoId: this.liveConfig.player.videoId,
-                playerVars: {
-                    autoplay: 1,
-                    controls: 0,
-                    disablekb: 1,
-                    rel: 0,
-                    modestbranding: 1,
-                    iv_load_policy: 3,
-                    fs: 0,
-                    playsinline: 1
-                }
-            });
+            this._ytPlayer = new YT.Player("ytPlayer", playerConfig);
         } else {
-            this._ytPlayer.loadVideoById(this.liveConfig.player.videoId);
+            try { this._ytPlayer.loadVideoById(this.liveConfig.player.videoId); } catch (_) {}
+            this.markLivePlaybackState('reloading');
         }
         return;
     }
@@ -2205,6 +2262,8 @@ RhythmGame.prototype.startLivePlayback = function () {
     const a = document.getElementById("liveAudio");
     if (a) a.controls = false;
     if (!a || !this.liveConfig || !this.liveConfig.player) return;
+    this.bindLiveAudioEvents(a);
+    this.markLivePlaybackState('loading');
 
     if (this.liveConfig.player.type === "hls") {
         const src = this.liveConfig.player.url;
@@ -2212,7 +2271,7 @@ RhythmGame.prototype.startLivePlayback = function () {
         const fallbackToAudio = () => {
             if (!fallback) return;
             a.src = fallback;
-            a.play().catch(() => {});
+            a.play().catch(() => this.markLivePlaybackState('autoplay-blocked'));
         };
 
         if (window.Hls && window.Hls.isSupported()) {
@@ -2222,10 +2281,10 @@ RhythmGame.prototype.startLivePlayback = function () {
             this._hls = new window.Hls({ maxBufferLength: 20, lowLatencyMode: true });
             this._hls.loadSource(src);
             this._hls.attachMedia(a);
-            this._hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+            this._hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
                 a.play().catch(() => fallbackToAudio());
             });
-            this._hls.on(window.Hls.Events.ERROR, function () {
+            this._hls.on(window.Hls.Events.ERROR, () => {
                 fallbackToAudio();
             });
         } else {
@@ -2237,12 +2296,12 @@ RhythmGame.prototype.startLivePlayback = function () {
 
     if (this.liveConfig.player.type === "audio") {
         a.src = this.liveConfig.player.url;
-        a.play().catch(() => {});
+        a.play().catch(() => this.markLivePlaybackState('autoplay-blocked'));
     }
 
     if (this.liveConfig.player.type === "bilibili" || this.liveConfig.player.type === "web") {
         a.src = this.liveConfig.player.url;
-        a.play().catch(() => {});
+        a.play().catch(() => this.markLivePlaybackState('autoplay-blocked'));
     }
 };
 
