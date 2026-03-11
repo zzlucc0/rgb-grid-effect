@@ -273,8 +273,11 @@ class RhythmGame {
                     await this.startGame();
                 } catch (err) {
                     console.error('startGame failed:', err);
-                    uploadContainer.classList.remove('hidden');
+                    const alreadyTransitioned = this.isPlaying || this.gameState === 'playing' || this.gameState === 'paused-user' || this.gameState === 'paused-system';
+                    if (!alreadyTransitioned) uploadContainer.classList.remove('hidden');
                     statusText.innerHTML = '<div class="error-message">Start failed: ' + (err?.message || 'unknown error') + '</div>';
+                    this.livePlaybackState = 'start-error';
+                    this.updateHUD();
                 }
             } else {
                 statusText.innerHTML = '<div class="error-message">Please analyze or select media first</div>';
@@ -2282,8 +2285,12 @@ RhythmGame.prototype.startLivePlayback = function () {
     if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "youtube") {
         if (holder) holder.classList.add("hidden");
         this.markLivePlaybackState('loading');
-        if (!(window.YT && window.YT.Player)) {
+        const YTApi = window.YT;
+        const PlayerCtor = YTApi && YTApi.Player;
+        if (!PlayerCtor) {
             this.markLivePlaybackState('yt-api-missing');
+            const statusText = document.getElementById('statusText');
+            if (statusText) statusText.innerHTML = '<div class="error-message">YouTube player API not ready yet. Please wait a moment and press Start again.</div>';
             return;
         }
         const playerConfig = {
@@ -2317,11 +2324,18 @@ RhythmGame.prototype.startLivePlayback = function () {
                 onError: () => this.markLivePlaybackState('error')
             }
         };
-        if (!this._ytPlayer) {
-            this._ytPlayer = new YT.Player("ytPlayer", playerConfig);
-        } else {
-            try { this._ytPlayer.loadVideoById(this.liveConfig.player.videoId); } catch (_) {}
-            this.markLivePlaybackState('reloading');
+        try {
+            if (!this._ytPlayer) {
+                this._ytPlayer = new PlayerCtor("ytPlayer", playerConfig);
+            } else {
+                try { this._ytPlayer.loadVideoById(this.liveConfig.player.videoId); } catch (_) {}
+                this.markLivePlaybackState('reloading');
+            }
+        } catch (err) {
+            console.error('YouTube player init failed:', err);
+            this.markLivePlaybackState('yt-init-error');
+            const statusText = document.getElementById('statusText');
+            if (statusText) statusText.innerHTML = '<div class="error-message">YouTube player init failed: ' + (err?.message || err) + '</div>';
         }
         return;
     }
