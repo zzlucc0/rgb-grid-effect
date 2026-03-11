@@ -889,7 +889,7 @@ class RhythmGame {
         if (legacyScore) legacyScore.setAttribute('data-run-state', runStateAttr);
         if (debugStrip) debugStrip.classList.toggle('hidden', !this.isPlaying && this.gameState === 'idle');
         if (debugGameClock) debugGameClock.textContent = this.resolveChartClock().toFixed(2);
-        if (debugPlayerClock) debugPlayerClock.textContent = this.liveMode ? this.getLiveCurrentTime().toFixed(2) : this.getGameClockTime().toFixed(2);
+        if (debugPlayerClock) debugPlayerClock.textContent = this.resolvePlayerClock().toFixed(2);
         if (debugChartProgress) debugChartProgress.textContent = `${this.nextChartIndex}/${this.chartData?.notes?.length || 0}`;
         if (debugActiveNotes) debugActiveNotes.textContent = String((this.notes || []).filter(n => !n.hit && !n.completed).length);
         if (debugGroupState) {
@@ -932,8 +932,16 @@ class RhythmGame {
         requestAnimationFrame(() => this.gameLoop(dataArray));
     }
 
-    resolveChartClock() {
+    resolveRunClock() {
         return this.getGameClockTime();
+    }
+
+    resolvePlayerClock() {
+        return this.liveMode ? this.getLiveCurrentTime() : this.resolveRunClock();
+    }
+
+    resolveChartClock() {
+        return this.resolveRunClock();
     }
 
     advanceChartRuntime() {
@@ -2377,7 +2385,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
         this.pauseReason = 'invalid-strict';
         this.setRunPhase('paused-user');
         this.pausedAt = performance.now();
-        this.frozenGameTime = this.getGameClockTime();
+        this.frozenGameTime = this.resolveRunClock();
         this.updatePauseUI();
         this.updateHUD();
         return;
@@ -2385,7 +2393,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
     this.pauseReason = reason;
     this.setRunPhase(reason === 'system' ? 'paused-system' : 'paused-user');
     this.pausedAt = performance.now();
-    this.frozenGameTime = this.getGameClockTime();
+    this.frozenGameTime = this.resolveRunClock();
     this.pausePlaybackMedia();
     this.updatePauseUI();
     this.updateHUD();
@@ -2778,7 +2786,7 @@ RhythmGame.prototype.spawnBurstCluster = function (anchorNote, clusterSize = 3) 
             groupSlot: slot,
             score: null,
             hit: false,
-            createTime: this.getGameClockTime(),
+            createTime: this.resolveChartClock(),
             groupPattern: pos.pattern
         };
         notes.push(note);
