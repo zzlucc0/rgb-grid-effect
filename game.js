@@ -2882,6 +2882,8 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
 };
 
 RhythmGame.prototype.watchPlaybackIntegrity = function () {
+    // Playback monitor only: detects playback health/violations.
+    // Chart advancement belongs to the main run loop via advanceChartRuntime().
     if (!this.liveMode || !this.liveConfig) return;
     if (this.liveMonitorTimer) clearInterval(this.liveMonitorTimer);
     let prevT = -1;
@@ -2892,12 +2894,6 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
         const t = this.getLiveCurrentTime();
         const runSec = this.getChartWallClockTime();
         const startupGrace = runSec < 6;
-        if (this.chartMode && this.chartData?.notes?.length) {
-            this.advanceChartRuntime();
-            if (this.nextChartIndex === 0 && runSec >= 1.25) {
-                this.spawnChartNotesUpTo(Math.max(runSec, Number(this.chartData.notes[0]?.time || 0)));
-            }
-        }
         if (prevT >= 0 && t + 0.35 < prevT) {
             this.runInvalid = true;
             this.playbackViolations.push({ type: 'seek-back', at: Date.now() });
