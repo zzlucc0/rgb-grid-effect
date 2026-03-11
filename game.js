@@ -70,7 +70,7 @@ class RhythmGame {
         // Rhythm analysis configuration
         this.energyHistory = [];
         this.beatThreshold = 0.85; // Beat detection threshold
-        this.minBeatInterval = 0.45; // Minimum beat interval (seconds), increase to slow down button generation
+        this.minBeatInterval = 0.5; // Minimum beat interval (seconds), slightly slower for readability
         this.currentPattern = 0; // Current note generation pattern
         this.currentPatternIndex = 0; // Current active area index
         this.energyThreshold = 0; // Dynamic energy threshold
@@ -143,8 +143,8 @@ class RhythmGame {
         this.approachRate = 1250; // Approach circle shrink time (milliseconds), a bit slower (added 500ms)
         this.circleSize = 60; // Target circle size
         this.approachCircleSize = 180; // Initial approach circle size
-        this.perfectRange = 400; // Perfect judgment range (milliseconds)
-        this.goodRange = 600; // Good judgment range (milliseconds)
+        this.perfectRange = 430; // Perfect judgment range (milliseconds)
+        this.goodRange = 680; // Good judgment range (milliseconds)
         this.colors = {
             approach: 'rgba(255, 255, 255, 0.3)',
             circle: '#ff6b6b',
@@ -1761,11 +1761,11 @@ class RhythmGame {
                 const primary = note.flickVector || { x: 1, y: 0 };
                 const along = dx * primary.x + dy * primary.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist >= (note.swipeDistance || this.circleSize * 1.3) && (note.noteType === 'cut' || along > (note.swipeDistance || this.circleSize))) {
+                if (dist >= (note.swipeDistance || this.circleSize * 1.15) && (note.noteType === 'cut' || along > (note.swipeDistance || this.circleSize) * 0.72)) {
                     note.hit = true;
                     note.completed = true;
                     note.held = false;
-                    note.score = dist > (note.swipeDistance || this.circleSize * 1.3) * 1.2 ? 'perfect' : 'good';
+                    note.score = dist > (note.swipeDistance || this.circleSize * 1.15) * 1.05 ? 'perfect' : 'good';
                     this.score += (note.score === 'perfect' ? 1250 : 750) * (1 + this.combo * 0.1);
                     this.recordJudgement(note.score);
                     this.combo++;
@@ -1800,7 +1800,7 @@ class RhythmGame {
 
                 if (note.noteType === 'gate') {
                     const gateWidth = note.gateWidth || this.circleSize * 2.6;
-                    if (Math.abs(x - note.x) <= gateWidth * 0.32) {
+                    if (Math.abs(x - note.x) <= gateWidth * 0.42) {
                         note.held = true;
                         note.completed = true;
                         note.hit = true;
@@ -2582,8 +2582,8 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
     if (this.liveEngine.segmentKey === key) return;
     this.liveEngine.segmentKey = key;
     this.liveEngine.signatureMode = seg.label === 'chorus' ? 'ribbon' : (seg.label === 'bridge' ? 'gate' : 'mixed');
-    this.liveEngine.density = seg.energy === 'high' ? 1.2 : (seg.energy === 'mid' ? 0.95 : 0.72);
-    this.liveEngine.dragQuotaPerBar = seg.dragRatio >= 0.24 ? 3 : (seg.dragRatio >= 0.16 ? 2 : 1);
+    this.liveEngine.density = seg.energy === 'high' ? 1.08 : (seg.energy === 'mid' ? 0.9 : 0.68);
+    this.liveEngine.dragQuotaPerBar = seg.dragRatio >= 0.24 ? 2 : 1;
     this.liveEngine.phrase.radius = seg.phraseRadius || (seg.label === 'chorus' ? 260 : seg.label === 'verse' ? 220 : 185);
     this.liveEngine.phrase.left = seg.label === 'chorus' ? 6 : (seg.label === 'verse' ? 5 : 4);
     if (seg.label === 'chorus') {
@@ -2698,9 +2698,10 @@ RhythmGame.prototype.applyGroupMechanics = function (notes, context = {}) {
         note.groupSize = size;
         note.groupRole = idx === 0 ? 'lead' : (idx === size - 1 ? 'accent' : 'body');
         note.groupKey = `${note.segmentLabel || context.segmentLabel || 'none'}:${note.groupIndex || context.groupIndex || 0}`;
-        if (pattern === 'burst' && idx === size - 1 && note.noteType === 'tap') note.noteType = 'cut';
-        if (pattern === 'diamond' && idx === 1 && note.noteType === 'tap') note.noteType = 'flick';
-        if (pattern === 'ladder' && idx === 0 && note.noteType === 'tap') note.noteType = 'pulseHold';
+        const seg = note.segmentLabel || context.segmentLabel || 'verse';
+        if (size >= 3 && pattern === 'burst' && idx === size - 1 && note.noteType === 'tap' && seg === 'chorus') note.noteType = 'cut';
+        if (size >= 3 && pattern === 'diamond' && idx === 1 && note.noteType === 'tap' && Math.abs(note.groupIndex || 0) % 2 === 0) note.noteType = 'flick';
+        if (size >= 4 && pattern === 'ladder' && idx === 0 && note.noteType === 'tap' && seg !== 'chorus') note.noteType = 'pulseHold';
         this.applyNoteMechanicProfile(note);
     });
     return notes;
@@ -2710,23 +2711,23 @@ RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0)
     if (note && note.type) return note.type;
     const segment = note?.segmentLabel || 'verse';
     const cycle = idx % 16;
-    if (segment === 'chorus' && (cycle === 12 || cycle === 13)) return 'ribbon';
-    if ((segment === 'chorus' && cycle === 6) || (segment === 'bridge' && cycle === 7)) return 'gate';
-    if (cycle === 10) return 'pulseHold';
-    if (cycle === 4) return 'flick';
-    if (cycle === 14) return 'cut';
-    if ((idx + inPhraseIndex) % 7 === 0) return 'drag';
+    if (segment === 'chorus' && cycle === 12) return 'ribbon';
+    if ((segment === 'chorus' && cycle === 6 && inPhraseIndex % 2 === 0) || (segment === 'bridge' && cycle === 7)) return 'gate';
+    if (cycle === 10 && segment !== 'chorus') return 'pulseHold';
+    if (cycle === 4 && inPhraseIndex % 3 !== 2) return 'flick';
+    if (cycle === 14 && segment === 'chorus') return 'cut';
+    if ((idx + inPhraseIndex) % 8 === 0) return 'drag';
     return 'tap';
 };
 
 RhythmGame.prototype.pickLiveNoteType = function (seq, groupIndex, preferDrag) {
-    if (groupIndex % 4 === 3 && seq % 4 === 0) return 'ribbon';
-    if (groupIndex % 3 === 2 && seq % 5 === 0) return 'gate';
-    if (preferDrag && seq % 6 === 0) return seq % 12 === 0 ? 'ribbon' : 'drag';
-    if (seq % 15 === 0) return 'gate';
-    if (seq % 11 === 0) return 'pulseHold';
-    if (seq % 9 === 0) return 'cut';
-    if (seq % 7 === 0) return 'flick';
+    if (groupIndex % 4 === 3 && seq % 8 === 0) return 'ribbon';
+    if (groupIndex % 3 === 2 && seq % 10 === 0) return 'gate';
+    if (preferDrag && seq % 7 === 0) return seq % 14 === 0 ? 'ribbon' : 'drag';
+    if (seq % 18 === 0) return 'gate';
+    if (seq % 13 === 0) return 'pulseHold';
+    if (seq % 11 === 0) return 'cut';
+    if (seq % 8 === 0) return 'flick';
     return preferDrag ? 'drag' : 'tap';
 };
 
@@ -2764,19 +2765,19 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
             { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0.8, y: -0.6 }, { x: -0.8, y: -0.6 }
         ];
         note.flickVector = dirs[Math.abs(note.noteNumber || 0) % dirs.length];
-        note.swipeDistance = this.circleSize * (note.noteType === 'cut' ? 1.8 : 1.35);
+        note.swipeDistance = this.circleSize * (note.noteType === 'cut' ? 1.55 : 1.15);
     }
     if (note.noteType === 'pulseHold') {
-        note.holdDuration = Math.max(0.55, note.holdDuration || 0.9);
+        note.holdDuration = Math.max(0.5, note.holdDuration || 0.82);
         note.holdProgress = 0;
     }
     if (note.noteType === 'ribbon') {
         note.ribbonWidth = this.circleSize * 0.9;
-        note.traceStrictness = 0.16;
+        note.traceStrictness = 0.2;
     }
     if (note.noteType === 'gate') {
-        note.gateWidth = note.gateWidth || this.circleSize * 2.6;
-        note.gateWindow = this.circleSize * 0.32;
+        note.gateWidth = note.gateWidth || this.circleSize * 2.3;
+        note.gateWindow = this.circleSize * 0.42;
     }
     return note;
 };
