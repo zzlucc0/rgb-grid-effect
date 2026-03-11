@@ -223,6 +223,17 @@ class RhythmGame {
         this.updateHUD();
     }
 
+    setRunPhase(phase) {
+        this.gameState = phase || this.gameState || 'idle';
+        if (phase === 'idle' || phase === 'ready') this.isPlaying = false;
+        if (phase === 'starting') this.setScene('countdown');
+        else if (phase === 'playing') this.setScene('playing');
+        else if (phase === 'paused-user' || phase === 'paused-system') this.setScene('playing');
+        else if (phase === 'ready') this.setScene('ready');
+        else if (phase === 'idle') this.setScene('input');
+        else this.updateHUD();
+    }
+
     renderScene() {
         const uploadContainer = document.getElementById('uploadContainer');
         const pauseOverlay = document.getElementById('pauseOverlay');
@@ -236,7 +247,7 @@ class RhythmGame {
 
     setupLoadedState(mode) {
         this.readyMode = mode || null;
-        if (!this.isPlaying) this.gameState = 'ready';
+        if (!this.isPlaying) this.setRunPhase('ready');
         this.syncReadyState();
         this.updateHUD();
     }
@@ -304,8 +315,9 @@ class RhythmGame {
         this.chartMode = false;
         this.liveMode = false;
         this.readyMode = null;
-        if (!this.isPlaying) this.gameState = 'idle';
-        this.setScene('input', { error: errorMessage || '' });
+        if (!this.isPlaying) this.setRunPhase('idle');
+        else this.setScene('input', { error: errorMessage || '' });
+        if (errorMessage) this.lastStartError = errorMessage;
         this.syncReadyState();
         this.updateHUD();
     }
@@ -449,7 +461,7 @@ class RhythmGame {
         this.livePlaybackState = 'idle';
         this.spawnedChartNotes = 0;
         this.currentGroupSize = this.notesPerGroup;
-        this.gameState = 'starting';
+        this.setRunPhase('starting');
         this.playMode = (this.liveConfig && this.liveConfig.playMode) || document.getElementById('playModeSelect')?.value || 'casual';
         this.pauseReason = 'none';
         this.pausedAt = 0;
@@ -523,10 +535,9 @@ class RhythmGame {
 
     beginRun() {
         this.isPlaying = true;
-        this.gameState = 'playing';
         this.startTime = this.audioContext.currentTime;
         this._liveStartWall = performance.now();
-        this.setScene('playing');
+        this.setRunPhase('playing');
         this.updatePauseUI();
 
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
@@ -2329,7 +2340,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
     if (this.playMode === 'strict' && reason === 'user') {
         this.runInvalid = true;
         this.pauseReason = 'invalid-strict';
-        this.gameState = 'paused-user';
+        this.setRunPhase('paused-user');
         this.pausedAt = performance.now();
         this.frozenGameTime = this.getGameClockTime();
         this.updatePauseUI();
@@ -2337,7 +2348,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
         return;
     }
     this.pauseReason = reason;
-    this.gameState = reason === 'system' ? 'paused-system' : 'paused-user';
+    this.setRunPhase(reason === 'system' ? 'paused-system' : 'paused-user');
     this.pausedAt = performance.now();
     this.frozenGameTime = this.getGameClockTime();
     this.pausePlaybackMedia();
@@ -2355,7 +2366,7 @@ RhythmGame.prototype.resumeGame = async function () {
         if (overlayText) overlayText.textContent = 'Resuming in ' + n;
         await new Promise(r => setTimeout(r, 600));
     }
-    this.gameState = 'playing';
+    this.setRunPhase('playing');
     this.pauseReason = 'none';
     this.resumePlaybackMedia();
     this.updatePauseUI();
