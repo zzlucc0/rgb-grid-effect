@@ -226,9 +226,10 @@ class RhythmGame {
     renderScene() {
         const uploadContainer = document.getElementById('uploadContainer');
         const pauseOverlay = document.getElementById('pauseOverlay');
-        const showSetup = this.scene === 'input' || this.scene === 'ready';
+        const inRun = this.isPlaying || this.gameState === 'starting' || this.scene === 'countdown' || this.scene === 'playing' || this.gameState === 'paused-user' || this.gameState === 'paused-system';
+        const showSetup = !inRun && (this.scene === 'input' || this.scene === 'ready');
         if (uploadContainer) uploadContainer.classList.toggle('hidden', !showSetup);
-        if (pauseOverlay && (this.scene === 'countdown' || this.scene === 'playing' || this.scene === 'error')) {
+        if (pauseOverlay && (this.scene === 'countdown' || this.scene === 'playing' || this.scene === 'error' || inRun)) {
             pauseOverlay.classList.toggle('hidden', !(this.gameState === 'paused-user' || this.gameState === 'paused-system'));
         }
     }
@@ -452,9 +453,9 @@ class RhythmGame {
     beginRun() {
         this.isPlaying = true;
         this.gameState = 'playing';
-        this.setScene('playing');
         this.startTime = this.audioContext.currentTime;
         this._liveStartWall = performance.now();
+        this.setScene('playing');
         this.updatePauseUI();
 
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
@@ -726,8 +727,9 @@ class RhythmGame {
         } else if (!this.isPlaying && (this.gameState === 'ready' || this.gameState === 'idle') && !ready) {
             this.gameState = 'idle';
         }
-        if (!this.isPlaying && ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'ready';
-        if (!this.isPlaying && !ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'input';
+        const sceneCanAutoSwitch = !this.isPlaying && (this.gameState === 'idle' || this.gameState === 'ready');
+        if (sceneCanAutoSwitch && ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'ready';
+        if (sceneCanAutoSwitch && !ready && (this.scene === 'input' || this.scene === 'ready')) this.scene = 'input';
         this.renderScene();
         return ready;
     }
