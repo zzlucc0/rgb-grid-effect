@@ -735,7 +735,6 @@ class RhythmGame {
     }
 
     updateHUD() {
-        this.syncReadyState();
         this.refreshGroupState();
         const scoreNode = document.getElementById('scoreValue');
         const debugStrip = document.getElementById('debugStrip');
