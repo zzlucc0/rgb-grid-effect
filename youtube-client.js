@@ -114,7 +114,8 @@
 
     if (job.result.mode === "offline" || job.result.mode === "offline-capture-fallback" || job.result.mode === "capture-poc") {
       // Prefer proven buffer playback path for reliability.
-      setStatus("loading", "Loading analyzed audio...");
+      if (game.setStatusMessage) game.setStatusMessage("loading", "Loading analyzed audio...");
+      else setStatus("loading", "Loading analyzed audio...");
       try {
         var audioResp = await fetch(API_BASE + job.result.audioUrl);
         if (!audioResp.ok) throw new Error("audio fetch failed");
@@ -122,8 +123,10 @@
         var decoded = await game.audioContext.decodeAudioData(arrayBuffer.slice(0));
         if (game.loadOfflineChartRuntime) game.loadOfflineChartRuntime(job.result.chart, decoded);
         startBtn.disabled = false;
-        setReady("offline", true, job.result.chart.notes.length, job.result.chart && job.result.chart.chartDensity);
-        setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
+        if (game.setReadySummary) game.setReadySummary("offline", true, job.result.chart.notes.length, humanDensityLabel(job.result.chart && job.result.chart.chartDensity));
+        else setReady("offline", true, job.result.chart.notes.length, job.result.chart && job.result.chart.chartDensity);
+        if (game.setStatusMessage) game.setStatusMessage("success", "Offline ready · notes: " + job.result.chart.notes.length);
+        else setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
       } catch (e) {
         // fallback to live stream mode when decode path fails
         var offlineStreamConfig;
@@ -138,8 +141,10 @@
         }
         if (game.loadOfflineStreamChartRuntime) game.loadOfflineStreamChartRuntime(job.result.chart, offlineStreamConfig);
         startBtn.disabled = false;
-        setReady("offline", true, job.result.chart.notes.length + " notes", job.result.chart && job.result.chart.chartDensity);
-        setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
+        if (game.setReadySummary) game.setReadySummary("offline", true, job.result.chart.notes.length + " notes", humanDensityLabel(job.result.chart && job.result.chart.chartDensity));
+        else setReady("offline", true, job.result.chart.notes.length + " notes", job.result.chart && job.result.chart.chartDensity);
+        if (game.setStatusMessage) game.setStatusMessage("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
+        else setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
       }
       if (el("searchPanel")) el("searchPanel").style.display = "none";
       return;
@@ -176,10 +181,13 @@
     };
     if (game.loadOnlineSeedRuntime) game.loadOnlineSeedRuntime(onlineSeedConfig);
     startBtn.disabled = false;
-    setReady("online", true, "live", null);
-    setStatus("success", "Link-play ready (" + job.result.player.type + ")");
+    if (game.setReadySummary) game.setReadySummary("online", true, "live", '-');
+    else setReady("online", true, "live", null);
+    if (game.setStatusMessage) game.setStatusMessage("success", "Link-play ready (" + job.result.player.type + ")");
+    else setStatus("success", "Link-play ready (" + job.result.player.type + ")");
     if (job.result.player.type === "web" || job.result.player.type === "bilibili") {
-      setStatus("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
+      if (game.setStatusMessage) game.setStatusMessage("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
+      else setStatus("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
     }
 
     if (job.error) {
@@ -196,8 +204,11 @@
     startBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = false;
     analyzeCancelled = false;
-    setReady("-", false, "-", (el("chartDensitySelect") && el("chartDensitySelect").value) || "normal");
-    setStatus("loading", "Analyzing link rhythm...");
+    var densityLabel = humanDensityLabel((el("chartDensitySelect") && el("chartDensitySelect").value) || "normal");
+    if (window.game && window.game.setReadySummary) window.game.setReadySummary("-", false, "-", densityLabel);
+    else setReady("-", false, "-", (el("chartDensitySelect") && el("chartDensitySelect").value) || "normal");
+    if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("loading", "Analyzing link rhythm...");
+    else setStatus("loading", "Analyzing link rhythm...");
     var resp = await fetch(API_BASE + "/api/analyze-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -215,7 +226,11 @@
   async function onAnalyzeClick() {
     try {
       var url = (el("youtubeUrl") && el("youtubeUrl").value || "").trim();
-      if (!url) return setStatus("error", "Please paste a media link");
+      if (!url) {
+        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Please paste a media link");
+        else setStatus("error", "Please paste a media link");
+        return;
+      }
       await analyzeUrl(url);
     } catch (e) {
       if (el("cancelAnalyze")) el("cancelAnalyze").disabled = true;
