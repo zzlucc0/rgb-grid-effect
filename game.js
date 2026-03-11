@@ -45,6 +45,38 @@ class RhythmGame {
         this.signatureBursts = [];
         this.groupHistory = [];
         this.activeGroupState = null;
+        this.segmentGroupPalettes = {
+            intro: [
+                { core: '#ffe4c4', edge: '#ffc47d', glow: 'rgba(255,196,125,.30)' },
+                { core: '#ffd8ef', edge: '#ff9bc8', glow: 'rgba(255,155,200,.28)' }
+            ],
+            verse: [
+                { core: '#f5d6ff', edge: '#c89cff', glow: 'rgba(200,156,255,.30)' },
+                { core: '#ffd9bf', edge: '#ffb46a', glow: 'rgba(255,180,106,.28)' },
+                { core: '#ffe7f1', edge: '#ff99bf', glow: 'rgba(255,153,191,.26)' }
+            ],
+            pre: [
+                { core: '#ffe1b8', edge: '#ffb15f', glow: 'rgba(255,177,95,.30)' },
+                { core: '#f3d9ff', edge: '#bf8cff', glow: 'rgba(191,140,255,.28)' }
+            ],
+            chorus: [
+                { core: '#fff0cc', edge: '#ffd36e', glow: 'rgba(255,211,110,.34)' },
+                { core: '#ffd8f3', edge: '#ff8dca', glow: 'rgba(255,141,202,.32)' },
+                { core: '#e8dcff', edge: '#b48fff', glow: 'rgba(180,143,255,.32)' }
+            ],
+            bridge: [
+                { core: '#d9f0ff', edge: '#8ec5ff', glow: 'rgba(142,197,255,.28)' },
+                { core: '#efe0ff', edge: '#bc96ff', glow: 'rgba(188,150,255,.28)' }
+            ],
+            outro: [
+                { core: '#ffe0d6', edge: '#ffab92', glow: 'rgba(255,171,146,.26)' },
+                { core: '#f0dcff', edge: '#c093ff', glow: 'rgba(192,147,255,.24)' }
+            ],
+            live: [
+                { core: '#ffe7cc', edge: '#ffbd73', glow: 'rgba(255,189,115,.30)' },
+                { core: '#f2deff', edge: '#c39bff', glow: 'rgba(195,155,255,.28)' }
+            ]
+        };
         
         // Spectrum analysis configuration
         this.analyser.fftSize = 2048;
@@ -1988,10 +2020,16 @@ class RhythmGame {
 
 
 RhythmGame.prototype.getSegmentPalette = function (segmentLabel, groupIndex) {
-    const key = segmentLabel && this.segmentGroupPalettes[segmentLabel] ? segmentLabel : 'verse';
-    const arr = this.segmentGroupPalettes[key] || this.segmentGroupPalettes.verse;
+    const palettes = this.segmentGroupPalettes || {};
+    const fallback = Array.isArray(palettes.verse) && palettes.verse.length
+        ? palettes.verse
+        : [{ core: '#f5d6ff', edge: '#c89cff', glow: 'rgba(200,156,255,.30)' }];
+    const requested = segmentLabel && Array.isArray(palettes[segmentLabel]) && palettes[segmentLabel].length
+        ? palettes[segmentLabel]
+        : null;
+    const arr = requested || fallback;
     const idx = Math.abs(Number(groupIndex || 0)) % arr.length;
-    return arr[idx] || arr[0];
+    return arr[idx] || arr[0] || fallback[0];
 };
 
 RhythmGame.prototype.decoratePaletteForNote = function (base, note) {

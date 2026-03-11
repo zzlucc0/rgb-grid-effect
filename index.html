@@ -667,12 +667,37 @@
         <audio id="liveAudio" playsinline crossorigin="anonymous"></audio>
     </div>
 
+    <script>
+        (function () {
+            var c = window.crypto = window.crypto || window.msCrypto || {};
+            if (typeof c.randomUUID !== 'function') {
+                c.randomUUID = function () {
+                    var bytes = new Uint8Array(16);
+                    if (typeof c.getRandomValues === 'function') {
+                        c.getRandomValues(bytes);
+                    } else {
+                        for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+                    }
+                    bytes[6] = (bytes[6] & 15) | 64;
+                    bytes[8] = (bytes[8] & 63) | 128;
+                    var hex = Array.from(bytes, function (b) { return b.toString(16).padStart(2, '0'); });
+                    return [
+                        hex.slice(0, 4).join(''),
+                        hex.slice(4, 6).join(''),
+                        hex.slice(6, 8).join(''),
+                        hex.slice(8, 10).join(''),
+                        hex.slice(10, 16).join('')
+                    ].join('-');
+                };
+            }
+        })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="rgb-effect.js?v=20260309a"></script>
     <script src="default-songs.js?v=20260307a"></script>
     <script src="music-api.js?v=20260307a"></script>
-    <script src="game.js?v=20260311b"></script>
-    <script src="youtube-client.js?v=20260311b"></script>
+    <script src="game.js?v=20260311c"></script>
+    <script src="youtube-client.js?v=20260311c"></script>
 </body>
 </html>
