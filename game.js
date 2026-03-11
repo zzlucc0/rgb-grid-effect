@@ -888,7 +888,7 @@ class RhythmGame {
         if (meterFill) meterFill.style.width = `${Math.max(12, Math.min(100, (accuracy == null ? 0.12 : accuracy / 100) * 100))}%`;
         if (legacyScore) legacyScore.setAttribute('data-run-state', runStateAttr);
         if (debugStrip) debugStrip.classList.toggle('hidden', !this.isPlaying && this.gameState === 'idle');
-        if (debugGameClock) debugGameClock.textContent = this.getGameClockTime().toFixed(2);
+        if (debugGameClock) debugGameClock.textContent = this.resolveChartClock().toFixed(2);
         if (debugPlayerClock) debugPlayerClock.textContent = this.liveMode ? this.getLiveCurrentTime().toFixed(2) : this.getGameClockTime().toFixed(2);
         if (debugChartProgress) debugChartProgress.textContent = `${this.nextChartIndex}/${this.chartData?.notes?.length || 0}`;
         if (debugActiveNotes) debugActiveNotes.textContent = String((this.notes || []).filter(n => !n.hit && !n.completed).length);
@@ -912,6 +912,7 @@ class RhythmGame {
 
         try {
             if (!this.liveMode) this.analyser.getByteFrequencyData(dataArray);
+            this.advanceChartRuntime();
             this.generateNotes(dataArray);
             this.updateNotes();
             this.drawNotes();
@@ -931,12 +932,21 @@ class RhythmGame {
         requestAnimationFrame(() => this.gameLoop(dataArray));
     }
 
+    resolveChartClock() {
+        return this.getGameClockTime();
+    }
+
+    advanceChartRuntime() {
+        if (!(this.chartMode && this.chartData?.notes?.length)) return 0;
+        const chartTime = this.resolveChartClock();
+        if (this.liveMode) this.applySegmentProfile(chartTime);
+        return this.spawnChartNotesUpTo(chartTime);
+    }
+
     generateNotes(audioData) {
-        const currentTime = this.getGameClockTime();
+        const currentTime = this.resolveChartClock();
 
         if (this.chartMode && this.chartData?.notes?.length) {
-            if (this.liveMode) this.applySegmentProfile(currentTime);
-            this.spawnChartNotesUpTo(currentTime);
             return;
         }
 
@@ -2875,7 +2885,7 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
         const runSec = this.getChartWallClockTime();
         const startupGrace = runSec < 6;
         if (this.chartMode && this.chartData?.notes?.length) {
-            this.spawnChartNotesUpTo(runSec);
+            this.advanceChartRuntime();
             if (this.nextChartIndex === 0 && runSec >= 1.25) {
                 this.spawnChartNotesUpTo(Math.max(runSec, Number(this.chartData.notes[0]?.time || 0)));
             }
