@@ -933,7 +933,7 @@ class RhythmGame {
     }
 
     resolveRunClock() {
-        return this.getGameClockTime();
+        return this.computeRunClock();
     }
 
     resolvePlayerClock() {
@@ -1482,7 +1482,7 @@ class RhythmGame {
             // Adjust number of notes per group based on recent beat intensity and pre-analyzed data
             if (this.recentBeatStrengths.length >= 5 && !this.isGroupPaused) {
                 // Combine real-time beat intensity and pre-analyzed results
-                const currentTime = this.getGameClockTime();
+                const currentTime = this.resolveChartClock();
                 let plannedSize = this.notesPerGroup; // Default value
                 
                 // If pre-analyzed data exists, find planned button count for current time point
@@ -1514,7 +1514,7 @@ class RhythmGame {
             const avgBeatEnergy = this.energyHistory.reduce((a, b) => a + b) / this.energyHistory.length;
             this.energyThreshold = avgBeatEnergy * this.beatThreshold;
             
-            const currentTime = this.getGameClockTime();
+            const currentTime = this.resolveChartClock();
             if (beatEnergy > this.energyThreshold && currentTime - this.lastNoteTime >= this.minBeatInterval) {
                 this.beatDetected = true;
                 return { beat: true, vocal: vocalDetected, energy: Math.max(beatEnergy, vocalEnergy) };
@@ -1526,7 +1526,7 @@ class RhythmGame {
     }
 
     updateNotes = () => {
-        const currentTime = this.getGameClockTime();
+        const currentTime = this.resolveChartClock();
         
         this.notes = this.notes.filter(note => {
             if (note.hit && !note.score) {
@@ -1621,7 +1621,7 @@ class RhythmGame {
         this.notes.forEach(note => {
             if (note.hit && !note.score) return;
 
-            const currentTime = this.getGameClockTime();
+            const currentTime = this.resolveChartClock();
             const timeUntilHit = note.hitTime - currentTime;
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / (this.approachRate / 1000)));
             const palette = this.getNotePalette(note);
@@ -1879,7 +1879,7 @@ class RhythmGame {
             return;
         }
 
-        const currentTime = this.getGameClockTime();
+        const currentTime = this.resolveChartClock();
         if (type === 'start') {
             this.pointerState = { down: true, x, y, startedAt: performance.now(), startX: x, startY: y };
         } else if (type === 'move') {
@@ -2312,7 +2312,7 @@ RhythmGame.prototype.spawnChartNotesUpTo = function (currentTime) {
     return spawned;
 };
 
-RhythmGame.prototype.getGameClockTime = function () {
+RhythmGame.prototype.computeRunClock = function () {
     if (this.gameState === 'paused-user' || this.gameState === 'paused-system') return this.frozenGameTime || 0;
     if (this.liveMode) {
         const liveT = this.getLiveCurrentTime();
@@ -2324,6 +2324,10 @@ RhythmGame.prototype.getGameClockTime = function () {
         return Math.max(liveT || 0, wallT || 0);
     }
     return Math.max(0, this.audioContext.currentTime - this.startTime - (this.pauseAccumulated || 0));
+};
+
+RhythmGame.prototype.getGameClockTime = function () {
+    return this.computeRunClock();
 };
 
 RhythmGame.prototype.updatePauseUI = function () {
