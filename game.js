@@ -234,14 +234,26 @@ class RhythmGame {
         else this.updateHUD();
     }
 
+    isPausedPhase() {
+        return this.gameState === 'paused-user' || this.gameState === 'paused-system';
+    }
+
+    isRunningPhase() {
+        return this.gameState === 'playing';
+    }
+
+    isStartingPhase() {
+        return this.gameState === 'starting';
+    }
+
     renderScene() {
         const uploadContainer = document.getElementById('uploadContainer');
         const pauseOverlay = document.getElementById('pauseOverlay');
-        const inRun = this.isPlaying || this.gameState === 'starting' || this.scene === 'countdown' || this.scene === 'playing' || this.gameState === 'paused-user' || this.gameState === 'paused-system';
+        const inRun = this.isPlaying || this.isStartingPhase() || this.scene === 'countdown' || this.scene === 'playing' || this.isPausedPhase();
         const showSetup = !inRun && (this.scene === 'input' || this.scene === 'ready');
         if (uploadContainer) uploadContainer.classList.toggle('hidden', !showSetup);
         if (pauseOverlay && (this.scene === 'countdown' || this.scene === 'playing' || this.scene === 'error' || inRun)) {
-            pauseOverlay.classList.toggle('hidden', !(this.gameState === 'paused-user' || this.gameState === 'paused-system'));
+            pauseOverlay.classList.toggle('hidden', !(this.isPausedPhase()));
         }
     }
 
@@ -397,13 +409,13 @@ class RhythmGame {
             this.updateHUD();
         });
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden && this.isPlaying && this.gameState === 'playing') this.pauseGame('system');
+            if (document.hidden && this.isPlaying && this.isRunningPhase()) this.pauseGame('system');
         });
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
-                if (this.gameState === 'playing') this.pauseGame('user');
-                else if (this.gameState === 'paused-user' || this.gameState === 'paused-system') this.resumeGame();
+                if (this.isRunningPhase()) this.pauseGame('user');
+                else if (this.isPausedPhase()) this.resumeGame();
             }
         });
 
@@ -864,13 +876,13 @@ class RhythmGame {
         if (this.runInvalid) {
             runState = 'INVALID';
             runStateAttr = 'invalid';
-        } else if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
+        } else if (this.isPausedPhase()) {
             runState = 'PAUSED';
             runStateAttr = 'paused';
-        } else if (this.gameState === 'starting') {
+        } else if (this.isStartingPhase()) {
             runState = 'ARMING';
             runStateAttr = 'arming';
-        } else if (this.gameState === 'playing') {
+        } else if (this.isRunningPhase()) {
             runState = 'LIVE';
             runStateAttr = 'live';
         } else if (this.gameState === 'ready') {
@@ -905,7 +917,7 @@ class RhythmGame {
 
     gameLoop(dataArray) {
         if (!this.isPlaying) return;
-        if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
+        if (this.isPausedPhase()) {
             this.updatePauseUI();
             return;
         }
@@ -1874,7 +1886,7 @@ class RhythmGame {
     }
     handleInput = (x, y, type) => {
         if (!this.isPlaying) return;
-        if (this.gameState === 'paused-user' || this.gameState === 'paused-system') {
+        if (this.isPausedPhase()) {
             this.updatePauseUI();
             return;
         }
@@ -2313,7 +2325,7 @@ RhythmGame.prototype.spawnChartNotesUpTo = function (currentTime) {
 };
 
 RhythmGame.prototype.computeRunClock = function () {
-    if (this.gameState === 'paused-user' || this.gameState === 'paused-system') return this.frozenGameTime || 0;
+    if (this.isPausedPhase()) return this.frozenGameTime || 0;
     if (this.liveMode) {
         const liveT = this.getLiveCurrentTime();
         const wallT = this.getChartWallClockTime();
@@ -2338,7 +2350,7 @@ RhythmGame.prototype.updatePauseUI = function () {
     const overlay = document.getElementById('pauseOverlay');
     const overlayText = document.getElementById('pauseOverlayText');
     const overlaySubtext = document.getElementById('pauseOverlaySubtext');
-    const paused = this.gameState === 'paused-user' || this.gameState === 'paused-system';
+    const paused = this.isPausedPhase();
     if (pauseBtn) pauseBtn.disabled = !this.isPlaying || paused;
     if (hudPauseBtn) {
         hudPauseBtn.disabled = !this.isPlaying || paused;
@@ -2383,7 +2395,7 @@ RhythmGame.prototype.resumePlaybackMedia = function () {
 };
 
 RhythmGame.prototype.pauseGame = function (reason = 'user') {
-    if (!this.isPlaying || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
+    if (!this.isPlaying || this.isPausedPhase()) return;
     if (this.playMode === 'strict' && reason === 'user') {
         this.runInvalid = true;
         this.pauseReason = 'invalid-strict';
@@ -2404,7 +2416,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
 };
 
 RhythmGame.prototype.resumeGame = async function () {
-    if (!(this.gameState === 'paused-user' || this.gameState === 'paused-system')) return;
+    if (!(this.isPausedPhase())) return;
     return this.resumeRunSequence();
 };
 
@@ -2894,7 +2906,7 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
     let stagnantTicks = 0;
     let ytPausedTicks = 0;
     this.liveMonitorTimer = setInterval(() => {
-        if (!this.isPlaying || !this.liveMode || this.gameState === 'paused-user' || this.gameState === 'paused-system') return;
+        if (!this.isPlaying || !this.liveMode || this.isPausedPhase()) return;
         const t = this.getLiveCurrentTime();
         const runSec = this.getChartWallClockTime();
         const startupGrace = runSec < 6;
