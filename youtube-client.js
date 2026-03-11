@@ -118,38 +118,24 @@
         var audioResp = await fetch(API_BASE + job.result.audioUrl);
         if (!audioResp.ok) throw new Error("audio fetch failed");
         var arrayBuffer = await audioResp.arrayBuffer();
-        game.audioBuffer = await game.audioContext.decodeAudioData(arrayBuffer.slice(0));
-        game.chartMode = true;
-        game.liveMode = false;
-        game.liveConfig = null;
-        game.chartData = job.result.chart;
-        game.nextChartIndex = 0;
-        game.readyMode = "offline";
-        if (game.setScene) game.setScene('ready', { error: '' });
-        if (game.syncReadyState) game.syncReadyState();
-        if (game.updateHUD) game.updateHUD();
+        var decoded = await game.audioContext.decodeAudioData(arrayBuffer.slice(0));
+        if (game.loadOfflineChartRuntime) game.loadOfflineChartRuntime(job.result.chart, decoded);
         startBtn.disabled = false;
         setReady("offline", true, job.result.chart.notes.length, job.result.chart && job.result.chart.chartDensity);
         setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
       } catch (e) {
         // fallback to live stream mode when decode path fails
-        game.chartMode = true;
-        game.chartData = job.result.chart;
-        game.nextChartIndex = 0;
-        game.liveMode = true;
+        var offlineStreamConfig;
         if (job.result.hlsUrl) {
-          game.liveConfig = {
+          offlineStreamConfig = {
             bpm: 122,
             player: { type: "hls", url: API_BASE + job.result.hlsUrl },
             fallbackAudioUrl: API_BASE + job.result.audioUrl
           };
         } else {
-          game.liveConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
+          offlineStreamConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
         }
-        game.readyMode = "offline";
-        if (game.setScene) game.setScene('ready', { error: '' });
-        if (game.syncReadyState) game.syncReadyState();
-        if (game.updateHUD) game.updateHUD();
+        if (game.loadOfflineStreamChartRuntime) game.loadOfflineStreamChartRuntime(job.result.chart, offlineStreamConfig);
         startBtn.disabled = false;
         setReady("offline", true, job.result.chart.notes.length + " notes", job.result.chart && job.result.chart.chartDensity);
         setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
@@ -159,12 +145,7 @@
     }
 
     if (job.result.mode === "online-analyzed") {
-      game.liveMode = true;
-      game.chartMode = true;
-      game.audioBuffer = null;
-      game.chartData = job.result.chart;
-      game.nextChartIndex = 0;
-      game.liveConfig = {
+      var analyzedConfig = {
         bpm: (job.result.analysis && job.result.analysis.bpm) || 122,
         density: 1.0,
         pattern: "analyzed",
@@ -174,10 +155,7 @@
         segments: (job.result.analysis && job.result.analysis.segments) || [],
         player: job.result.player
       };
-      game.readyMode = "online-analyzed";
-      if (game.setScene) game.setScene('ready', { error: '' });
-      if (game.syncReadyState) game.syncReadyState();
-      if (game.updateHUD) game.updateHUD();
+      if (game.loadOnlineAnalyzedRuntime) game.loadOnlineAnalyzedRuntime(job.result.chart, analyzedConfig);
       startBtn.disabled = false;
       setReady("online-analyzed", true, (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || "-", job.result.analysis && job.result.analysis.chartDensity);
       var modeText = ((job.result.analysis && job.result.analysis.analysisMode) || job.analysisMode || 'full');
@@ -185,21 +163,14 @@
       return;
     }
 
-    game.liveMode = true;
-    game.chartMode = false;
-    game.audioBuffer = null;
-    game.chartData = null;
-    game.liveConfig = {
+    var onlineSeedConfig = {
       bpm: (job.result.chartSeed && job.result.chartSeed.bpm) || 122,
       density: (job.result.chartSeed && job.result.chartSeed.density) || 1.0,
       pattern: (job.result.chartSeed && job.result.chartSeed.pattern) || "adaptive",
       strictPlayback: true,
       player: job.result.player
     };
-    game.readyMode = "online";
-    if (game.setScene) game.setScene('ready', { error: '' });
-    if (game.syncReadyState) game.syncReadyState();
-    if (game.updateHUD) game.updateHUD();
+    if (game.loadOnlineSeedRuntime) game.loadOnlineSeedRuntime(onlineSeedConfig);
     startBtn.disabled = false;
     setReady("online", true, "live", null);
     setStatus("success", "Link-play ready (" + job.result.player.type + ")");
@@ -247,11 +218,8 @@
       currentAnalyzeJobId = null;
       setStatus("error", e.message || "Unknown error");
       setReady("error", false, "-", null);
-      if (window.game) {
-        window.game.readyMode = null;
-        if (window.game.setScene) window.game.setScene('input', { error: e.message || 'Unknown error' });
-        if (window.game.syncReadyState) window.game.syncReadyState();
-        if (window.game.updateHUD) window.game.updateHUD();
+      if (window.game && window.game.clearLoadedState) {
+        window.game.clearLoadedState(e.message || 'Unknown error');
       }
       if (el("startGame")) el("startGame").disabled = true;
     }
@@ -270,11 +238,8 @@
     } catch (_) {}
     setStatus("error", "Analysis cancelled");
     setReady("cancelled", false, "-", null);
-    if (window.game) {
-      window.game.readyMode = null;
-      if (window.game.setScene) window.game.setScene('input', { error: 'Analysis cancelled' });
-      if (window.game.syncReadyState) window.game.syncReadyState();
-      if (window.game.updateHUD) window.game.updateHUD();
+    if (window.game && window.game.clearLoadedState) {
+      window.game.clearLoadedState('Analysis cancelled');
     }
   }
 

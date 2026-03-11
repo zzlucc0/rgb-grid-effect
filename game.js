@@ -234,6 +234,80 @@ class RhythmGame {
         }
     }
 
+    setupLoadedState(mode) {
+        this.readyMode = mode || null;
+        this.syncReadyState();
+        this.updateHUD();
+    }
+
+    loadOfflineAudioBuffer(audioBuffer) {
+        this.audioBuffer = audioBuffer || null;
+        this.chartMode = false;
+        this.chartData = null;
+        this.nextChartIndex = 0;
+        this.liveMode = false;
+        this.liveConfig = null;
+        this.setScene('ready', { error: '' });
+        this.setupLoadedState('offline');
+    }
+
+    loadOfflineChartRuntime(chart, audioBuffer = null) {
+        this.audioBuffer = audioBuffer || this.audioBuffer || null;
+        this.chartMode = true;
+        this.chartData = chart || null;
+        this.nextChartIndex = 0;
+        this.liveMode = false;
+        this.liveConfig = null;
+        this.setScene('ready', { error: '' });
+        this.setupLoadedState('offline');
+    }
+
+    loadOfflineStreamChartRuntime(chart, liveConfig) {
+        this.audioBuffer = null;
+        this.chartMode = true;
+        this.chartData = chart || null;
+        this.nextChartIndex = 0;
+        this.liveMode = true;
+        this.liveConfig = liveConfig || null;
+        this.setScene('ready', { error: '' });
+        this.setupLoadedState('offline');
+    }
+
+    loadOnlineAnalyzedRuntime(chart, liveConfig) {
+        this.audioBuffer = null;
+        this.chartMode = true;
+        this.chartData = chart || null;
+        this.nextChartIndex = 0;
+        this.liveMode = true;
+        this.liveConfig = liveConfig || null;
+        this.setScene('ready', { error: '' });
+        this.setupLoadedState('online-analyzed');
+    }
+
+    loadOnlineSeedRuntime(liveConfig) {
+        this.audioBuffer = null;
+        this.chartMode = false;
+        this.chartData = null;
+        this.nextChartIndex = 0;
+        this.liveMode = true;
+        this.liveConfig = liveConfig || null;
+        this.setScene('ready', { error: '' });
+        this.setupLoadedState('online');
+    }
+
+    clearLoadedState(errorMessage = '') {
+        this.audioBuffer = null;
+        this.chartData = null;
+        this.liveConfig = null;
+        this.nextChartIndex = 0;
+        this.chartMode = false;
+        this.liveMode = false;
+        this.readyMode = null;
+        this.setScene('input', { error: errorMessage || '' });
+        this.syncReadyState();
+        this.updateHUD();
+    }
+
     setupCanvas() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
@@ -270,17 +344,12 @@ class RhythmGame {
                     
                     statusText.innerHTML = `<div class="loading-message">Loading...</div>`;
                     const arrayBuffer = await file.arrayBuffer();
-                    this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-                    this.readyMode = "offline";
-                    this.syncReadyState();
-                    this.updateHUD();
+                    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                    this.loadOfflineAudioBuffer(audioBuffer);
                     statusText.innerHTML = `<div class="success-message">File loaded successfully!</div>`;
                 } catch (error) {
                     console.error('Error loading audio file:', error);
-                    this.readyMode = null;
-                    this.audioBuffer = null;
-                    this.syncReadyState();
-                    this.updateHUD();
+                    this.clearLoadedState('Failed to load audio file');
                     statusText.innerHTML = '<div class="error-message">Failed to load audio file, please try another file</div>';
                 }
             }
