@@ -385,19 +385,34 @@ class RhythmGame {
             const nudge = avgVocalEnergy > 130 ? -0.02 : 0.01;
             const phraseCounts = new Map();
             this.chartData.notes = this.chartData.notes.map((n, idx) => {
-                const phraseKey = Number.isFinite(n.phrase) ? n.phrase : Math.floor(idx / 6);
+                const rawTime = Number(n?.time);
+                const normalizedTime = Number.isFinite(rawTime) ? rawTime : (idx * 0.5 + 0.6);
+                const phraseKey = Number.isFinite(n?.phrase) ? n.phrase : Math.floor(idx / 6);
                 const inPhraseIndex = phraseCounts.get(phraseKey) || 0;
                 phraseCounts.set(phraseKey, inPhraseIndex + 1);
                 const seededType = this.pickChartNoteType(n, idx, inPhraseIndex);
                 return {
                     ...n,
-                    time: Number(Math.max(0.6, n.time + nudge + (idx % 8 === 0 ? 0.005 : 0)).toFixed(3)),
+                    time: Number(Math.max(0.6, normalizedTime + nudge + (idx % 8 === 0 ? 0.005 : 0)).toFixed(3)),
                     type: n.type || seededType,
                     phrase: phraseKey,
                     groupSlot: inPhraseIndex
                 };
+            }).sort((a, b) => {
+                const ta = Number.isFinite(Number(a?.time)) ? Number(a.time) : Number.POSITIVE_INFINITY;
+                const tb = Number.isFinite(Number(b?.time)) ? Number(b.time) : Number.POSITIVE_INFINITY;
+                if (ta !== tb) return ta - tb;
+                return (Number(a?.phrase) || 0) - (Number(b?.phrase) || 0);
             });
-            if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Chart loaded: " + this.chartData.notes.length + " notes</div>";
+            console.log('Chart timing preview', this.chartData.notes.slice(0, 8).map((n, idx) => ({
+                i: idx,
+                t: n.time,
+                type: n.type,
+                seg: n.segmentLabel || 'verse',
+                phrase: n.phrase,
+                slot: n.groupSlot
+            })));
+            if (statusText) statusText.innerHTML = "<div class=\"loading-message\">Chart loaded: " + this.chartData.notes.length + " notes · first @ " + this.chartData.notes[0].time + "s</div>";
         }
 
         // Display countdown while showing analysis results
