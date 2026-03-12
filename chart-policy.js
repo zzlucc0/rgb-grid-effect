@@ -111,7 +111,54 @@
     return map[type] || String(type || 'TAP').toUpperCase();
   }
 
-  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType };
+  function noteRadius(note, circleSize = 36) {
+    const type = note?.type || note?.noteType || 'tap';
+    if (type === 'pulseHold') return circleSize * 1.45;
+    if (type === 'gate') return circleSize * 1.3;
+    if (type === 'flick' || type === 'cut') return circleSize * 1.05;
+    return circleSize * 0.95;
+  }
+
+  function linePointDistance(px, py, ax, ay, bx, by) {
+    const abx = bx - ax, aby = by - ay;
+    const apx = px - ax, apy = py - ay;
+    const ab2 = abx * abx + aby * aby || 1;
+    const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
+    const cx = ax + abx * t, cy = ay + aby * t;
+    const dx = px - cx, dy = py - cy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function makeFootprint(note, circleSize = 36) {
+    const radius = noteRadius(note, circleSize);
+    const fp = { center: { x: note.x, y: note.y, r: radius }, endpoint: null, path: null };
+    if (Number.isFinite(note?.endX) && Number.isFinite(note?.endY)) {
+      fp.endpoint = { x: note.endX, y: note.endY, r: radius * 0.9 };
+      fp.path = {
+        ax: note.x,
+        ay: note.y,
+        bx: note.endX,
+        by: note.endY,
+        r: (note?.noteType === 'ribbon' ? radius * 0.9 : radius * 0.65)
+      };
+    }
+    if ((note?.type || note?.noteType) === 'gate') {
+      fp.box = { x: note.x, y: note.y, w: note.gateWidth || circleSize * 2.4, h: circleSize * 1.5 };
+    }
+    return fp;
+  }
+
+  function footprintsOverlap(a, b) {
+    const cdist = (p, q) => Math.hypot((p.x || 0) - (q.x || 0), (p.y || 0) - (q.y || 0));
+    if (cdist(a.center, b.center) < (a.center.r + b.center.r)) return true;
+    if (a.endpoint && cdist(a.endpoint, b.center) < (a.endpoint.r + b.center.r)) return true;
+    if (b.endpoint && cdist(a.center, b.endpoint) < (a.center.r + b.endpoint.r)) return true;
+    if (a.path && linePointDistance(b.center.x, b.center.y, a.path.ax, a.path.ay, a.path.bx, a.path.by) < (a.path.r + b.center.r)) return true;
+    if (b.path && linePointDistance(a.center.x, a.center.y, b.path.ax, b.path.ay, b.path.bx, b.path.by) < (b.path.r + a.center.r)) return true;
+    return false;
+  }
+
+  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

@@ -2878,14 +2878,34 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     const laneIndex = Number.isFinite(chartNote.laneHint) ? Math.max(0, Math.min(laneCount - 1, chartNote.laneHint)) : (chartIndex % laneCount);
     const phrase = Number.isFinite(chartNote.phrase) ? chartNote.phrase : Math.floor(chartIndex / 6);
     const groupSlot = Number.isFinite(chartNote.groupSlot) ? chartNote.groupSlot : (chartIndex % 4);
-    const basePos = this.resolveGroupPatternPosition({
-        laneIndex,
-        laneCount,
-        chartIndex,
-        phrase,
-        groupSlot,
-        segmentLabel: chartNote.segmentLabel || 'verse'
-    });
+    const candidateShifts = [0, 1, -1, 2, -2];
+    let basePos = null;
+    let chosenLane = laneIndex;
+    for (const shift of candidateShifts) {
+        const candidateLane = Math.max(0, Math.min(laneCount - 1, laneIndex + shift));
+        const pos = this.resolveGroupPatternPosition({
+            laneIndex: candidateLane,
+            laneCount,
+            chartIndex,
+            phrase,
+            groupSlot,
+            segmentLabel: chartNote.segmentLabel || 'verse'
+        });
+        const probe = { x: pos.x, y: pos.y, type: chartNote.type || this.pickChartNoteType(chartNote, chartIndex, groupSlot) };
+        const active = (this.notes || []).filter(n => !n.hit && !n.completed);
+        const collides = active.some(existing => {
+            if (!window.ChartPolicy?.makeFootprint || !window.ChartPolicy?.footprintsOverlap) return false;
+            return window.ChartPolicy.footprintsOverlap(window.ChartPolicy.makeFootprint(probe, this.circleSize), window.ChartPolicy.makeFootprint(existing, this.circleSize));
+        });
+        if (!collides) {
+            basePos = pos;
+            chosenLane = candidateLane;
+            break;
+        }
+    }
+    if (!basePos) {
+        basePos = this.resolveGroupPatternPosition({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse' });
+    }
     const x = basePos.x;
     const y = basePos.y;
 
@@ -2907,7 +2927,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         completed: false,
         progress: 0,
         segmentLabel: chartNote.segmentLabel || null,
-        laneHint: laneIndex,
+        laneHint: chosenLane,
         phrase,
         groupIndex: phrase,
         groupSlot,
@@ -2920,8 +2940,8 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     this.applyGroupMechanics([note], { pattern: basePos.pattern, groupIndex: phrase, segmentLabel: note.segmentLabel || 'verse' });
 
     if (note.isDrag) {
-        const dragLanes = [laneIndex - 1, laneIndex + 1, laneIndex + (chartIndex % 2 === 0 ? 1 : -1), laneIndex];
-        let endLane = laneIndex;
+        const dragLanes = [chosenLane - 1, chosenLane + 1, chosenLane + (chartIndex % 2 === 0 ? 1 : -1), chosenLane];
+        let endLane = chosenLane;
         for (const candidate of dragLanes) {
             if (candidate >= 0 && candidate < laneCount && candidate !== laneIndex) {
                 endLane = candidate;
@@ -2930,6 +2950,13 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         }
         note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
         note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * 1.8)));
+        const active = (this.notes || []).filter(n => !n.hit && !n.completed);
+        for (const existing of active) {
+            const tooCloseEnd = Math.hypot((existing.x || 0) - note.endX, (existing.y || 0) - note.endY) < this.circleSize * 2.2;
+            if (tooCloseEnd) {
+                note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.endY + this.circleSize * 1.4));
+            }
+        }
         const dx = note.endX - note.x;
         const dy = note.endY - note.y;
         const L = Math.sqrt(dx * dx + dy * dy) || 1;
