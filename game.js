@@ -2001,23 +2001,12 @@ class RhythmGame {
                                    Math.pow(t, 2) * note.endY;
                     
                     // Draw completed track
-                    const progressIndex = Math.floor(note.progress * 100);
-                    const fullPath = [];
-                    
-                    for (let i = 0; i <= 100; i++) {
-                        const t = i / 100;
-                        const ptX = Math.pow(1-t, 2) * note.x + 
-                                   2 * (1-t) * t * note.controlX + 
-                                   Math.pow(t, 2) * note.endX;
-                        const ptY = Math.pow(1-t, 2) * note.y + 
-                                   2 * (1-t) * t * note.controlY + 
-                                   Math.pow(t, 2) * note.endY;
-                        fullPath.push({x: ptX, y: ptY});
-                    }
+                    const fullPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
+                    const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
                     
                     // Draw partial path up to current progress
                     this.ctx.beginPath();
-                    this.ctx.moveTo(note.x, note.y);
+                    this.ctx.moveTo(fullPath[0]?.x || note.x, fullPath[0]?.y || note.y);
                     this.ctx.lineCap = 'round';
                     this.ctx.lineWidth = this.circleSize * 0.26;
                     this.ctx.strokeStyle = palette.edge;
@@ -2200,14 +2189,7 @@ class RhythmGame {
             const note = this.currentDragNote;
             if (note.held) {
                 if (type === 'move') {
-                    const curvePoints = [];
-                    const steps = 100;
-                    for (let i = 0; i <= steps; i++) {
-                        const t = i / steps;
-                        const ptX = Math.pow(1-t, 2) * note.x + 2 * (1-t) * t * note.controlX + Math.pow(t, 2) * note.endX;
-                        const ptY = Math.pow(1-t, 2) * note.y + 2 * (1-t) * t * note.controlY + Math.pow(t, 2) * note.endY;
-                        curvePoints.push({x: ptX, y: ptY, t: t});
-                    }
+                    const curvePoints = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
                     let minDist = Infinity;
                     let closestPoint = null;
                     curvePoints.forEach(point => {
@@ -2218,7 +2200,7 @@ class RhythmGame {
                         }
                     });
                     if (closestPoint) {
-                        note.progress = closestPoint.t;
+                        note.progress = Math.max(note.progress || 0, closestPoint.t);
                     }
                 } else if (type === 'end') {
                     if (note.keyboardCheckpoint && !note.keyboardHit) {

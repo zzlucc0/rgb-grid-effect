@@ -47,12 +47,39 @@
 
   function chooseTemplate(note, difficulty = 'normal') {
     const seq = Math.abs(Number(note?.noteNumber || 0));
-    if (difficulty === 'hard' && seq % 5 === 0) return 'starTrace';
-    if (difficulty !== 'easy' && seq % 3 === 0) return 'diamondLoop';
+    if (difficulty === 'hard') {
+      if (seq % 5 === 0) return 'starTrace';
+      if (seq % 2 === 0) return 'diamondLoop';
+      return 'orbit';
+    }
+    if (difficulty === 'normal') {
+      if (seq % 3 === 0) return 'diamondLoop';
+      return 'orbit';
+    }
     return 'orbit';
   }
 
-  const api = { sampleOrbit, sampleDiamondLoop, sampleStarTrace, chooseTemplate };
+  function samplePathPoints(note, steps = 100) {
+    if (note?.extraPath?.points?.length) {
+      const pts = note.extraPath.points;
+      const result = [];
+      const segments = Math.max(1, pts.length - 1);
+      for (let i = 0; i < pts.length; i++) {
+        result.push({ x: pts[i].x, y: pts[i].y, t: i / segments });
+      }
+      return result;
+    }
+    const out = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const ptX = Math.pow(1-t, 2) * note.x + 2 * (1-t) * t * note.controlX + Math.pow(t, 2) * note.endX;
+      const ptY = Math.pow(1-t, 2) * note.y + 2 * (1-t) * t * note.controlY + Math.pow(t, 2) * note.endY;
+      out.push({ x: ptX, y: ptY, t });
+    }
+    return out;
+  }
+
+  const api = { sampleOrbit, sampleDiamondLoop, sampleStarTrace, chooseTemplate, samplePathPoints };
   if (typeof window !== 'undefined') window.PathTemplates = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
