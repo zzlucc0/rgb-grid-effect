@@ -1,6 +1,11 @@
 FROM nginx:alpine
 COPY index.html /usr/share/nginx/html/index.html
 COPY game.js /usr/share/nginx/html/game.js
+COPY clock-controller.js /usr/share/nginx/html/clock-controller.js
+COPY run-orchestrator.js /usr/share/nginx/html/run-orchestrator.js
+COPY chart-runtime.js /usr/share/nginx/html/chart-runtime.js
+COPY run-completion.js /usr/share/nginx/html/run-completion.js
+COPY playback-controller.js /usr/share/nginx/html/playback-controller.js
 COPY rgb-effect.js /usr/share/nginx/html/rgb-effect.js
 COPY default-songs.js /usr/share/nginx/html/default-songs.js
 COPY music-api.js /usr/share/nginx/html/music-api.js
