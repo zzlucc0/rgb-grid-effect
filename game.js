@@ -45,6 +45,7 @@ class RhythmGame {
         this.lastPlaybackHealthyAt = 0;
         this.runClock = window.RunClockController ? new window.RunClockController() : null;
         this.runOrchestrator = window.RunOrchestrator ? new window.RunOrchestrator({ clock: this.runClock }) : null;
+        this.chartRuntime = window.ChartRuntime ? new window.ChartRuntime() : null;
         this.visualBursts = [];
         this.signatureBursts = [];
         this.groupHistory = [];
@@ -297,6 +298,7 @@ class RhythmGame {
         this.chartMode = false;
         this.chartData = null;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.reset) this.chartRuntime.reset(null);
         this.liveMode = false;
         this.liveConfig = null;
         this.setScene('ready', { error: '' });
@@ -308,6 +310,7 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { approachRateMs: this.approachRate, goodRangeMs: this.goodRange });
         this.liveMode = false;
         this.liveConfig = null;
         this.setScene('ready', { error: '' });
@@ -319,6 +322,7 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { approachRateMs: this.approachRate, goodRangeMs: this.goodRange });
         this.liveMode = true;
         this.liveConfig = liveConfig || null;
         this.setScene('ready', { error: '' });
@@ -330,6 +334,7 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { approachRateMs: this.approachRate, goodRangeMs: this.goodRange });
         this.liveMode = true;
         this.liveConfig = liveConfig || null;
         this.setScene('ready', { error: '' });
@@ -341,6 +346,7 @@ class RhythmGame {
         this.chartMode = false;
         this.chartData = null;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.reset) this.chartRuntime.reset(null);
         this.liveMode = true;
         this.liveConfig = liveConfig || null;
         this.setScene('ready', { error: '' });
@@ -352,6 +358,7 @@ class RhythmGame {
         this.chartData = null;
         this.liveConfig = null;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.reset) this.chartRuntime.reset(null);
         this.chartMode = false;
         this.liveMode = false;
         this.readyMode = null;
@@ -499,6 +506,11 @@ class RhythmGame {
         if (this.runOrchestrator?.arm) this.runOrchestrator.arm();
         this.noteCount = 0;
         this.nextChartIndex = 0;
+        if (this.chartRuntime?.reset) {
+            this.chartRuntime.reset(this.chartData || null);
+            this.chartRuntime.approachRateMs = this.approachRate;
+            this.chartRuntime.goodRangeMs = this.goodRange;
+        }
         this.isGroupPaused = false;
         this.playbackViolations = [];
         this.runInvalid = false;
@@ -930,7 +942,10 @@ class RhythmGame {
         if (debugStrip) debugStrip.classList.toggle('hidden', !this.isPlaying && this.gameState === 'idle');
         if (debugGameClock) debugGameClock.textContent = this.resolveChartClock().toFixed(2);
         if (debugPlayerClock) debugPlayerClock.textContent = this.resolvePlayerClock().toFixed(2);
-        if (debugChartProgress) debugChartProgress.textContent = `${this.nextChartIndex}/${this.chartData?.notes?.length || 0}`;
+        if (debugChartProgress) {
+            const progress = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress() : { nextIndex: this.nextChartIndex, total: this.chartData?.notes?.length || 0 };
+            debugChartProgress.textContent = `${progress.nextIndex}/${progress.total || 0}`;
+        }
         if (debugActiveNotes) debugActiveNotes.textContent = String((this.notes || []).filter(n => !n.hit && !n.completed).length);
         if (debugGroupState) {
             const active = this.activeGroupState;
@@ -987,6 +1002,15 @@ class RhythmGame {
         if (!(this.chartMode && this.chartData?.notes?.length)) return 0;
         const chartTime = this.resolveChartClock();
         if (this.liveMode) this.applySegmentProfile(chartTime);
+        if (this.chartRuntime?.spawnUntil) {
+            const spawned = this.chartRuntime.spawnUntil(chartTime, (currentTime, chartNote, chartIndex) => this.createChartNoteFromData(currentTime, chartNote, chartIndex));
+            if (spawned?.length) {
+                this.notes.push(...spawned);
+                this.spawnedChartNotes += spawned.length;
+            }
+            this.nextChartIndex = this.chartRuntime.getProgress().nextIndex;
+            return spawned.length;
+        }
         return this.spawnChartNotesUpTo(chartTime);
     }
 
