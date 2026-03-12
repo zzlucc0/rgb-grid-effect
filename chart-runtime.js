@@ -3,6 +3,7 @@
     constructor(options = {}) {
       this.approachRateMs = Number(options.approachRateMs || 1250);
       this.goodRangeMs = Number(options.goodRangeMs || 680);
+      this.leadInBiasSec = Number(options.leadInBiasSec || 0.18);
       this.reset();
     }
 
@@ -16,6 +17,7 @@
     load(chart, options = {}) {
       if (options.approachRateMs != null) this.approachRateMs = Number(options.approachRateMs || this.approachRateMs);
       if (options.goodRangeMs != null) this.goodRangeMs = Number(options.goodRangeMs || this.goodRangeMs);
+      if (options.leadInBiasSec != null) this.leadInBiasSec = Number(options.leadInBiasSec || this.leadInBiasSec);
       this.reset(chart || null);
       return this.snapshot();
     }
@@ -34,7 +36,7 @@
 
       const spawned = [];
       const notes = this.getNotes();
-      const lookaheadSec = this.approachRateMs / 1000;
+      const lookaheadSec = this.approachRateMs / 1000 + Math.max(0, Number(this.leadInBiasSec || 0));
       const missGraceSec = this.goodRangeMs / 1000;
 
       while (this.nextIndex < notes.length && Number(notes[this.nextIndex]?.time || 0) <= chartTime + lookaheadSec) {
