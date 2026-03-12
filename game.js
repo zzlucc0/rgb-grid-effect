@@ -377,7 +377,14 @@ class RhythmGame {
         this.setupLoadedState('online');
     }
 
-    clearLoadedState(errorMessage = '') {
+    clearLoadedState(errorMessage = '', options = {}) {
+        const lockedRun = this.isPlaying || this.isStartingPhase() || this.isRunningPhase() || this.isPausedPhase();
+        if (lockedRun && !options.force) {
+            if (errorMessage) this.lastStartError = errorMessage;
+            this.captureRuntimeDiagnostics('clear-blocked', { clearError: errorMessage || '', lockedRun: true });
+            this.updateHUD();
+            return;
+        }
         this.audioBuffer = null;
         this.chartData = null;
         this.liveConfig = null;
@@ -511,6 +518,7 @@ class RhythmGame {
     }
 
     armGameLoop(dataArray) {
+        this.captureRuntimeDiagnostics('arm-loop');
         requestAnimationFrame(() => this.gameLoop(dataArray));
     }
 
@@ -618,6 +626,7 @@ class RhythmGame {
 
     beginRun() {
         this.isPlaying = true;
+        this.captureRuntimeDiagnostics('begin-run', { readyMode: this.readyMode || '-', chartMode: !!this.chartMode, liveMode: !!this.liveMode });
         this.startTime = this.audioContext.currentTime;
         this._liveStartWall = performance.now();
         if (this.runClock?.attachPlayback) this.runClock.attachPlayback(() => this.getLiveCurrentTime());
@@ -640,6 +649,7 @@ class RhythmGame {
 
     startPlaybackBackend() {
         if (!this.liveMode) return;
+        this.captureRuntimeDiagnostics('start-playback-backend');
         try {
             this.startLivePlayback();
         } catch (err) {
