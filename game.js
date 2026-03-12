@@ -60,6 +60,14 @@ class RhythmGame {
             audioElement: document.getElementById('liveAudio'),
             playerHostId: 'ytPlayer'
         }) : null;
+        this.diagnostics = {
+            lastChartSpawnAt: null,
+            lastChartSpawnCount: 0,
+            lastActiveNotes: 0,
+            lastRunTime: 0,
+            lastPlayerTime: 0,
+            lastDiag: 'idle'
+        };
         this.visualBursts = [];
         this.signatureBursts = [];
         this.groupHistory = [];
@@ -911,6 +919,7 @@ class RhythmGame {
         const debugActiveNotes = document.getElementById('debugActiveNotes');
         const debugGroupState = document.getElementById('debugGroupState');
         const debugPlaybackState = document.getElementById('debugPlaybackState');
+        const debugDiagState = document.getElementById('debugDiagState');
         const comboNode = document.getElementById('comboValue');
         const modeNode = document.getElementById('hudMode');
         const diffNode = document.getElementById('hudDifficulty');
@@ -974,6 +983,11 @@ class RhythmGame {
             const clockMode = this.runClock?.mode || '-';
             debugPlaybackState.textContent = `${this.scene || 'input'}:${phase}:${mode}:${orch}:${clockMode}/${this.spawnedChartNotes || 0}`;
         }
+        if (debugDiagState) {
+            const p = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress() : { nextIndex: this.nextChartIndex || 0, total: this.chartData?.notes?.length || 0, spawnedCount: this.spawnedChartNotes || 0 };
+            const diag = this.diagnostics || {};
+            debugDiagState.textContent = `${diag.lastDiag || '-'}:rt${Number(diag.lastRunTime || 0).toFixed(1)}:pt${Number(diag.lastPlayerTime || 0).toFixed(1)}:sp${p.spawnedCount || 0}:ac${diag.lastActiveNotes || 0}`;
+        }
     }
 
     gameLoop(dataArray) {
@@ -983,6 +997,7 @@ class RhythmGame {
             return;
         }
 
+        this.captureRuntimeDiagnostics('frame-start');
         try {
             if (!this.liveMode) this.analyser.getByteFrequencyData(dataArray);
             this.advanceChartRuntime();
@@ -1006,6 +1021,23 @@ class RhythmGame {
 
     resolveRunClock() {
         return this.computeRunClock();
+    }
+
+    captureRuntimeDiagnostics(stage = 'tick', extra = {}) {
+        const activeNotes = (this.notes || []).filter(n => !n.hit && !n.completed).length;
+        const progress = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress() : { spawnedCount: this.spawnedChartNotes || 0, nextIndex: this.nextChartIndex || 0, total: this.chartData?.notes?.length || 0 };
+        this.diagnostics = {
+            ...(this.diagnostics || {}),
+            lastDiag: stage,
+            lastRunTime: this.resolveRunClock(),
+            lastPlayerTime: this.resolvePlayerClock(),
+            lastActiveNotes: activeNotes,
+            lastSpawnedCount: progress.spawnedCount || 0,
+            lastChartIndex: progress.nextIndex || 0,
+            lastChartTotal: progress.total || 0,
+            ...extra
+        };
+        return this.diagnostics;
     }
 
     finishRun(reason = 'finished') {
@@ -1042,6 +1074,7 @@ class RhythmGame {
         if (!this.runCompletion?.shouldFinish) return false;
         const result = this.runCompletion.shouldFinish();
         if (!result?.done) return false;
+        this.captureRuntimeDiagnostics('finish-check', { finishReason: result.reason || 'finished' });
         this.finishRun(result.reason || 'finished');
         return true;
     }
@@ -1091,6 +1124,11 @@ class RhythmGame {
             if (spawned?.length) {
                 this.notes.push(...spawned);
                 this.spawnedChartNotes += spawned.length;
+                this.captureRuntimeDiagnostics('chart-spawn', {
+                    lastChartSpawnAt: chartTime,
+                    lastChartSpawnCount: spawned.length,
+                    lastSpawnedCount: this.spawnedChartNotes
+                });
             }
             this.nextChartIndex = this.chartRuntime.getProgress().nextIndex;
             return spawned.length;
@@ -2567,6 +2605,7 @@ RhythmGame.prototype.resumeGame = async function () {
 // Live playback helpers (patched)
 RhythmGame.prototype.markLivePlaybackState = function (state) {
     this.livePlaybackState = state || this.livePlaybackState || 'idle';
+    this.captureRuntimeDiagnostics('playback-state', { playbackState: this.livePlaybackState });
     if (state === 'playing') {
         this.livePlaybackStarted = true;
         if (this.runClock?.markPlaybackStarted) this.runClock.markPlaybackStarted();
