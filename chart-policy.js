@@ -185,6 +185,48 @@
     return [...(notes || [])].sort((a, b) => footprintSeverity(b) - footprintSeverity(a));
   }
 
+  function densityStats(notes, windowSec = 10, horizonSec = 30) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    let minWindowCount = Infinity;
+    for (let start = 0; start < horizonSec; start += windowSec) {
+      const end = start + windowSec;
+      const count = seq.filter(n => Number(n.time || 0) >= start && Number(n.time || 0) < end).length;
+      minWindowCount = Math.min(minWindowCount, count);
+    }
+    const first30 = seq.filter(n => Number(n.time || 0) <= horizonSec).length;
+    return { first30, minWindowCount: Number.isFinite(minWindowCount) ? minWindowCount : 0 };
+  }
+
+  function enforceDensityFloor(notes, options = {}) {
+    const minFirst30 = Number(options.minFirst30 || 12);
+    const minPer10 = Number(options.minPer10 || 3);
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const stats = densityStats(seq, 10, 30);
+    if (stats.first30 < minFirst30) {
+      for (const note of seq) {
+        const type = note.type || note.noteType || 'tap';
+        if (type === 'ribbon') continue;
+        if (type !== 'tap' && type !== 'drag') {
+          note.type = 'tap';
+          note.noteType = 'tap';
+          delete note.endX; delete note.endY; delete note.controlX; delete note.controlY;
+        }
+      }
+    }
+    if (stats.minWindowCount < minPer10) {
+      let lastTapTime = -Infinity;
+      for (const note of seq) {
+        if (Number(note.time || 0) > 30) break;
+        if (Number(note.time || 0) - lastTapTime >= 1.8) {
+          note.type = note.type || 'tap';
+          note.noteType = note.noteType || note.type;
+          lastTapTime = Number(note.time || 0);
+        }
+      }
+    }
+    return seq;
+  }
+
   function resolvePathConflicts(notes, circleSize = 36) {
     const sorted = sortByLayoutPriority(notes);
     const kept = [];
@@ -195,23 +237,26 @@
         continue;
       }
       const type = note.type || note.noteType || 'tap';
+      const earlyTime = Number(note.time || 0) <= 30;
       if (type === 'ribbon') {
         note.type = 'drag';
         note.noteType = 'drag';
       } else if (type === 'drag' || type === 'gate') {
-        note.type = 'tap';
-        note.noteType = 'tap';
-        delete note.endX; delete note.endY; delete note.controlX; delete note.controlY;
+        note.type = earlyTime ? 'drag' : 'tap';
+        note.noteType = note.type;
+        if (note.type === 'tap') {
+          delete note.endX; delete note.endY; delete note.controlX; delete note.controlY;
+        }
       } else if (type === 'cut' || type === 'flick') {
         note.type = 'tap';
         note.noteType = 'tap';
       }
       kept.push(note);
     }
-    return kept;
+    return enforceDensityFloor(kept);
   }
 
-  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts };
+  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, densityStats, enforceDensityFloor };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

@@ -58,4 +58,19 @@ describe('chart policy quotas', () => {
     expect(policy.tutorialLabelForType('ribbon')).toBe('TRACE');
     expect(policy.tutorialLabelForType('cut')).toBe('SLASH');
   });
+
+  it('keeps a density floor in the first 30 seconds', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 20 }, (_, i) => ({
+      time: 1 + i * 1.2,
+      type: i % 2 === 0 ? 'ribbon' : 'gate',
+      noteType: i % 2 === 0 ? 'ribbon' : 'gate',
+      laneHint: i % 4,
+      segmentLabel: 'verse'
+    }));
+    const resolved = policy.resolvePathConflicts(notes, 36);
+    const stats = policy.densityStats(resolved, 10, 30);
+    expect(stats.first30).toBeGreaterThanOrEqual(12);
+    expect(stats.minWindowCount).toBeGreaterThanOrEqual(3);
+  });
 });
