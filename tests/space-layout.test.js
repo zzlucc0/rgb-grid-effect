@@ -37,4 +37,15 @@ describe('space layout policy', () => {
     expect(sorted[0].noteType).toBe('ribbon');
     expect(sorted[1].noteType).toBe('drag');
   });
+
+  it('downgrades later long-path conflicts when footprints overlap badly', () => {
+    const p = loadPolicy();
+    const notes = [
+      { x: 100, y: 100, endX: 260, endY: 100, noteType: 'ribbon', type: 'ribbon' },
+      { x: 120, y: 110, endX: 280, endY: 110, noteType: 'ribbon', type: 'ribbon' }
+    ];
+    const resolved = p.resolvePathConflicts(notes, 36);
+    expect(resolved[0].type).toBe('ribbon');
+    expect(['drag', 'tap']).toContain(resolved[1].type);
+  });
 });

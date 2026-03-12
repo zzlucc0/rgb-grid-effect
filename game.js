@@ -619,6 +619,9 @@ class RhythmGame {
             }
             this.applyMechanicQuotas(this.chartData.notes);
             this.enforceChartPlayability(this.chartData.notes);
+            if (window.ChartPolicy?.resolvePathConflicts) {
+                this.chartData.notes = window.ChartPolicy.resolvePathConflicts(this.chartData.notes, this.circleSize);
+            }
             const layoutIssues = this.getLayoutAudit(this.chartData.notes.map((n, idx) => ({
                 x: this.safeArea.x + (this.safeArea.width / 4) * (((n.laneHint ?? idx % 4) + 0.5)),
                 y: this.safeArea.y + this.safeArea.height * ((n.segmentLabel || 'verse') === 'chorus' ? 0.34 : ((n.segmentLabel || 'verse') === 'verse' ? 0.52 : 0.42)),

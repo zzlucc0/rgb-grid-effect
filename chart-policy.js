@@ -185,7 +185,33 @@
     return [...(notes || [])].sort((a, b) => footprintSeverity(b) - footprintSeverity(a));
   }
 
-  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity };
+  function resolvePathConflicts(notes, circleSize = 36) {
+    const sorted = sortByLayoutPriority(notes);
+    const kept = [];
+    for (const note of sorted) {
+      const conflicts = auditFootprints([...kept, note], circleSize).filter(issue => issue.a === note || issue.b === note);
+      if (!conflicts.length) {
+        kept.push(note);
+        continue;
+      }
+      const type = note.type || note.noteType || 'tap';
+      if (type === 'ribbon') {
+        note.type = 'drag';
+        note.noteType = 'drag';
+      } else if (type === 'drag' || type === 'gate') {
+        note.type = 'tap';
+        note.noteType = 'tap';
+        delete note.endX; delete note.endY; delete note.controlX; delete note.controlY;
+      } else if (type === 'cut' || type === 'flick') {
+        note.type = 'tap';
+        note.noteType = 'tap';
+      }
+      kept.push(note);
+    }
+    return kept;
+  }
+
+  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
