@@ -1,4 +1,25 @@
 (function () {
+  function applyOpeningWindowPolicy(notes, options = {}) {
+    const openingSeconds = Number(options.openingSeconds || 12);
+    const sustained = ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'];
+    const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
+    let sustainedUsed = 0;
+    let holdUsed = 0;
+    for (const note of seq) {
+      if (Number(note.time || 0) > openingSeconds) break;
+      const type = note.type || note.noteType || 'tap';
+      if (!sustained.includes(type)) continue;
+      sustainedUsed += 1;
+      if (type === 'pulseHold') holdUsed += 1;
+      if (holdUsed > 1 || sustainedUsed > 3) {
+        note.type = 'tap';
+        note.noteType = 'tap';
+        delete note.endX; delete note.endY; delete note.controlX; delete note.controlY; delete note.extraPath;
+      }
+    }
+    return seq;
+  }
+
   function spreadQuotaPromotions(notes) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
     const quotaPlan = {
@@ -56,7 +77,7 @@
       applyPlan(entries, quotaPlan[seg] || quotaPlan.verse);
     }
     applyPlan(latterHalf, { flick: 6, pulseHold: 4, gate: 3, drag: 5, ribbon: 3, cut: 4 });
-    return notes;
+    return applyOpeningWindowPolicy(notes);
   }
 
   function downgradeType(type) {
@@ -310,7 +331,7 @@
     return enforceDensityFloor(kept);
   }
 
-  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType };
+  const api = { spreadQuotaPromotions, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

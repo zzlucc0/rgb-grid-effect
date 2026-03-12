@@ -1918,6 +1918,12 @@ class RhythmGame {
                 const vec = note.flickVector || { x: 1, y: 0 };
                 const len = this.circleSize * (note.noteType === 'cut' ? 1.6 : 1.25);
                 this.ctx.beginPath();
+                this.ctx.moveTo(note.x - vec.x * len * 0.8, note.y - vec.y * len * 0.8);
+                this.ctx.lineTo(note.x + vec.x * len * 0.9, note.y + vec.y * len * 0.9);
+                this.ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+                this.ctx.lineWidth = 6;
+                this.ctx.stroke();
+                this.ctx.beginPath();
                 this.ctx.moveTo(note.x - vec.x * len * 0.45, note.y - vec.y * len * 0.45);
                 this.ctx.lineTo(note.x + vec.x * len * 0.55, note.y + vec.y * len * 0.55);
                 this.ctx.strokeStyle = palette.edge;
@@ -2120,6 +2126,21 @@ class RhythmGame {
                     this.ctx.font = '700 22px Arial';
                     this.ctx.fillStyle = '#f3fcff';
                     this.ctx.fillText(marker, note.x, note.y);
+                }
+                if (note.keyboardCheckpoint) {
+                    const chipW = this.circleSize * 1.15;
+                    const chipH = this.circleSize * 0.42;
+                    const chipY = note.y - this.circleSize * 1.18;
+                    this.ctx.beginPath();
+                    this.ctx.roundRect(note.x - chipW / 2, chipY - chipH / 2, chipW, chipH, 8);
+                    this.ctx.fillStyle = 'rgba(14,18,30,0.84)';
+                    this.ctx.fill();
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeStyle = '#ffffff';
+                    this.ctx.stroke();
+                    this.ctx.font = '900 12px "Arial Black", sans-serif';
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillText(note.keyboardHint || 'SPACE', note.x, chipY + 0.5);
                 }
             }
 
