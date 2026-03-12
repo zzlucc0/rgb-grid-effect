@@ -1855,13 +1855,13 @@ class RhythmGame {
                 const gateHeight = this.circleSize * 1.35;
                 const gateAlpha = 0.18 + note.approachProgress * 0.18;
                 const gatePulse = 1 + Math.sin(performance.now() / 120) * 0.06;
-                this.ctx.strokeStyle = `rgba(255, 215, 168, ${gateAlpha})`;
+                this.ctx.strokeStyle = palette.glow.replace('.34', `${Math.min(0.4, gateAlpha + 0.12).toFixed(2)}`);
                 this.ctx.lineWidth = 3;
                 this.ctx.strokeRect(note.x - (gateWidth * gatePulse) / 2, note.y - gateHeight / 2, gateWidth * gatePulse, gateHeight);
                 this.ctx.beginPath();
                 this.ctx.moveTo(note.x, note.y - gateHeight * 0.75);
                 this.ctx.lineTo(note.x, note.y + gateHeight * 0.75);
-                this.ctx.strokeStyle = `rgba(255, 244, 217, ${Math.min(0.42, gateAlpha + 0.08)})`;
+                this.ctx.strokeStyle = palette.edge;
                 this.ctx.setLineDash([8, 8]);
                 this.ctx.stroke();
                 this.ctx.setLineDash([]);
@@ -1905,7 +1905,7 @@ class RhythmGame {
                         if (idx === 0) this.ctx.moveTo(pt.x, y);
                         else this.ctx.lineTo(pt.x, y);
                     });
-                    this.ctx.strokeStyle = 'rgba(255,215,168,.16)';
+                    this.ctx.strokeStyle = palette.glow.replace('.38', '.20').replace('.36', '.20').replace('.34', '.20');
                     this.ctx.lineWidth = this.circleSize * 0.92;
                     this.ctx.lineCap = 'round';
                     this.ctx.stroke();
@@ -1913,7 +1913,9 @@ class RhythmGame {
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
                 this.ctx.lineWidth = this.circleSize * (note.noteType === 'ribbon' ? 0.82 : 0.55);
-                this.ctx.strokeStyle = note.noteType === 'ribbon' ? 'rgba(255,215,168,.14)' : 'rgba(255,255,255,.08)';
+                this.ctx.strokeStyle = note.noteType === 'ribbon'
+                    ? palette.glow.replace('.38', '.18').replace('.36', '.18').replace('.34', '.18')
+                    : palette.glow.replace('.38', '.10').replace('.36', '.10').replace('.34', '.10');
                 this.ctx.moveTo(note.x, note.y);
                 this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
                 this.ctx.stroke();
@@ -2400,13 +2402,27 @@ RhythmGame.prototype.getSegmentPalette = function (segmentLabel, groupIndex) {
 
 RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
     const palette = { ...(base || this.segmentGroupPalettes.verse[0]) };
+    const mechanicPalettes = {
+        tap: { core: '#ffe7cc', edge: '#ffb86b', glow: 'rgba(255,184,107,.34)' },
+        drag: { core: '#e5dcff', edge: '#b892ff', glow: 'rgba(184,146,255,.34)' },
+        ribbon: { core: '#fff1c7', edge: '#ffd36a', glow: 'rgba(255,211,106,.38)' },
+        pulseHold: { core: '#d9fff3', edge: '#5ee6b8', glow: 'rgba(94,230,184,.36)' },
+        gate: { core: '#dff4ff', edge: '#7fc9ff', glow: 'rgba(127,201,255,.34)' },
+        flick: { core: '#ffd9f1', edge: '#ff7fd1', glow: 'rgba(255,127,209,.36)' },
+        cut: { core: '#ffe0e0', edge: '#ff6f88', glow: 'rgba(255,111,136,.38)' }
+    };
+    const typeKey = note?.noteType || (note?.isDrag ? 'drag' : 'tap');
+    const mechanic = mechanicPalettes[typeKey];
+    if (mechanic) {
+        palette.core = mechanic.core;
+        palette.edge = mechanic.edge;
+        palette.glow = mechanic.glow;
+    }
     if (note && note.isDrag) {
-        palette.core = palette.core;
-        palette.edge = palette.edge;
-        palette.glow = palette.glow.replace('.34', '.42').replace('.32', '.4').replace('.3', '.38').replace('.26', '.34').replace('.24', '.32');
+        palette.glow = palette.glow.replace('.38', '.44').replace('.36', '.42').replace('.34', '.4');
     }
     if (note && note.energy >= 0.95) {
-        palette.glow = palette.glow.replace('.34', '.42').replace('.32', '.4').replace('.3', '.38').replace('.26', '.32').replace('.24', '.3');
+        palette.glow = palette.glow.replace('.44', '.48').replace('.42', '.46').replace('.4', '.44').replace('.38', '.42').replace('.36', '.4').replace('.34', '.38');
     }
     return palette;
 };
