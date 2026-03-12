@@ -1965,8 +1965,13 @@ class RhythmGame {
                 this.ctx.strokeStyle = note.noteType === 'ribbon'
                     ? palette.glow.replace('.38', '.18').replace('.36', '.18').replace('.34', '.18')
                     : palette.glow.replace('.38', '.10').replace('.36', '.10').replace('.34', '.10');
-                this.ctx.moveTo(note.x, note.y);
-                this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
+                if (note.extraPath?.points?.length) {
+                    this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
+                    for (let i = 1; i < note.extraPath.points.length; i++) this.ctx.lineTo(note.extraPath.points[i].x, note.extraPath.points[i].y);
+                } else {
+                    this.ctx.moveTo(note.x, note.y);
+                    this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
+                }
                 this.ctx.stroke();
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
@@ -1974,8 +1979,13 @@ class RhythmGame {
                 this.ctx.strokeStyle = note.noteType === 'ribbon' ? '#ffe6b7' : palette.edge;
                 this.ctx.shadowBlur = 16;
                 this.ctx.shadowColor = palette.edge;
-                this.ctx.moveTo(note.x, note.y);
-                this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
+                if (note.extraPath?.points?.length) {
+                    this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
+                    for (let i = 1; i < note.extraPath.points.length; i++) this.ctx.lineTo(note.extraPath.points[i].x, note.extraPath.points[i].y);
+                } else {
+                    this.ctx.moveTo(note.x, note.y);
+                    this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
+                }
                 this.ctx.stroke();
                 this.ctx.shadowBlur = 0;
                 
@@ -2936,6 +2946,17 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         const midY = (note.y + note.endY) / 2;
         note.controlX = midX - dy / L * (L * 0.24);
         note.controlY = midY + dx / L * (L * 0.24);
+        if (window.PathTemplates && note.pathTemplate) {
+            if (note.pathTemplate === 'orbit') {
+                const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
+                note.controlX = orbit.controlX;
+                note.controlY = orbit.controlY;
+            } else if (note.pathTemplate === 'diamondLoop') {
+                note.extraPath = window.PathTemplates.sampleDiamondLoop(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'starTrace') {
+                note.extraPath = window.PathTemplates.sampleStarTrace(note.x, note.y, note.endX, note.endY);
+            }
+        }
     }
 
     this.liveEngine.lastSpawnX = note.x;
@@ -3363,6 +3384,9 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
     if (note.noteType === 'ribbon') {
         note.ribbonWidth = this.circleSize * 0.9;
         note.traceStrictness = 0.2;
+    }
+    if ((note.noteType === 'drag' || note.noteType === 'ribbon') && window.PathTemplates?.chooseTemplate) {
+        note.pathTemplate = window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal');
     }
     if ((note.noteType === 'drag' || note.noteType === 'ribbon') && ((note.noteNumber || 0) % 5 === 0)) {
         note.keyboardCheckpoint = true;

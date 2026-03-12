@@ -7,6 +7,7 @@ COPY chart-runtime.js /usr/share/nginx/html/chart-runtime.js
 COPY run-completion.js /usr/share/nginx/html/run-completion.js
 COPY playback-controller.js /usr/share/nginx/html/playback-controller.js
 COPY chart-policy.js /usr/share/nginx/html/chart-policy.js
+COPY path-templates.js /usr/share/nginx/html/path-templates.js
 COPY rgb-effect.js /usr/share/nginx/html/rgb-effect.js
 COPY default-songs.js /usr/share/nginx/html/default-songs.js
 COPY music-api.js /usr/share/nginx/html/music-api.js
