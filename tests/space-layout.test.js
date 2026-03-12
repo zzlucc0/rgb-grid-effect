@@ -17,4 +17,24 @@ describe('space layout policy', () => {
     const p = loadPolicy();
     expect(p.tutorialLabelForType('gate')).toBe('PASS');
   });
+
+  it('detects footprint overlap between ribbon path and nearby note', () => {
+    const p = loadPolicy();
+    const ribbon = { x: 100, y: 100, endX: 260, endY: 100, noteType: 'ribbon' };
+    const tap = { x: 180, y: 110, noteType: 'tap' };
+    const issues = p.auditFootprints([ribbon, tap], 36);
+    expect(issues.length).toBeGreaterThan(0);
+  });
+
+  it('sorts long-path notes ahead of taps for layout priority', () => {
+    const p = loadPolicy();
+    const sorted = p.sortByLayoutPriority([
+      { noteType: 'tap' },
+      { noteType: 'drag' },
+      { noteType: 'ribbon' },
+      { noteType: 'gate' }
+    ]);
+    expect(sorted[0].noteType).toBe('ribbon');
+    expect(sorted[1].noteType).toBe('drag');
+  });
 });

@@ -619,6 +619,15 @@ class RhythmGame {
             }
             this.applyMechanicQuotas(this.chartData.notes);
             this.enforceChartPlayability(this.chartData.notes);
+            const layoutIssues = this.getLayoutAudit(this.chartData.notes.map((n, idx) => ({
+                x: this.safeArea.x + (this.safeArea.width / 4) * (((n.laneHint ?? idx % 4) + 0.5)),
+                y: this.safeArea.y + this.safeArea.height * ((n.segmentLabel || 'verse') === 'chorus' ? 0.34 : ((n.segmentLabel || 'verse') === 'verse' ? 0.52 : 0.42)),
+                endX: Number.isFinite(n.endX) ? n.endX : undefined,
+                endY: Number.isFinite(n.endY) ? n.endY : undefined,
+                noteType: n.type,
+                gateWidth: n.gateWidth
+            })));
+            this.captureRuntimeDiagnostics('layout-audit', { layoutIssues: layoutIssues.length });
             console.log('Chart timing preview', this.chartData.notes.slice(0, 8).map((n, idx) => ({
                 i: idx,
                 t: n.time,
@@ -2791,6 +2800,7 @@ RhythmGame.prototype.pickSpawnPosition = function () {
     const active = this._activeLiveNotes();
 
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    let best = null;
     for (let i = 0; i < 80; i++) {
         const pr = this.liveEngine.phrase;
         const angle = Math.random() * Math.PI * 2;
@@ -2803,18 +2813,22 @@ RhythmGame.prototype.pickSpawnPosition = function () {
             if (d < minStep || d > maxStep) continue;
         }
 
+        let penalty = 0;
         let ok = true;
         for (const n of active) {
             const d = this._distance(x, y, n.x, n.y);
             if (d < minGap) { ok = false; break; }
+            penalty += 1 / Math.max(d, 1);
             if (n.isDrag && !n.completed && Number.isFinite(n.endX) && Number.isFinite(n.endY)) {
                 const cdist = this.distanceToQuadraticCurve(x, y, n.x, n.y, n.controlX, n.controlY, n.endX, n.endY);
                 if (cdist < minDragGap) { ok = false; break; }
+                penalty += 1 / Math.max(cdist, 1);
             }
         }
-        if (ok) return { x, y };
+        if (!ok) continue;
+        if (!best || penalty < best.penalty) best = { x, y, penalty };
     }
-    return null;
+    return best ? { x: best.x, y: best.y } : null;
 };
 
 RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
@@ -3197,6 +3211,11 @@ RhythmGame.prototype.applyMechanicQuotas = function (notes) {
 RhythmGame.prototype.enforceChartPlayability = function (notes) {
     if (window.ChartPolicy?.enforceChartPlayability) return window.ChartPolicy.enforceChartPlayability(notes);
     return notes;
+};
+
+RhythmGame.prototype.getLayoutAudit = function (notes) {
+    if (window.ChartPolicy?.auditFootprints) return window.ChartPolicy.auditFootprints(notes, this.circleSize);
+    return [];
 };
 
 RhythmGame.prototype.applyGroupMechanics = function (notes, context = {}) {
