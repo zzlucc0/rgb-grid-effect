@@ -43,6 +43,8 @@ class RhythmGame {
         this.frozenGameTime = 0;
         this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
+        this.runClock = window.RunClockController ? new window.RunClockController() : null;
+        this.runOrchestrator = window.RunOrchestrator ? new window.RunOrchestrator({ clock: this.runClock }) : null;
         this.visualBursts = [];
         this.signatureBursts = [];
         this.groupHistory = [];
@@ -494,6 +496,7 @@ class RhythmGame {
         this.combo = 0;
         this.notes = [];
         this.beatCount = 0;
+        if (this.runOrchestrator?.arm) this.runOrchestrator.arm();
         this.noteCount = 0;
         this.nextChartIndex = 0;
         this.isGroupPaused = false;
@@ -572,6 +575,7 @@ class RhythmGame {
     }
 
     async runCountdown() {
+        if (this.runOrchestrator?.beginCountdown) this.runOrchestrator.beginCountdown();
         this.setScene('countdown');
         await this.showCountdown(3);
     }
@@ -580,6 +584,8 @@ class RhythmGame {
         this.isPlaying = true;
         this.startTime = this.audioContext.currentTime;
         this._liveStartWall = performance.now();
+        if (this.runClock?.attachPlayback) this.runClock.attachPlayback(() => this.getLiveCurrentTime());
+        if (this.runOrchestrator?.attachPlayback) this.runOrchestrator.attachPlayback();
         this.setRunPhase('playing');
         this.updatePauseUI();
 
@@ -933,7 +939,9 @@ class RhythmGame {
         if (debugPlaybackState) {
             const mode = this.liveMode ? (this.livePlaybackState || 'idle') : 'offline';
             const phase = this.gameState || 'idle';
-            debugPlaybackState.textContent = `${this.scene || 'input'}:${phase}:${mode}/${this.spawnedChartNotes || 0}`;
+            const orch = this.runOrchestrator?.phase || '-';
+            const clockMode = this.runClock?.mode || '-';
+            debugPlaybackState.textContent = `${this.scene || 'input'}:${phase}:${mode}:${orch}:${clockMode}/${this.spawnedChartNotes || 0}`;
         }
     }
 
@@ -2317,6 +2325,7 @@ RhythmGame.prototype.drawComboHUD = function () {
 
 
 RhythmGame.prototype.getChartWallClockTime = function () {
+    if (this.runClock?.getWallTime) return this.runClock.getWallTime();
     return Math.max(0, (performance.now() - (this._liveStartWall || performance.now())) / 1000 - (this.pauseAccumulated || 0));
 };
 
@@ -2344,6 +2353,9 @@ RhythmGame.prototype.spawnChartNotesUpTo = function (currentTime) {
 };
 
 RhythmGame.prototype.computeRunClock = function () {
+    if (this.runClock?.getRunTime && this.liveMode) {
+        return this.runClock.getRunTime({ paused: this.isPausedPhase(), chartMode: this.chartMode });
+    }
     if (this.isPausedPhase()) return this.frozenGameTime || 0;
     if (this.liveMode) {
         const liveT = this.getLiveCurrentTime();
@@ -2421,6 +2433,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
         this.setRunPhase('paused-user');
         this.pausedAt = performance.now();
         this.frozenGameTime = this.resolveRunClock();
+        if (this.runOrchestrator?.pause) this.runOrchestrator.pause({ reason: 'invalid-strict' });
         this.updatePauseUI();
         this.updateHUD();
         return;
@@ -2429,6 +2442,7 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
     this.setRunPhase(reason === 'system' ? 'paused-system' : 'paused-user');
     this.pausedAt = performance.now();
     this.frozenGameTime = this.resolveRunClock();
+    if (this.runOrchestrator?.pause) this.runOrchestrator.pause({ reason });
     this.pausePlaybackMedia();
     this.updatePauseUI();
     this.updateHUD();
@@ -2436,13 +2450,18 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
 
 RhythmGame.prototype.resumeGame = async function () {
     if (!(this.isPausedPhase())) return;
+    if (this.runOrchestrator?.resume) this.runOrchestrator.resume({ reason: this.pauseReason || 'resume' });
     return this.resumeRunSequence();
 };
 
 // Live playback helpers (patched)
 RhythmGame.prototype.markLivePlaybackState = function (state) {
     this.livePlaybackState = state || this.livePlaybackState || 'idle';
-    if (state === 'playing') this.livePlaybackStarted = true;
+    if (state === 'playing') {
+        this.livePlaybackStarted = true;
+        if (this.runClock?.markPlaybackStarted) this.runClock.markPlaybackStarted();
+        if (this.runOrchestrator?.startPlaying) this.runOrchestrator.startPlaying({ playbackStarted: false });
+    }
     this.updateHUD();
 };
 
