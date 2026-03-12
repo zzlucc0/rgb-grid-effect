@@ -1869,10 +1869,16 @@ class RhythmGame {
 
             if (note.noteType === 'pulseHold') {
                 const holdRadius = this.circleSize * (1.1 + (1 - note.approachProgress) * 0.45);
+                const pulse = 1 + Math.sin(performance.now() / 140) * 0.08;
                 this.ctx.beginPath();
-                this.ctx.arc(note.x, note.y, holdRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (note.held ? (note.holdProgress || 0) : 1));
-                this.ctx.strokeStyle = note.held ? palette.edge : 'rgba(255,255,255,.22)';
-                this.ctx.lineWidth = 4;
+                this.ctx.arc(note.x, note.y, holdRadius * pulse, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (note.held ? (note.holdProgress || 0) : 1));
+                this.ctx.strokeStyle = note.held ? palette.edge : palette.glow.replace('.36', '.28').replace('.34', '.28');
+                this.ctx.lineWidth = 4.5;
+                this.ctx.stroke();
+                this.ctx.beginPath();
+                this.ctx.arc(note.x, note.y, this.circleSize * 1.38, 0, Math.PI * 2);
+                this.ctx.strokeStyle = palette.glow.replace('.36', '.12').replace('.34', '.12');
+                this.ctx.lineWidth = 2;
                 this.ctx.stroke();
             }
 
@@ -1885,6 +1891,17 @@ class RhythmGame {
                 this.ctx.strokeStyle = palette.edge;
                 this.ctx.lineWidth = note.noteType === 'cut' ? 5 : 3;
                 this.ctx.stroke();
+                const tipX = note.x + vec.x * len * 0.55;
+                const tipY = note.y + vec.y * len * 0.55;
+                this.ctx.beginPath();
+                this.ctx.moveTo(tipX, tipY);
+                this.ctx.lineTo(tipX - vec.x * 12 - vec.y * 7, tipY - vec.y * 12 + vec.x * 7);
+                this.ctx.lineTo(tipX - vec.x * 12 + vec.y * 7, tipY - vec.y * 12 - vec.x * 7);
+                this.ctx.closePath();
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.globalAlpha = note.noteType === 'cut' ? 0.92 : 0.8;
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1;
             }
 
             // If it's a drag button, draw the track
@@ -2048,7 +2065,7 @@ class RhythmGame {
                 this.ctx.font = '700 22px Arial';
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
-                const marker = note.noteType === 'flick' ? '↗' : note.noteType === 'cut' ? '✦' : note.noteType === 'pulseHold' ? '◎' : note.noteType === 'ribbon' ? '≈' : note.noteType === 'gate' ? '▣' : note.noteNumber.toString();
+                const marker = note.noteType === 'flick' ? '⇢' : note.noteType === 'cut' ? '✦' : note.noteType === 'pulseHold' ? '◉' : note.noteType === 'ribbon' ? '≈' : note.noteType === 'gate' ? '▣' : note.noteType === 'drag' ? '↘' : note.noteNumber.toString();
                 this.ctx.fillText(marker, note.x, note.y);
             }
 
@@ -3135,9 +3152,10 @@ RhythmGame.prototype.applyGroupMechanics = function (notes, context = {}) {
         note.groupRole = idx === 0 ? 'lead' : (idx === size - 1 ? 'accent' : 'body');
         note.groupKey = `${note.segmentLabel || context.segmentLabel || 'none'}:${note.groupIndex || context.groupIndex || 0}`;
         const seg = note.segmentLabel || context.segmentLabel || 'verse';
-        if (size >= 3 && pattern === 'burst' && idx === size - 1 && note.noteType === 'tap' && seg === 'chorus') note.noteType = 'cut';
-        if (size >= 3 && pattern === 'diamond' && idx === 1 && note.noteType === 'tap' && Math.abs(note.groupIndex || 0) % 2 === 0) note.noteType = 'flick';
-        if (size >= 4 && pattern === 'ladder' && idx === 0 && note.noteType === 'tap' && seg !== 'chorus') note.noteType = 'pulseHold';
+        if (size >= 3 && pattern === 'burst' && idx === size - 1 && (note.noteType === 'tap' || note.noteType === 'drag') && seg === 'chorus') note.noteType = 'cut';
+        if (size >= 3 && pattern === 'diamond' && idx === 1 && (note.noteType === 'tap' || note.noteType === 'drag') && Math.abs(note.groupIndex || 0) % 2 === 0) note.noteType = 'flick';
+        if (size >= 4 && pattern === 'ladder' && idx === 0 && (note.noteType === 'tap' || note.noteType === 'drag') && seg !== 'chorus') note.noteType = 'pulseHold';
+        if (size >= 4 && pattern === 'fan' && idx === size - 1 && seg === 'bridge' && note.noteType === 'tap') note.noteType = 'gate';
         this.applyNoteMechanicProfile(note);
     });
     return notes;
@@ -3147,23 +3165,23 @@ RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0)
     if (note && note.type) return note.type;
     const segment = note?.segmentLabel || 'verse';
     const cycle = idx % 16;
-    if (segment === 'chorus' && cycle === 12) return 'ribbon';
-    if ((segment === 'chorus' && cycle === 6 && inPhraseIndex % 2 === 0) || (segment === 'bridge' && cycle === 7)) return 'gate';
-    if (cycle === 10 && segment !== 'chorus') return 'pulseHold';
-    if (cycle === 4 && inPhraseIndex % 3 !== 2) return 'flick';
-    if (cycle === 14 && segment === 'chorus') return 'cut';
-    if ((idx + inPhraseIndex) % 8 === 0) return 'drag';
+    if (segment === 'chorus' && (cycle === 11 || cycle === 12)) return 'ribbon';
+    if ((segment === 'chorus' && (cycle === 5 || cycle === 6) && inPhraseIndex % 2 === 0) || (segment === 'bridge' && (cycle === 7 || cycle === 8))) return 'gate';
+    if ((cycle === 9 || cycle === 10) && segment !== 'chorus') return 'pulseHold';
+    if ((cycle === 3 || cycle === 4) && inPhraseIndex % 3 !== 2) return 'flick';
+    if ((cycle === 13 || cycle === 14) && segment === 'chorus') return 'cut';
+    if ((idx + inPhraseIndex) % 6 === 0) return 'drag';
     return 'tap';
 };
 
 RhythmGame.prototype.pickLiveNoteType = function (seq, groupIndex, preferDrag) {
-    if (groupIndex % 4 === 3 && seq % 8 === 0) return 'ribbon';
-    if (groupIndex % 3 === 2 && seq % 10 === 0) return 'gate';
-    if (preferDrag && seq % 7 === 0) return seq % 14 === 0 ? 'ribbon' : 'drag';
-    if (seq % 18 === 0) return 'gate';
-    if (seq % 13 === 0) return 'pulseHold';
-    if (seq % 11 === 0) return 'cut';
-    if (seq % 8 === 0) return 'flick';
+    if (groupIndex % 4 === 3 && seq % 6 === 0) return 'ribbon';
+    if (groupIndex % 3 === 2 && seq % 8 === 0) return 'gate';
+    if (preferDrag && seq % 6 === 0) return seq % 12 === 0 ? 'ribbon' : 'drag';
+    if (seq % 15 === 0) return 'gate';
+    if (seq % 11 === 0) return 'pulseHold';
+    if (seq % 9 === 0) return 'cut';
+    if (seq % 7 === 0) return 'flick';
     return preferDrag ? 'drag' : 'tap';
 };
 
