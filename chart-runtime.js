@@ -3,7 +3,7 @@
     constructor(options = {}) {
       this.approachRateMs = Number(options.approachRateMs || 1250);
       this.goodRangeMs = Number(options.goodRangeMs || 680);
-      this.leadInBiasSec = Number(options.leadInBiasSec || 0.18);
+      this.leadInBiasSec = Number(options.leadInBiasSec || 0.55);
       this.reset();
     }
 

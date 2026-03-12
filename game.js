@@ -606,6 +606,15 @@ class RhythmGame {
                 if (ta !== tb) return ta - tb;
                 return (Number(a?.phrase) || 0) - (Number(b?.phrase) || 0);
             });
+            const firstChartTime = Number(this.chartData.notes[0]?.time || 0);
+            const desiredLeadIn = this.liveMode ? 0.92 : 1.05;
+            const leadShift = firstChartTime > desiredLeadIn ? Math.min(firstChartTime - desiredLeadIn, 1.25) : 0;
+            if (leadShift > 0.01) {
+                this.chartData.notes = this.chartData.notes.map((note, idx) => ({
+                    ...note,
+                    time: Number(Math.max(0.42, Number(note.time || 0) - leadShift - (idx === 0 ? 0.02 : 0)).toFixed(3))
+                }));
+            }
             console.log('Chart timing preview', this.chartData.notes.slice(0, 8).map((n, idx) => ({
                 i: idx,
                 t: n.time,
@@ -614,6 +623,7 @@ class RhythmGame {
                 phrase: n.phrase,
                 slot: n.groupSlot
             })));
+            this.captureRuntimeDiagnostics('chart-normalized', { firstChartTime, desiredLeadIn, leadShift });
             this.setStatusMessage('loading', 'Chart loaded: ' + this.chartData.notes.length + ' notes · first @ ' + this.chartData.notes[0].time + 's');
         }
     }
