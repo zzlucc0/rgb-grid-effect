@@ -615,6 +615,7 @@ class RhythmGame {
                     time: Number(Math.max(0.42, Number(note.time || 0) - leadShift - (idx === 0 ? 0.02 : 0)).toFixed(3))
                 }));
             }
+            this.applyMechanicQuotas(this.chartData.notes);
             console.log('Chart timing preview', this.chartData.notes.slice(0, 8).map((n, idx) => ({
                 i: idx,
                 t: n.time,
@@ -3140,6 +3141,48 @@ RhythmGame.prototype.pickGroupPattern = function (phrase, segmentLabel) {
     const versePatterns = ['ladder', 'fan', 'diamond', 'burst'];
     const pool = segmentLabel === 'chorus' ? chorusPatterns : versePatterns;
     return pool[Math.abs(Number(phrase || 0)) % pool.length];
+};
+
+RhythmGame.prototype.applyMechanicQuotas = function (notes) {
+    if (!Array.isArray(notes) || !notes.length) return notes;
+    const quotaPlan = {
+        chorus: { ribbon: 2, cut: 2, flick: 1, gate: 1 },
+        verse: { pulseHold: 1, flick: 1, drag: 1 },
+        bridge: { gate: 2, pulseHold: 1, flick: 1 },
+        intro: { flick: 1, drag: 1 }
+    };
+    const replaceable = new Set(['tap', 'drag']);
+    const bySegment = new Map();
+    notes.forEach((note, idx) => {
+        const seg = note.segmentLabel || 'verse';
+        if (!bySegment.has(seg)) bySegment.set(seg, []);
+        bySegment.get(seg).push({ note, idx });
+    });
+
+    const promote = (entries, targetType, chooser) => {
+        const current = entries.filter(entry => entry.note.type === targetType || entry.note.noteType === targetType).length;
+        const target = chooser.target;
+        if (current >= target) return;
+        const candidates = entries.filter(entry => replaceable.has(entry.note.type || entry.note.noteType || 'tap'));
+        let changed = 0;
+        for (const entry of candidates) {
+            if (current + changed >= target) break;
+            if (!chooser.allow(entry.note, entry.idx)) continue;
+            entry.note.type = targetType;
+            changed += 1;
+        }
+    };
+
+    for (const [seg, entries] of bySegment.entries()) {
+        const plan = quotaPlan[seg] || quotaPlan.verse;
+        if (plan.ribbon) promote(entries, 'ribbon', { target: plan.ribbon, allow: (note, idx) => seg === 'chorus' && idx % 5 === 0 });
+        if (plan.cut) promote(entries, 'cut', { target: plan.cut, allow: (note, idx) => seg === 'chorus' && idx % 4 === 2 });
+        if (plan.gate) promote(entries, 'gate', { target: plan.gate, allow: (note, idx) => idx % 3 === 1 });
+        if (plan.pulseHold) promote(entries, 'pulseHold', { target: plan.pulseHold, allow: (note, idx) => idx % 4 === 0 });
+        if (plan.flick) promote(entries, 'flick', { target: plan.flick, allow: (note, idx) => idx % 3 === 0 });
+        if (plan.drag) promote(entries, 'drag', { target: plan.drag, allow: (note, idx) => idx % 4 === 1 });
+    }
+    return notes;
 };
 
 RhythmGame.prototype.applyGroupMechanics = function (notes, context = {}) {
