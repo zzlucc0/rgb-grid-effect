@@ -54,6 +54,12 @@ class RhythmGame {
             getChartData: () => this.chartData || null,
             finishGraceSec: 1.8
         }) : null;
+        this.playbackController = window.PlaybackController ? new window.PlaybackController({
+            onState: (state) => this.markLivePlaybackState(state),
+            getIsPlaying: () => this.isPlaying,
+            audioElement: document.getElementById('liveAudio'),
+            playerHostId: 'ytPlayer'
+        }) : null;
         this.visualBursts = [];
         this.signatureBursts = [];
         this.groupHistory = [];
@@ -2484,6 +2490,7 @@ RhythmGame.prototype.updatePauseUI = function () {
 
 RhythmGame.prototype.pausePlaybackMedia = function () {
     if (this.playMode === 'strict' && this.pauseReason === 'user') return;
+    if (this.playbackController?.pause) return this.playbackController.pause();
     if (this._ytPlayer && this._ytPlayer.pauseVideo) {
         try { this._ytPlayer.pauseVideo(); } catch (_) {}
     }
@@ -2492,6 +2499,7 @@ RhythmGame.prototype.pausePlaybackMedia = function () {
 };
 
 RhythmGame.prototype.resumePlaybackMedia = function () {
+    if (this.playbackController?.resume) return this.playbackController.resume();
     if (this._ytPlayer && this._ytPlayer.playVideo) {
         try { this._ytPlayer.playVideo(); } catch (_) {}
     }
@@ -2543,6 +2551,7 @@ RhythmGame.prototype.markLivePlaybackState = function (state) {
 };
 
 RhythmGame.prototype.bindLiveAudioEvents = function (audioEl) {
+    if (this.playbackController?.bindAudioEvents) return this.playbackController.bindAudioEvents(audioEl);
     if (!audioEl || audioEl._rgbBound) return;
     audioEl._rgbBound = true;
     audioEl.addEventListener('playing', () => this.markLivePlaybackState('playing'));
@@ -2558,111 +2567,21 @@ RhythmGame.prototype.bindLiveAudioEvents = function (audioEl) {
 
 RhythmGame.prototype.startLivePlayback = function () {
     const holder = document.getElementById("livePlayerHolder");
-
-    if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "youtube") {
-        if (holder) holder.classList.add("hidden");
-        this.markLivePlaybackState('loading');
-        const YTApi = window.YT;
-        const PlayerCtor = YTApi && YTApi.Player;
-        if (!PlayerCtor) {
-            this.markLivePlaybackState('yt-api-missing');
-            this.setStatusMessage('error', 'YouTube player API not ready yet. Game has entered play state; playback attach is still pending.');
-            return;
-        }
-        const playerConfig = {
-            height: "1",
-            width: "1",
-            videoId: this.liveConfig.player.videoId,
-            playerVars: {
-                autoplay: 1,
-                controls: 0,
-                disablekb: 1,
-                rel: 0,
-                modestbranding: 1,
-                iv_load_policy: 3,
-                fs: 0,
-                playsinline: 1
-            },
-            events: {
-                onReady: (ev) => {
-                    this.markLivePlaybackState('ready');
-                    try { ev.target.playVideo(); } catch (_) {}
-                },
-                onStateChange: (ev) => {
-                    const YTState = window.YT && window.YT.PlayerState;
-                    if (!YTState) return;
-                    if (ev.data === YTState.PLAYING) this.markLivePlaybackState('playing');
-                    else if (ev.data === YTState.BUFFERING) this.markLivePlaybackState('buffering');
-                    else if (ev.data === YTState.PAUSED) this.markLivePlaybackState('paused');
-                    else if (ev.data === YTState.ENDED) this.markLivePlaybackState('ended');
-                    else if (ev.data === YTState.CUED) this.markLivePlaybackState('cued');
-                },
-                onError: () => this.markLivePlaybackState('error')
-            }
-        };
-        try {
-            if (!this._ytPlayer) {
-                this._ytPlayer = new PlayerCtor("ytPlayer", playerConfig);
-            } else {
-                try { this._ytPlayer.loadVideoById(this.liveConfig.player.videoId); } catch (_) {}
-                this.markLivePlaybackState('reloading');
-            }
-        } catch (err) {
-            console.error('YouTube player init failed:', err);
-            this.markLivePlaybackState('yt-init-error');
-            this.setStatusMessage('error', 'YouTube player init failed: ' + (err?.message || err));
-        }
-        return;
-    }
-
     if (holder) holder.classList.add("hidden");
+    if (!this.liveConfig || !this.liveConfig.player) return;
     const a = document.getElementById("liveAudio");
     if (a) a.controls = false;
-    if (!a || !this.liveConfig || !this.liveConfig.player) return;
-    this.bindLiveAudioEvents(a);
-    this.markLivePlaybackState('loading');
-
-    if (this.liveConfig.player.type === "hls") {
-        const src = this.liveConfig.player.url;
-        const fallback = this.liveConfig.fallbackAudioUrl || "";
-        const fallbackToAudio = () => {
-            if (!fallback) return;
-            a.src = fallback;
-            a.play().catch(() => this.markLivePlaybackState('autoplay-blocked'));
-        };
-
-        if (window.Hls && window.Hls.isSupported()) {
-            if (this._hls) {
-                try { this._hls.destroy(); } catch (_) {}
-            }
-            this._hls = new window.Hls({ maxBufferLength: 20, lowLatencyMode: true });
-            this._hls.loadSource(src);
-            this._hls.attachMedia(a);
-            this._hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                a.play().catch(() => fallbackToAudio());
-            });
-            this._hls.on(window.Hls.Events.ERROR, () => {
-                fallbackToAudio();
-            });
-        } else {
-            a.src = src;
-            a.play().catch(() => fallbackToAudio());
-        }
+    if (this.playbackController?.start) {
+        this.playbackController.start(this.liveConfig);
         return;
-    }
-
-    if (this.liveConfig.player.type === "audio") {
-        a.src = this.liveConfig.player.url;
-        a.play().catch(() => this.markLivePlaybackState('autoplay-blocked'));
-    }
-
-    if (this.liveConfig.player.type === "bilibili" || this.liveConfig.player.type === "web") {
-        a.src = this.liveConfig.player.url;
-        a.play().catch(() => this.markLivePlaybackState('autoplay-blocked'));
     }
 };
 
 RhythmGame.prototype.getLiveCurrentTime = function () {
+    if (this.playbackController?.getCurrentTime) {
+        const t = this.playbackController.getCurrentTime(this.liveConfig);
+        if (Number.isFinite(Number(t))) return Number(t || 0);
+    }
     if (this.liveConfig && this.liveConfig.player && this.liveConfig.player.type === "youtube" && this._ytPlayer && this._ytPlayer.getCurrentTime) {
         return this._ytPlayer.getCurrentTime() || 0;
     }
@@ -3031,8 +2950,9 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
         }
         if (prevT >= 0 && Math.abs(t - prevT) < 0.02) stagnantTicks += 1; else stagnantTicks = 0;
         prevT = t;
-        if (this._ytPlayer && this._ytPlayer.getPlayerState) {
-            const st = this._ytPlayer.getPlayerState();
+        const ytState = this.playbackController?.getYouTubePlayerState ? this.playbackController.getYouTubePlayerState() : (this._ytPlayer && this._ytPlayer.getPlayerState ? this._ytPlayer.getPlayerState() : null);
+        if (ytState != null) {
+            const st = ytState;
             if (st === 2) ytPausedTicks += 1; else ytPausedTicks = 0;
             if (!startupGrace && ytPausedTicks >= 4) {
                 this.playbackViolations.push({ type: 'paused', at: Date.now() });
@@ -3046,8 +2966,11 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
                 return;
             }
         }
-        const a = document.getElementById('liveAudio');
-        if (a && !a.paused && !a.ended) this.lastPlaybackHealthyAt = Date.now();
+        const audioHealthy = this.playbackController?.isAudioHealthy ? this.playbackController.isAudioHealthy() : (() => {
+            const a = document.getElementById('liveAudio');
+            return Boolean(a && !a.paused && !a.ended);
+        })();
+        if (audioHealthy) this.lastPlaybackHealthyAt = Date.now();
         if (!startupGrace && stagnantTicks >= 10) {
             this.playbackViolations.push({ type: 'stalled', at: Date.now() });
             this.pauseGame('system-stalled');
