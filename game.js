@@ -215,7 +215,13 @@ class RhythmGame {
     }
 
     setScene(scene, meta = {}) {
-        this.scene = scene || this.scene || 'input';
+        const nextScene = scene || this.scene || 'input';
+        const lockedRunScene = this.isPlaying || this.isStartingPhase() || this.isRunningPhase() || this.isPausedPhase();
+        if (lockedRunScene && !meta.force && (nextScene === 'input' || nextScene === 'ready')) {
+            this.scene = this.isStartingPhase() ? 'countdown' : 'playing';
+        } else {
+            this.scene = nextScene;
+        }
         if (Object.prototype.hasOwnProperty.call(meta, 'error')) {
             this.lastStartError = meta.error || '';
         }
