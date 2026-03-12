@@ -44,7 +44,7 @@ class RhythmGame {
         this.playMode = 'casual';
         this.lastPlaybackHealthyAt = 0;
         this.runClock = window.RunClockController ? new window.RunClockController() : null;
-        this.runOrchestrator = window.RunOrchestrator ? new window.RunOrchestrator({ clock: this.runClock }) : null;
+        this.runOrchestrator = window.RunOrchestrator ? new window.RunOrchestrator({ clock: this.runClock, onMonitorEvent: (event, meta) => this.handlePlaybackMonitorEvent(event, meta) }) : null;
         this.chartRuntime = window.ChartRuntime ? new window.ChartRuntime() : null;
         this.runCompletion = window.RunCompletionController ? new window.RunCompletionController({
             chartRuntime: this.chartRuntime,
@@ -1044,6 +1044,34 @@ class RhythmGame {
         if (!result?.done) return false;
         this.finishRun(result.reason || 'finished');
         return true;
+    }
+
+    handlePlaybackMonitorEvent(event, meta = {}) {
+        if (!event) return;
+        if (event === 'seek-back') {
+            this.runInvalid = true;
+            this.playbackViolations.push({ type: 'seek-back', at: Date.now(), ...meta });
+            if (this.playMode === 'strict') this.pauseGame('invalid-strict');
+            return;
+        }
+        if (event === 'yt-paused') {
+            this.playbackViolations.push({ type: 'paused', at: Date.now(), ...meta });
+            if (this.playMode === 'strict') {
+                this.runInvalid = true;
+                this.pauseGame('invalid-strict');
+            } else {
+                this.pauseGame('system-yt-paused');
+            }
+            return;
+        }
+        if (event === 'stalled') {
+            this.playbackViolations.push({ type: 'stalled', at: Date.now(), ...meta });
+            this.pauseGame('system-stalled');
+            return;
+        }
+        if (event === 'healthy') {
+            this.lastPlaybackHealthyAt = Date.now();
+        }
     }
 
     resolvePlayerClock() {
@@ -2931,8 +2959,7 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
 };
 
 RhythmGame.prototype.watchPlaybackIntegrity = function () {
-    // Playback monitor only: detects playback health/violations.
-    // Chart advancement belongs to the main run loop via advanceChartRuntime().
+    // Playback monitor only: emits observations and lets the orchestrator/game decide how to react.
     if (!this.liveMode || !this.liveConfig) return;
     if (this.liveMonitorTimer) clearInterval(this.liveMonitorTimer);
     let prevT = -1;
@@ -2944,9 +2971,7 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
         const runSec = this.getChartWallClockTime();
         const startupGrace = runSec < 6;
         if (prevT >= 0 && t + 0.35 < prevT) {
-            this.runInvalid = true;
-            this.playbackViolations.push({ type: 'seek-back', at: Date.now() });
-            if (this.playMode === 'strict') this.pauseGame('invalid-strict');
+            this.runOrchestrator?.handleMonitorEvent?.('seek-back', { currentTime: t, previousTime: prevT, runSec });
         }
         if (prevT >= 0 && Math.abs(t - prevT) < 0.02) stagnantTicks += 1; else stagnantTicks = 0;
         prevT = t;
@@ -2955,13 +2980,7 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
             const st = ytState;
             if (st === 2) ytPausedTicks += 1; else ytPausedTicks = 0;
             if (!startupGrace && ytPausedTicks >= 4) {
-                this.playbackViolations.push({ type: 'paused', at: Date.now() });
-                if (this.playMode === 'strict') {
-                    this.runInvalid = true;
-                    this.pauseGame('invalid-strict');
-                } else {
-                    this.pauseGame('system-yt-paused');
-                }
+                this.runOrchestrator?.handleMonitorEvent?.('yt-paused', { runSec, ytPausedTicks });
                 ytPausedTicks = 0;
                 return;
             }
@@ -2970,10 +2989,11 @@ RhythmGame.prototype.watchPlaybackIntegrity = function () {
             const a = document.getElementById('liveAudio');
             return Boolean(a && !a.paused && !a.ended);
         })();
-        if (audioHealthy) this.lastPlaybackHealthyAt = Date.now();
+        if (audioHealthy) {
+            this.runOrchestrator?.handleMonitorEvent?.('healthy', { runSec, currentTime: t });
+        }
         if (!startupGrace && stagnantTicks >= 10) {
-            this.playbackViolations.push({ type: 'stalled', at: Date.now() });
-            this.pauseGame('system-stalled');
+            this.runOrchestrator?.handleMonitorEvent?.('stalled', { runSec, stagnantTicks, currentTime: t });
             stagnantTicks = 0;
         }
     }, 500);

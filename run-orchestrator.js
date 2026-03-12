@@ -3,8 +3,10 @@
     constructor(options = {}) {
       this.clock = options.clock || null;
       this.onPhaseChange = typeof options.onPhaseChange === 'function' ? options.onPhaseChange : null;
+      this.onMonitorEvent = typeof options.onMonitorEvent === 'function' ? options.onMonitorEvent : null;
       this.phase = 'created';
       this.lastError = null;
+      this.lastMonitorEvent = null;
     }
 
     transition(nextPhase, meta = {}) {
@@ -57,10 +59,17 @@
       return this.transition('failed', { ...meta, error: error || meta.error || null });
     }
 
+    handleMonitorEvent(event, meta = {}) {
+      this.lastMonitorEvent = { event, meta, at: Date.now() };
+      if (this.onMonitorEvent) this.onMonitorEvent(event, meta);
+      return this.lastMonitorEvent;
+    }
+
     snapshot() {
       return {
         phase: this.phase,
-        lastError: this.lastError
+        lastError: this.lastError,
+        lastMonitorEvent: this.lastMonitorEvent
       };
     }
   }
