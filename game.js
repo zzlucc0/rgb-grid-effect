@@ -2199,7 +2199,8 @@ class RhythmGame {
                             closestPoint = point;
                         }
                     });
-                    if (closestPoint) {
+                    const tolerance = note.extraPath?.points?.length ? this.circleSize * 1.4 : this.circleSize * 0.95;
+                    if (closestPoint && minDist <= tolerance) {
                         note.progress = Math.max(note.progress || 0, closestPoint.t);
                     }
                 } else if (type === 'end') {
@@ -2214,7 +2215,9 @@ class RhythmGame {
                         this.updateHUD();
                         return;
                     }
-                    if (note.progress > 0.9) {
+                    const finishThreshold = note.extraPath?.points?.length ? 0.84 : 0.9;
+                    const goodThreshold = note.extraPath?.points?.length ? 0.64 : 0.7;
+                    if (note.progress > finishThreshold) {
                         note.completed = true;
                         note.score = 'perfect';
                         this.score += (note.noteType === 'ribbon' ? 1850 : 1500) * (1 + this.combo * 0.1);
@@ -2223,7 +2226,7 @@ class RhythmGame {
                         this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'perfect');
                         if (note.noteType === 'ribbon') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
-                    } else if (note.progress > 0.7) {
+                    } else if (note.progress > goodThreshold) {
                         note.completed = true;
                         note.score = 'good';
                         this.score += 800 * (1 + this.combo * 0.1);
@@ -3370,7 +3373,7 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
     if ((note.noteType === 'drag' || note.noteType === 'ribbon') && window.PathTemplates?.chooseTemplate) {
         note.pathTemplate = window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal');
     }
-    if ((note.noteType === 'drag' || note.noteType === 'ribbon') && ((note.noteNumber || 0) % 5 === 0)) {
+    if ((note.noteType === 'drag' || note.noteType === 'ribbon') && note.pathTemplate && note.pathTemplate !== 'orbit') {
         note.keyboardCheckpoint = true;
         note.keyboardKey = 'space';
         note.keyboardHint = 'SPACE';
