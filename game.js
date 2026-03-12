@@ -1844,14 +1844,25 @@ class RhythmGame {
 
             const currentTime = this.resolveChartClock();
             const timeUntilHit = note.hitTime - currentTime;
-            note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / (this.approachRate / 1000)));
+            const approachProfiles = {
+                tap: { lead: 0.72, size: 0.84 },
+                flick: { lead: 0.62, size: 0.8 },
+                cut: { lead: 0.58, size: 0.76 },
+                pulseHold: { lead: 0.82, size: 0.9 },
+                drag: { lead: 0.8, size: 0.88 },
+                ribbon: { lead: 0.86, size: 0.92 },
+                gate: { lead: 0.74, size: 0.86 }
+            };
+            const profile = approachProfiles[note.noteType || 'tap'] || approachProfiles.tap;
+            const visualApproachSec = (this.approachRate / 1000) * profile.lead;
+            note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / Math.max(0.18, visualApproachSec)));
             const palette = this.getNotePalette(note);
 
             // Draw contracting circle
             if (!note.hit) {
                 const approachSize = Math.max(
                     this.circleSize,
-                    this.approachCircleSize * (1 - note.approachProgress) + this.circleSize
+                    this.approachCircleSize * profile.size * (1 - note.approachProgress) + this.circleSize
                 );
                 if (approachSize > this.circleSize) {
                     this.ctx.beginPath();
@@ -2085,9 +2096,21 @@ class RhythmGame {
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap') : String(note.noteType || 'tap').toUpperCase();
                 const marker = note.noteType === 'flick' ? '⇢' : note.noteType === 'cut' ? '✦' : note.noteType === 'pulseHold' ? '◉' : note.noteType === 'ribbon' ? '≈' : note.noteType === 'gate' ? '▣' : note.noteType === 'drag' ? '↘' : note.noteNumber.toString();
                 if (seenCount < tutorialLimit) {
-                    this.ctx.font = '900 16px "Trebuchet MS", "Comic Sans MS", cursive';
-                    this.ctx.fillStyle = palette.edge;
-                    this.ctx.fillText(tutorialLabel, note.x, note.y);
+                    const labelW = Math.max(this.circleSize * 1.8, tutorialLabel.length * 12);
+                    const labelH = this.circleSize * 0.7;
+                    this.ctx.beginPath();
+                    this.ctx.roundRect(note.x - labelW / 2, note.y - labelH / 2, labelW, labelH, 10);
+                    this.ctx.fillStyle = 'rgba(10,16,26,0.72)';
+                    this.ctx.fill();
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.stroke();
+                    this.ctx.shadowBlur = 14;
+                    this.ctx.shadowColor = palette.edge;
+                    this.ctx.font = '900 20px "Trebuchet MS", "Arial Black", sans-serif';
+                    this.ctx.fillStyle = '#f8fcff';
+                    this.ctx.fillText(tutorialLabel, note.x, note.y + 0.5);
+                    this.ctx.shadowBlur = 0;
                 } else {
                     this.ctx.font = '700 22px Arial';
                     this.ctx.fillStyle = '#f3fcff';

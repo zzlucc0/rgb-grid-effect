@@ -2,11 +2,11 @@
   function spreadQuotaPromotions(notes) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
     const quotaPlan = {
-      full: { ribbon: 8, cut: 10, flick: 14, gate: 8, pulseHold: 10, drag: 12 },
-      chorus: { ribbon: 3, cut: 3, flick: 2, gate: 2 },
-      verse: { pulseHold: 2, flick: 2, drag: 2, gate: 1 },
-      bridge: { gate: 3, pulseHold: 2, flick: 2, cut: 1 },
-      intro: { flick: 1, drag: 1 }
+      full: { ribbon: 10, cut: 12, flick: 18, gate: 10, pulseHold: 12, drag: 16 },
+      chorus: { ribbon: 4, cut: 4, flick: 3, gate: 2 },
+      verse: { pulseHold: 3, flick: 3, drag: 3, gate: 1 },
+      bridge: { gate: 3, pulseHold: 2, flick: 3, cut: 2 },
+      intro: { flick: 1, drag: 2 }
     };
     const replaceable = new Set(['tap', 'drag']);
     const countType = (entries, type) => entries.filter(entry => (entry.note.type || entry.note.noteType) === type).length;
@@ -37,6 +37,7 @@
       }
     };
     const allEntries = notes.map((note, idx) => ({ note, idx }));
+    const latterHalf = allEntries.filter(entry => entry.idx >= Math.floor(allEntries.length * 0.5));
     applyPlan(allEntries, quotaPlan.full, {
       ribbon: (note) => (note.segmentLabel || 'verse') === 'chorus',
       cut: (note) => ['chorus', 'bridge'].includes(note.segmentLabel || 'verse'),
@@ -54,7 +55,20 @@
     for (const [seg, entries] of bySegment.entries()) {
       applyPlan(entries, quotaPlan[seg] || quotaPlan.verse);
     }
+    applyPlan(latterHalf, { flick: 6, pulseHold: 4, gate: 3, drag: 5, ribbon: 3, cut: 4 });
     return notes;
+  }
+
+  function downgradeType(type) {
+    const map = {
+      ribbon: 'drag',
+      drag: 'pulseHold',
+      pulseHold: 'tap',
+      gate: 'flick',
+      cut: 'flick',
+      flick: 'tap'
+    };
+    return map[type] || 'tap';
   }
 
   function enforceChartPlayability(notes) {
@@ -82,13 +96,16 @@
         const nextLane = Number.isFinite(next.laneHint) ? next.laneHint : (j % 4);
         const laneClose = Math.abs(nextLane - lane) <= 1;
         if (sustained.has(type) && heavyTap.has(nextType) && dt < minGap && laneClose) {
-          next.type = 'tap';
+          next.type = downgradeType(nextType);
+          next.noteType = next.type;
         }
         if (sustained.has(type) && sustained.has(nextType) && dt < minGap + 0.15) {
-          next.type = nextType === 'ribbon' ? 'drag' : 'tap';
+          next.type = downgradeType(nextType);
+          next.noteType = next.type;
         }
         if ((type === 'gate' || nextType === 'gate') && laneClose && dt < 0.48) {
-          next.type = 'tap';
+          next.type = downgradeType(nextType);
+          next.noteType = next.type;
         }
         if (dt < 0.24 && laneClose) {
           next.laneHint = (lane + 2 + (j % 2)) % 4;
@@ -197,9 +214,25 @@
     return { first30, minWindowCount: Number.isFinite(minWindowCount) ? minWindowCount : 0 };
   }
 
+  function mechanicMixStats(notes) {
+    const seq = [...(notes || [])];
+    const total = seq.length || 1;
+    const tapCount = seq.filter(n => (n.type || n.noteType || 'tap') === 'tap').length;
+    const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
+    const latterSpecial = latter.filter(n => (n.type || n.noteType || 'tap') !== 'tap').length;
+    return {
+      tapRatio: tapCount / total,
+      latterSpecial,
+      latterTotal: latter.length || 1,
+      latterSpecialRatio: latterSpecial / (latter.length || 1)
+    };
+  }
+
   function enforceDensityFloor(notes, options = {}) {
     const minFirst30 = Number(options.minFirst30 || 12);
     const minPer10 = Number(options.minPer10 || 3);
+    const maxTapRatio = Number(options.maxTapRatio || 0.45);
+    const minLatterSpecialRatio = Number(options.minLatterSpecialRatio || 0.4);
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
     const stats = densityStats(seq, 10, 30);
     if (stats.first30 < minFirst30) {
@@ -222,6 +255,27 @@
           note.noteType = note.noteType || note.type;
           lastTapTime = Number(note.time || 0);
         }
+      }
+    }
+    const mix = mechanicMixStats(seq);
+    if (mix.tapRatio > maxTapRatio) {
+      for (const note of seq) {
+        if ((note.type || note.noteType || 'tap') !== 'tap') continue;
+        const seg = note.segmentLabel || 'verse';
+        if (seg === 'chorus') note.type = 'flick';
+        else if (seg === 'bridge') note.type = 'gate';
+        else note.type = 'pulseHold';
+        note.noteType = note.type;
+        if (mechanicMixStats(seq).tapRatio <= maxTapRatio) break;
+      }
+    }
+    if (mix.latterSpecialRatio < minLatterSpecialRatio) {
+      const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
+      for (const note of latter) {
+        if ((note.type || note.noteType || 'tap') !== 'tap') continue;
+        note.type = (note.segmentLabel || 'verse') === 'chorus' ? 'cut' : ((note.segmentLabel || 'verse') === 'bridge' ? 'gate' : 'flick');
+        note.noteType = note.type;
+        if (mechanicMixStats(seq).latterSpecialRatio >= minLatterSpecialRatio) break;
       }
     }
     return seq;
@@ -256,7 +310,7 @@
     return enforceDensityFloor(kept);
   }
 
-  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, densityStats, enforceDensityFloor };
+  const api = { spreadQuotaPromotions, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

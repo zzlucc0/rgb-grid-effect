@@ -48,8 +48,8 @@ describe('chart policy quotas', () => {
       { time: 10.35, type: 'gate', laneHint: 0, segmentLabel: 'verse' },
     ];
     policy.enforceChartPlayability(notes);
-    expect(notes[1].type).toBe('tap');
-    expect(notes[2].type).toBe('tap');
+    expect(['tap', 'flick']).toContain(notes[1].type);
+    expect(['tap', 'flick']).toContain(notes[2].type);
   });
 
   it('provides tutorial labels for mechanics', () => {
@@ -72,5 +72,21 @@ describe('chart policy quotas', () => {
     const stats = policy.densityStats(resolved, 10, 30);
     expect(stats.first30).toBeGreaterThanOrEqual(12);
     expect(stats.minWindowCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps tap ratio under control and preserves latter-half specials', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 60 }, (_, i) => ({
+      time: 1 + i,
+      type: 'tap',
+      noteType: 'tap',
+      laneHint: i % 4,
+      segmentLabel: i < 20 ? 'verse' : i < 40 ? 'chorus' : 'bridge'
+    }));
+    policy.spreadQuotaPromotions(notes);
+    const resolved = policy.resolvePathConflicts(notes, 36);
+    const mix = policy.mechanicMixStats(resolved);
+    expect(mix.tapRatio).toBeLessThanOrEqual(0.45);
+    expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.4);
   });
 });
