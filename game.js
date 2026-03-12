@@ -46,6 +46,14 @@ class RhythmGame {
         this.runClock = window.RunClockController ? new window.RunClockController() : null;
         this.runOrchestrator = window.RunOrchestrator ? new window.RunOrchestrator({ clock: this.runClock }) : null;
         this.chartRuntime = window.ChartRuntime ? new window.ChartRuntime() : null;
+        this.runCompletion = window.RunCompletionController ? new window.RunCompletionController({
+            chartRuntime: this.chartRuntime,
+            getActiveNotes: () => (this.notes || []).filter(n => !n.hit && !n.completed),
+            getRunTime: () => this.resolveRunClock(),
+            getPlaybackState: () => this.livePlaybackState || 'idle',
+            getChartData: () => this.chartData || null,
+            finishGraceSec: 1.8
+        }) : null;
         this.visualBursts = [];
         this.signatureBursts = [];
         this.groupHistory = [];
@@ -234,12 +242,14 @@ class RhythmGame {
 
     setRunPhase(phase) {
         this.gameState = phase || this.gameState || 'idle';
-        if (phase === 'idle' || phase === 'ready') this.isPlaying = false;
+        if (phase === 'idle' || phase === 'ready' || phase === 'finished' || phase === 'failed') this.isPlaying = false;
         if (phase === 'starting') this.setScene('countdown');
         else if (phase === 'playing') this.setScene('playing');
         else if (phase === 'paused-user' || phase === 'paused-system') this.setScene('playing');
         else if (phase === 'ready') this.setScene('ready');
         else if (phase === 'idle') this.setScene('input');
+        else if (phase === 'finished') this.setScene('ready', { force: true });
+        else if (phase === 'failed') this.setScene('ready', { force: true });
         else this.updateHUD();
     }
 
@@ -974,11 +984,13 @@ class RhythmGame {
             this.updateNotes();
             this.drawNotes();
             this.updateVisualEffects();
+            this.checkRunCompletion();
             this.updateHUD();
         } catch (err) {
             console.error('gameLoop runtime error:', err);
             this.setStatusMessage('error', 'Runtime error: ' + (err?.message || err));
             this.livePlaybackState = 'runtime-error';
+            this.failRun(err?.message || err);
             this.updateHUD();
             return;
         }
@@ -988,6 +1000,44 @@ class RhythmGame {
 
     resolveRunClock() {
         return this.computeRunClock();
+    }
+
+    finishRun(reason = 'finished') {
+        if (this.gameState === 'finished' || this.gameState === 'failed') return;
+        this.isPlaying = false;
+        this.pauseReason = 'none';
+        this.pausePlaybackMedia();
+        if (this.liveMonitorTimer) {
+            clearInterval(this.liveMonitorTimer);
+            this.liveMonitorTimer = null;
+        }
+        this.setRunPhase('finished');
+        if (this.runOrchestrator?.finish) this.runOrchestrator.finish({ reason });
+        const totalNotes = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress().spawnedCount : this.spawnedChartNotes;
+        this.setStatusMessage('success', `Run finished · ${reason}`, `spawned ${totalNotes || 0} notes`);
+    }
+
+    failRun(error) {
+        if (this.gameState === 'failed') return;
+        this.isPlaying = false;
+        this.pauseReason = 'none';
+        this.pausePlaybackMedia();
+        if (this.liveMonitorTimer) {
+            clearInterval(this.liveMonitorTimer);
+            this.liveMonitorTimer = null;
+        }
+        this.setRunPhase('failed');
+        if (this.runOrchestrator?.fail) this.runOrchestrator.fail(error || 'run failed');
+        this.setStatusMessage('error', 'Run failed: ' + (error || 'unknown error'));
+    }
+
+    checkRunCompletion() {
+        if (!this.isPlaying || this.isPausedPhase()) return false;
+        if (!this.runCompletion?.shouldFinish) return false;
+        const result = this.runCompletion.shouldFinish();
+        if (!result?.done) return false;
+        this.finishRun(result.reason || 'finished');
+        return true;
     }
 
     resolvePlayerClock() {
@@ -2486,6 +2536,9 @@ RhythmGame.prototype.markLivePlaybackState = function (state) {
         if (this.runClock?.markPlaybackStarted) this.runClock.markPlaybackStarted();
         if (this.runOrchestrator?.startPlaying) this.runOrchestrator.startPlaying({ playbackStarted: false });
     }
+    if (state === 'ended') {
+        this.checkRunCompletion();
+    }
     this.updateHUD();
 };
 
@@ -2496,6 +2549,7 @@ RhythmGame.prototype.bindLiveAudioEvents = function (audioEl) {
     audioEl.addEventListener('play', () => this.markLivePlaybackState('play'));
     audioEl.addEventListener('waiting', () => this.markLivePlaybackState('waiting'));
     audioEl.addEventListener('pause', () => { if (this.isPlaying) this.markLivePlaybackState('paused'); });
+    audioEl.addEventListener('ended', () => this.markLivePlaybackState('ended'));
     audioEl.addEventListener('error', () => this.markLivePlaybackState('error'));
     audioEl.addEventListener('timeupdate', () => {
         if ((audioEl.currentTime || 0) > 0.05) this.livePlaybackStarted = true;
