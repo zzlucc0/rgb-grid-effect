@@ -481,6 +481,11 @@ class RhythmGame {
                 e.preventDefault();
                 if (this.isRunningPhase()) this.pauseGame('user');
                 else if (this.isPausedPhase()) this.resumeGame();
+                return;
+            }
+            if (e.code === 'Space' || e.key === ' ') {
+                e.preventDefault();
+                this.handleKeyboardAction('space');
             }
         });
 
@@ -2095,12 +2100,13 @@ class RhythmGame {
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap') : String(note.noteType || 'tap').toUpperCase();
                 const marker = note.noteType === 'flick' ? '⇢' : note.noteType === 'cut' ? '✦' : note.noteType === 'pulseHold' ? '◉' : note.noteType === 'ribbon' ? '≈' : note.noteType === 'gate' ? '▣' : note.noteType === 'drag' ? '↘' : note.noteNumber.toString();
-                if (seenCount < tutorialLimit) {
-                    const labelW = Math.max(this.circleSize * 1.8, tutorialLabel.length * 12);
+                if (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
+                    const displayLabel = note.keyboardCheckpoint && !note.keyboardHit ? `${tutorialLabel} + ${note.keyboardHint || 'SPACE'}` : tutorialLabel;
+                    const labelW = Math.max(this.circleSize * 1.8, displayLabel.length * 12);
                     const labelH = this.circleSize * 0.7;
                     this.ctx.beginPath();
                     this.ctx.roundRect(note.x - labelW / 2, note.y - labelH / 2, labelW, labelH, 10);
-                    this.ctx.fillStyle = 'rgba(10,16,26,0.72)';
+                    this.ctx.fillStyle = 'rgba(10,16,26,0.78)';
                     this.ctx.fill();
                     this.ctx.lineWidth = 2.5;
                     this.ctx.strokeStyle = palette.edge;
@@ -2109,7 +2115,7 @@ class RhythmGame {
                     this.ctx.shadowColor = palette.edge;
                     this.ctx.font = '900 20px "Trebuchet MS", "Arial Black", sans-serif';
                     this.ctx.fillStyle = '#f8fcff';
-                    this.ctx.fillText(tutorialLabel, note.x, note.y + 0.5);
+                    this.ctx.fillText(displayLabel, note.x, note.y + 0.5);
                     this.ctx.shadowBlur = 0;
                 } else {
                     this.ctx.font = '700 22px Arial';
@@ -2145,6 +2151,22 @@ class RhythmGame {
         
         // The voice activity indicator is hidden, but the voice detection logic functionality is retained
     }
+    handleKeyboardAction = (key) => {
+        if (!this.isPlaying || this.isPausedPhase()) return;
+        const currentTime = this.resolveChartClock();
+        for (const note of this.notes) {
+            if (note.hit || note.completed || !note.keyboardCheckpoint || note.keyboardHit) continue;
+            const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
+            if (timingDiff > this.goodRange) continue;
+            if (String(note.keyboardKey || 'space') !== String(key || 'space')) continue;
+            note.keyboardHit = true;
+            note.keyboardHitTime = currentTime;
+            this.createHitEffect(note.x, note.y, timingDiff <= this.perfectRange ? 'perfect' : 'good');
+            this.updateHUD();
+            return;
+        }
+    }
+
     handleInput = (x, y, type) => {
         if (!this.isPlaying) return;
         if (this.isPausedPhase()) {
@@ -2189,6 +2211,17 @@ class RhythmGame {
                         note.progress = closestPoint.t;
                     }
                 } else if (type === 'end') {
+                    if (note.keyboardCheckpoint && !note.keyboardHit) {
+                        note.completed = true;
+                        note.hit = true;
+                        note.held = false;
+                        note.score = 'miss';
+                        this.combo = 0;
+                        this.recordJudgement('miss');
+                        this.currentDragNote = null;
+                        this.updateHUD();
+                        return;
+                    }
                     if (note.progress > 0.9) {
                         note.completed = true;
                         note.score = 'perfect';
@@ -3330,6 +3363,12 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
     if (note.noteType === 'ribbon') {
         note.ribbonWidth = this.circleSize * 0.9;
         note.traceStrictness = 0.2;
+    }
+    if ((note.noteType === 'drag' || note.noteType === 'ribbon') && ((note.noteNumber || 0) % 5 === 0)) {
+        note.keyboardCheckpoint = true;
+        note.keyboardKey = 'space';
+        note.keyboardHint = 'SPACE';
+        note.keyboardHit = false;
     }
     if (note.noteType === 'gate') {
         note.gateWidth = note.gateWidth || this.circleSize * 2.3;
