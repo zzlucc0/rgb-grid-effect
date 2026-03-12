@@ -3146,9 +3146,10 @@ RhythmGame.prototype.pickGroupPattern = function (phrase, segmentLabel) {
 RhythmGame.prototype.applyMechanicQuotas = function (notes) {
     if (!Array.isArray(notes) || !notes.length) return notes;
     const quotaPlan = {
-        chorus: { ribbon: 2, cut: 2, flick: 1, gate: 1 },
-        verse: { pulseHold: 1, flick: 1, drag: 1 },
-        bridge: { gate: 2, pulseHold: 1, flick: 1 },
+        full: { ribbon: 8, cut: 10, flick: 14, gate: 8, pulseHold: 10, drag: 12 },
+        chorus: { ribbon: 3, cut: 3, flick: 2, gate: 2 },
+        verse: { pulseHold: 2, flick: 2, drag: 2, gate: 1 },
+        bridge: { gate: 3, pulseHold: 2, flick: 2, cut: 1 },
         intro: { flick: 1, drag: 1 }
     };
     const replaceable = new Set(['tap', 'drag']);
@@ -3159,28 +3160,47 @@ RhythmGame.prototype.applyMechanicQuotas = function (notes) {
         bySegment.get(seg).push({ note, idx });
     });
 
-    const promote = (entries, targetType, chooser) => {
-        const current = entries.filter(entry => entry.note.type === targetType || entry.note.noteType === targetType).length;
-        const target = chooser.target;
+    const countType = (entries, type) => entries.filter(entry => (entry.note.type || entry.note.noteType) === type).length;
+    const evenlyPromote = (entries, targetType, target, allow) => {
+        const current = countType(entries, targetType);
         if (current >= target) return;
-        const candidates = entries.filter(entry => replaceable.has(entry.note.type || entry.note.noteType || 'tap'));
-        let changed = 0;
-        for (const entry of candidates) {
-            if (current + changed >= target) break;
-            if (!chooser.allow(entry.note, entry.idx)) continue;
-            entry.note.type = targetType;
-            changed += 1;
+        const candidates = entries.filter(entry => replaceable.has(entry.note.type || entry.note.noteType || 'tap') && (!allow || allow(entry.note, entry.idx)));
+        if (!candidates.length) return;
+        const need = target - current;
+        const step = Math.max(1, Math.floor(candidates.length / need));
+        let cursor = Math.floor(step / 2);
+        let applied = 0;
+        const used = new Set();
+        while (applied < need && used.size < candidates.length) {
+            const idx = Math.min(candidates.length - 1, cursor);
+            let pick = idx;
+            while (used.has(pick) && pick < candidates.length - 1) pick += 1;
+            if (used.has(pick)) break;
+            used.add(pick);
+            candidates[pick].note.type = targetType;
+            applied += 1;
+            cursor += step;
         }
     };
 
+    const applyPlan = (entries, plan, allowMap = {}) => {
+        for (const [type, target] of Object.entries(plan || {})) {
+            evenlyPromote(entries, type, target, allowMap[type]);
+        }
+    };
+
+    applyPlan(notes.map((note, idx) => ({ note, idx })), quotaPlan.full, {
+        ribbon: (note) => (note.segmentLabel || 'verse') === 'chorus',
+        cut: (note) => ['chorus', 'bridge'].includes(note.segmentLabel || 'verse'),
+        gate: (note) => ['chorus', 'bridge', 'verse'].includes(note.segmentLabel || 'verse'),
+        pulseHold: (note) => (note.segmentLabel || 'verse') !== 'chorus',
+        flick: () => true,
+        drag: () => true
+    });
+
     for (const [seg, entries] of bySegment.entries()) {
         const plan = quotaPlan[seg] || quotaPlan.verse;
-        if (plan.ribbon) promote(entries, 'ribbon', { target: plan.ribbon, allow: (note, idx) => seg === 'chorus' && idx % 5 === 0 });
-        if (plan.cut) promote(entries, 'cut', { target: plan.cut, allow: (note, idx) => seg === 'chorus' && idx % 4 === 2 });
-        if (plan.gate) promote(entries, 'gate', { target: plan.gate, allow: (note, idx) => idx % 3 === 1 });
-        if (plan.pulseHold) promote(entries, 'pulseHold', { target: plan.pulseHold, allow: (note, idx) => idx % 4 === 0 });
-        if (plan.flick) promote(entries, 'flick', { target: plan.flick, allow: (note, idx) => idx % 3 === 0 });
-        if (plan.drag) promote(entries, 'drag', { target: plan.drag, allow: (note, idx) => idx % 4 === 1 });
+        applyPlan(entries, plan);
     }
     return notes;
 };
