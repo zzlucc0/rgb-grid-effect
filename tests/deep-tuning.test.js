@@ -32,4 +32,12 @@ describe('deep tuning hooks', () => {
     });
     expect(['diamondLoop', 'starTrace']).toContain(chosen);
   });
+
+  it('wires spatial tuning keys into lane candidate selection', () => {
+    const game = fs.readFileSync(new URL('../game.js', import.meta.url), 'utf8');
+    expect(game).toContain('const localityBias =');
+    expect(game).toContain('const maxJumpBudget =');
+    expect(game).toContain('const jumpPenaltyBoost =');
+    expect(game).toContain('Math.abs(candidateLane - previousLane) > Math.max(1, maxJumpBudget)');
+  });
 });

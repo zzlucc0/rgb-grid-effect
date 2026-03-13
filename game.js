@@ -3092,11 +3092,23 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     const previousNote = previousActive[previousActive.length - 1] || null;
     const previousLane = previousNote && Number.isFinite(previousNote.laneHint) ? previousNote.laneHint : null;
     const anchorLane = Number.isFinite(chartNote.phraseAnchor) ? chartNote.phraseAnchor : laneIndex;
-    const candidateShifts = previousLane == null ? [0, 1, -1, 2, -2] : [0, previousLane - laneIndex, 1, -1, 2, -2];
+    const tuning = this.runtimeTuning || {};
+    const localityBias = Math.max(0, Math.min(1, Number(tuning.localityBias || 0.72)));
+    const maxJumpBudget = Math.max(1, Number(tuning.maxJumpBudget || 2));
+    const jumpPenaltyBoost = Number(tuning.jumpPenaltyBoost || 0);
+    const rawShifts = previousLane == null ? [0, 1, -1, 2, -2] : [0, previousLane - laneIndex, 1, -1, 2, -2];
+    const candidateShifts = [...new Set(rawShifts)]
+        .filter(shift => Math.abs(shift) <= Math.max(2, maxJumpBudget + 1))
+        .sort((a, b) => {
+            const aPenalty = Math.abs(a) * (1 + jumpPenaltyBoost) - (Math.abs(a) <= 1 ? localityBias : 0);
+            const bPenalty = Math.abs(b) * (1 + jumpPenaltyBoost) - (Math.abs(b) <= 1 ? localityBias : 0);
+            return aPenalty - bPenalty;
+        });
     let basePos = null;
     let chosenLane = laneIndex;
     for (const shift of candidateShifts) {
         const candidateLane = Math.max(0, Math.min(laneCount - 1, laneIndex + shift));
+        if (previousLane != null && Math.abs(candidateLane - previousLane) > Math.max(1, maxJumpBudget)) continue;
         const pos = this.resolveGroupPatternPosition({
             laneIndex: candidateLane,
             laneCount,
@@ -3121,7 +3133,11 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         }
     }
     if (!basePos) {
-        basePos = this.resolveGroupPatternPosition({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse', phraseAnchor: anchorLane, previousLane, phraseIntent: chartNote.phraseIntent || null });
+        const fallbackLane = previousLane != null && localityBias >= 0.8
+            ? Math.max(0, Math.min(laneCount - 1, previousLane + Math.max(-1, Math.min(1, laneIndex - previousLane))))
+            : laneIndex;
+        chosenLane = fallbackLane;
+        basePos = this.resolveGroupPatternPosition({ laneIndex: fallbackLane, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse', phraseAnchor: anchorLane, previousLane, phraseIntent: chartNote.phraseIntent || null });
     }
     const x = basePos.x;
     const y = basePos.y;
