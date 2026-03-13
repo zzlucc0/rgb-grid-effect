@@ -3529,10 +3529,14 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
     if ((note.noteType === 'drag' || note.noteType === 'ribbon') && window.PathTemplates?.chooseTemplate) {
         const activeTemplates = (this.notes || []).filter(n => !n.hit && !n.completed).map(n => n.pathTemplate).filter(Boolean).slice(-4);
         const geometrySeenCount = (this.notes || []).filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate)).length;
-        const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < 2;
+        const tuning = this.runtimeTuning || {};
+        const geometryFloor = Number(tuning.forceGeometryFloor || 2);
+        const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < geometryFloor;
         note.pathTemplate = window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal', {
             recentTemplates: activeTemplates,
-            forceGeometry: shouldForceGeometry
+            forceGeometry: shouldForceGeometry,
+            forceGeometryFloor: geometryFloor,
+            geometryBiasBoost: Number(tuning.geometryBiasBoost || 0)
         });
     }
     if (window.ChartPolicy?.assignKeyboardCheckpoints) {

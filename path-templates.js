@@ -52,18 +52,20 @@
     const recentTemplates = Array.isArray(context?.recentTemplates) ? context.recentTemplates : [];
     const countRecent = (name) => recentTemplates.filter(v => v === name).length;
     const forceGeometry = Boolean(context?.forceGeometry);
+    const geometryBiasBoost = Number(context?.geometryBiasBoost || 0);
+    const forceGeometryFloor = Number(context?.forceGeometryFloor || 0);
     const inOpening = Boolean(note?.openingCalmWindow) || Number(note?.time || 0) < 6;
 
     const score = (name) => {
       let s = 0;
       if (name === 'orbit') s += difficulty === 'easy' ? 4 : 1.2;
-      if (name === 'diamondLoop') s += segment === 'chorus' ? 3.4 : 2.2;
-      if (name === 'starTrace') s += segment === 'chorus' ? 3.8 : (segment === 'bridge' ? 2.4 : 1.1);
+      if (name === 'diamondLoop') s += (segment === 'chorus' ? 3.4 : 2.2) + geometryBiasBoost * 1.1;
+      if (name === 'starTrace') s += (segment === 'chorus' ? 3.8 : (segment === 'bridge' ? 2.4 : 1.1)) + geometryBiasBoost * 1.25;
       if (intent === 'sweep' && name === 'starTrace') s += 1.5;
       if (intent === 'pivot' && name === 'diamondLoop') s += 1.2;
       if (inOpening && name !== 'orbit') s -= 0.8;
       s -= countRecent(name) * 2.1;
-      if (forceGeometry && name !== 'orbit') s += 4.8;
+      if ((forceGeometry || forceGeometryFloor >= 3) && name !== 'orbit') s += 4.8 + geometryBiasBoost * 0.8;
       if (difficulty === 'hard' && name !== 'orbit') s += 0.9;
       if (difficulty === 'easy' && name === 'starTrace') s -= 2.2;
       s += ((seq * (name.length + 3)) % 7) * 0.07;

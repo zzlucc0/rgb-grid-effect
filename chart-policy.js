@@ -124,10 +124,12 @@
       return 'tap';
     };
     const segmentWeights = (segment = 'verse') => {
-      if (segment === 'chorus') return { tap: 0.18, drag: 0.24, ribbon: 0.18, pulseHold: 0.12, flick: 0.11, cut: 0.1, gate: 0.07 };
-      if (segment === 'bridge') return { tap: 0.24, drag: 0.17, ribbon: 0.08, pulseHold: 0.2, flick: 0.1, cut: 0.06, gate: 0.15 };
-      if (segment === 'intro') return { tap: 0.52, drag: 0.26, ribbon: 0.02, pulseHold: 0.07, flick: 0.08, cut: 0.03, gate: 0.02 };
-      return { tap: 0.3, drag: 0.24, ribbon: 0.08, pulseHold: 0.16, flick: 0.1, cut: 0.06, gate: 0.06 };
+      const varietyBoost = Number(options.varietyBoost || 0);
+      const tapPenaltyBoost = Number(options.tapPenaltyBoost || 0);
+      if (segment === 'chorus') return { tap: 0.18 - tapPenaltyBoost * 0.06, drag: 0.24, ribbon: 0.18 + varietyBoost * 0.1, pulseHold: 0.12, flick: 0.11, cut: 0.1 + varietyBoost * 0.05, gate: 0.07 };
+      if (segment === 'bridge') return { tap: 0.24 - tapPenaltyBoost * 0.05, drag: 0.17, ribbon: 0.08 + varietyBoost * 0.04, pulseHold: 0.2 + varietyBoost * 0.06, flick: 0.1, cut: 0.06, gate: 0.15 + varietyBoost * 0.04 };
+      if (segment === 'intro') return { tap: 0.52 - tapPenaltyBoost * 0.03, drag: 0.26, ribbon: 0.02, pulseHold: 0.07, flick: 0.08 + varietyBoost * 0.03, cut: 0.03, gate: 0.02 };
+      return { tap: 0.3 - tapPenaltyBoost * 0.05, drag: 0.24 + varietyBoost * 0.04, ribbon: 0.08 + varietyBoost * 0.05, pulseHold: 0.16 + varietyBoost * 0.04, flick: 0.1, cut: 0.06 + varietyBoost * 0.03, gate: 0.06 };
     };
     const candidatesFor = (segment = 'verse', t = 0) => {
       const p = openingPressureProfile(t, options);
