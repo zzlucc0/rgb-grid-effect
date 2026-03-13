@@ -196,6 +196,43 @@
     return map[type] || String(type || 'TAP').toUpperCase();
   }
 
+  function assignKeyboardCheckpoints(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const minGapSec = Number(options.keyboardCheckpointGapSec || 2.2);
+    const earlyGraceSec = Number(options.keyboardCheckpointEarlyGraceSec || 10);
+    let lastCheckpointTime = -Infinity;
+
+    for (const note of seq) {
+      note.keyboardCheckpoint = false;
+      note.keyboardKey = null;
+      note.keyboardHint = null;
+      note.keyboardHit = Boolean(note.keyboardHit);
+
+      const type = note.type || note.noteType || 'tap';
+      const template = note.pathTemplate || null;
+      const eligible = (type === 'drag' || type === 'ribbon') && template && template !== 'orbit';
+      if (!eligible) continue;
+      if (Number(note.time || 0) <= earlyGraceSec) continue;
+
+      const nearbyConflict = seq.some(other => {
+        if (other === note) return false;
+        const otherType = other.type || other.noteType || 'tap';
+        if (otherType !== 'pulseHold' && other.keyboardCheckpoint !== true) return false;
+        return Math.abs(Number(other.time || 0) - Number(note.time || 0)) < minGapSec;
+      });
+      if (nearbyConflict) continue;
+      if (Number(note.time || 0) - lastCheckpointTime < minGapSec) continue;
+
+      note.keyboardCheckpoint = true;
+      note.keyboardKey = 'space';
+      note.keyboardHint = 'SPACE';
+      note.keyboardHit = false;
+      lastCheckpointTime = Number(note.time || 0);
+    }
+
+    return seq;
+  }
+
   function noteRadius(note, circleSize = 36) {
     const type = note?.type || note?.noteType || 'tap';
     if (type === 'pulseHold') return circleSize * 1.45;
@@ -384,10 +421,11 @@
     seq = enforceChartPlayability(seq);
     seq = resolvePathConflicts(seq, circleSize);
     seq = enforceDensityFloor(seq, options);
+    seq = assignKeyboardCheckpoints(seq, options);
     return [...seq].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType, isSustainedType };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType, isSustainedType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

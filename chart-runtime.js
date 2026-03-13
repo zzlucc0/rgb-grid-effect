@@ -1,7 +1,8 @@
 (function () {
   class ChartRuntime {
     constructor(options = {}) {
-      this.approachRateMs = Number(options.approachRateMs || 1250);
+      this.spawnLeadTimeMs = Number(options.spawnLeadTimeMs || options.approachRateMs || 1250);
+      this.approachRateMs = this.spawnLeadTimeMs;
       this.goodRangeMs = Number(options.goodRangeMs || 680);
       this.leadInBiasSec = Number(options.leadInBiasSec || 0.55);
       this.reset();
@@ -15,7 +16,10 @@
     }
 
     load(chart, options = {}) {
-      if (options.approachRateMs != null) this.approachRateMs = Number(options.approachRateMs || this.approachRateMs);
+      if (options.spawnLeadTimeMs != null || options.approachRateMs != null) {
+        this.spawnLeadTimeMs = Number(options.spawnLeadTimeMs || options.approachRateMs || this.spawnLeadTimeMs);
+        this.approachRateMs = this.spawnLeadTimeMs;
+      }
       if (options.goodRangeMs != null) this.goodRangeMs = Number(options.goodRangeMs || this.goodRangeMs);
       if (options.leadInBiasSec != null) this.leadInBiasSec = Number(options.leadInBiasSec || this.leadInBiasSec);
       this.reset(chart || null);
@@ -36,7 +40,7 @@
 
       const spawned = [];
       const notes = this.getNotes();
-      const fullLookaheadSec = this.approachRateMs / 1000 + Math.max(0, Number(this.leadInBiasSec || 0));
+      const fullLookaheadSec = this.spawnLeadTimeMs / 1000 + Math.max(0, Number(this.leadInBiasSec || 0));
       const openingRampSec = Number(options.openingRampSec || 2.8);
       const openingScale = chartTime < openingRampSec ? (0.28 + 0.72 * (chartTime / Math.max(0.001, openingRampSec))) : 1;
       const lookaheadSec = fullLookaheadSec * Math.max(0.22, Math.min(1, openingScale));
@@ -88,7 +92,8 @@
       return {
         hasChart: this.hasChart(),
         ...this.getProgress(),
-        lastSpawnTime: this.lastSpawnTime
+        lastSpawnTime: this.lastSpawnTime,
+        spawnLeadTimeMs: this.spawnLeadTimeMs
       };
     }
   }

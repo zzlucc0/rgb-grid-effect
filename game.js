@@ -203,7 +203,9 @@ class RhythmGame {
         this.currentGroupSize = 5; // Current group size, dynamically adjusted based on rhythm
         
         // Game configuration
-        this.approachRate = 1250; // Approach circle shrink time (milliseconds), a bit slower (added 500ms)
+        this.approachRate = 1250; // Legacy shared approach timing (milliseconds)
+        this.spawnLeadTimeMs = this.approachRate; // Spawn lookahead for chart scheduling
+        this.visualApproachDurationMs = Math.round(this.approachRate * 0.84); // Visual shrink timing kept separate from scheduling
         this.circleSize = 60; // Target circle size
         this.approachCircleSize = 180; // Initial approach circle size
         this.perfectRange = 430; // Perfect judgment range (milliseconds)
@@ -335,7 +337,7 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
-        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { approachRateMs: this.approachRate, goodRangeMs: this.goodRange });
+        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { spawnLeadTimeMs: this.spawnLeadTimeMs, goodRangeMs: this.goodRange });
         this.liveMode = false;
         this.liveConfig = null;
         this.setScene('ready', { error: '' });
@@ -347,7 +349,7 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
-        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { approachRateMs: this.approachRate, goodRangeMs: this.goodRange });
+        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { spawnLeadTimeMs: this.spawnLeadTimeMs, goodRangeMs: this.goodRange });
         this.liveMode = true;
         this.liveConfig = liveConfig || null;
         this.setScene('ready', { error: '' });
@@ -359,7 +361,7 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
-        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { approachRateMs: this.approachRate, goodRangeMs: this.goodRange });
+        if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { spawnLeadTimeMs: this.spawnLeadTimeMs, goodRangeMs: this.goodRange });
         this.liveMode = true;
         this.liveConfig = liveConfig || null;
         this.setScene('ready', { error: '' });
@@ -546,7 +548,8 @@ class RhythmGame {
         this.nextChartIndex = 0;
         if (this.chartRuntime?.reset) {
             this.chartRuntime.reset(this.chartData || null);
-            this.chartRuntime.approachRateMs = this.approachRate;
+            this.chartRuntime.spawnLeadTimeMs = this.spawnLeadTimeMs;
+            this.chartRuntime.approachRateMs = this.spawnLeadTimeMs;
             this.chartRuntime.goodRangeMs = this.goodRange;
         }
         this.isGroupPaused = false;
@@ -1872,7 +1875,7 @@ class RhythmGame {
                 gate: { lead: 0.74, size: 0.86 }
             };
             const profile = approachProfiles[note.noteType || 'tap'] || approachProfiles.tap;
-            const visualApproachSec = (this.approachRate / 1000) * profile.lead;
+            const visualApproachSec = (this.visualApproachDurationMs / 1000) * profile.lead;
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / Math.max(0.18, visualApproachSec)));
             const palette = this.getNotePalette(note);
             const spawnPop = Math.min(1, Math.max(0, (performance.now() - ((note.spawnedAtWall || performance.now()) || performance.now())) / 220));
@@ -2674,7 +2677,7 @@ RhythmGame.prototype.spawnChartNotesUpTo = function (currentTime) {
     const chartTime = Number.isFinite(Number(currentTime)) ? Number(currentTime) : 0;
     if (!(this.chartMode && this.chartData?.notes?.length)) return 0;
     let spawned = 0;
-    while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= chartTime + this.approachRate / 1000) {
+    while (this.nextChartIndex < this.chartData.notes.length && this.chartData.notes[this.nextChartIndex].time <= chartTime + this.spawnLeadTimeMs / 1000) {
         const chartIndex = this.nextChartIndex;
         const chartNote = this.chartData.notes[chartIndex];
 
@@ -3434,7 +3437,12 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
     if ((note.noteType === 'drag' || note.noteType === 'ribbon') && window.PathTemplates?.chooseTemplate) {
         note.pathTemplate = window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal');
     }
-    if ((note.noteType === 'drag' || note.noteType === 'ribbon') && note.pathTemplate && note.pathTemplate !== 'orbit') {
+    if (window.ChartPolicy?.assignKeyboardCheckpoints) {
+        window.ChartPolicy.assignKeyboardCheckpoints([note, ...(this.notes || []).filter(n => !n.hit && !n.completed)], {
+            keyboardCheckpointGapSec: 2.2,
+            keyboardCheckpointEarlyGraceSec: 10
+        });
+    } else if ((note.noteType === 'drag' || note.noteType === 'ribbon') && note.pathTemplate && note.pathTemplate !== 'orbit') {
         note.keyboardCheckpoint = true;
         note.keyboardKey = 'space';
         note.keyboardHint = 'SPACE';

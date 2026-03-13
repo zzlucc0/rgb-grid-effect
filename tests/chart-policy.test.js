@@ -88,4 +88,20 @@ describe('chart policy quotas', () => {
     expect(mix.tapRatio).toBeLessThanOrEqual(0.45);
     expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.4);
   });
+
+  it('assigns sparse keyboard checkpoints only to eligible geometry notes', () => {
+    const policy = loadPolicy();
+    const notes = [
+      { time: 8, type: 'drag', noteType: 'drag', pathTemplate: 'diamondLoop', segmentLabel: 'verse' },
+      { time: 11.5, type: 'drag', noteType: 'drag', pathTemplate: 'diamondLoop', segmentLabel: 'verse' },
+      { time: 14, type: 'pulseHold', noteType: 'pulseHold', segmentLabel: 'bridge' },
+      { time: 17, type: 'ribbon', noteType: 'ribbon', pathTemplate: 'starTrace', segmentLabel: 'chorus' },
+      { time: 20, type: 'drag', noteType: 'drag', pathTemplate: 'orbit', segmentLabel: 'chorus' }
+    ];
+    const out = policy.assignKeyboardCheckpoints(notes, { keyboardCheckpointGapSec: 2.2, keyboardCheckpointEarlyGraceSec: 10 });
+    expect(Boolean(out[0].keyboardCheckpoint)).toBe(false);
+    expect(Boolean(out[1].keyboardCheckpoint)).toBe(true);
+    expect(Boolean(out[3].keyboardCheckpoint)).toBe(true);
+    expect(Boolean(out[4].keyboardCheckpoint)).toBe(false);
+  });
 });

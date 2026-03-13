@@ -36,6 +36,16 @@ describe('ChartRuntime startup scheduling', () => {
     expect(permissive.length).toBeGreaterThan(0);
     expect(permissive[0].note.time).toBe(1.834);
   });
+
+  it('lets spawn lead time diverge from visual approach duration inputs', () => {
+    const win = loadBrowserScript('chart-runtime.js');
+    const runtime = new win.ChartRuntime({ spawnLeadTimeMs: 1800 });
+    runtime.load({ notes: [{ time: 2.1, type: 'tap' }] }, { spawnLeadTimeMs: 1800 });
+    const spawned = runtime.spawnUntil(0.4, (currentTime, note, index) => ({ currentTime, note, index }), { openingRampSec: 0.2, visibleSustainedCap: 9, visibleSustainedCount: 0 });
+    expect(runtime.snapshot().spawnLeadTimeMs).toBe(1800);
+    expect(spawned.length).toBe(1);
+    expect(spawned[0].note.time).toBe(2.1);
+  });
 });
 
 describe('RunClockController chart-mode behavior', () => {
