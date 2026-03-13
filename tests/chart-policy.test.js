@@ -54,6 +54,21 @@ describe('chart policy quotas', () => {
     expect(longest).toBeLessThanOrEqual(3);
   });
 
+  it('caps first-half sustained ratio after opening guard runs', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 24 }, (_, i) => ({
+      time: 1 + i * 1.1,
+      type: i < 12 ? 'drag' : 'tap',
+      noteType: i < 12 ? 'drag' : 'tap',
+      laneHint: i % 4,
+      segmentLabel: i < 8 ? 'intro' : 'verse'
+    }));
+    const out = policy.applyOpeningWindowPolicy(notes, { firstHalfWindowSec: 18, firstHalfSustainRatioCap: 0.34, openingSustainConcurrencyCap: 1, minOpeningDragGapSec: 1.8 });
+    const firstHalf = out.filter(n => Number(n.time) <= 18);
+    const sustained = firstHalf.filter(n => policy.isSustainedType(n.type || n.noteType));
+    expect(sustained.length / firstHalf.length).toBeLessThanOrEqual(0.34);
+  });
+
   it('reduces nearby heavy overlaps around sustained notes', () => {
     const policy = loadPolicy();
     const notes = [

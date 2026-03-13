@@ -41,43 +41,84 @@
     const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
     const calmWindowSec = Number(options.openingCalmWindowSec || 2.4);
     const heavyStartSec = Number(options.openingHeavyStartSec || 4.8);
+    const openingConcurrencyCap = Number(options.openingSustainConcurrencyCap || 1);
+    const firstHalfWindowSec = Number(options.firstHalfWindowSec || 30);
+    const firstHalfSustainRatioCap = Number(options.firstHalfSustainRatioCap || 0.34);
+    const chimeSuppressionSec = Number(options.chimeSuppressionSec || 8);
+    const minOpeningDragGapSec = Number(options.minOpeningDragGapSec || 1.8);
     let sustainedUsed = 0;
     let holdUsed = 0;
-      for (let i = 0; i < seq.length; i++) {
+    let lastOpeningDragTime = -Infinity;
+    for (let i = 0; i < seq.length; i++) {
       const note = seq[i];
       const t = Number(note.time || 0);
       const profile = openingPressureProfile(t, options);
       note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), profile.inOpening ? profile.previewBoostSec : 0);
       note.openingCalmWindow = profile.inCalmWindow;
       note.openingSequence = i;
-      const type = note.type || note.noteType || 'tap';
+      const originalType = note.type || note.noteType || 'tap';
       if (!profile.inOpening) continue;
       const localWindow = seq.filter(other => Math.abs(Number(other.time || 0) - t) <= 1.35).length;
-      if (profile.inCalmWindow && localWindow > profile.localDensityCap && (type !== 'tap' && type !== 'flick')) {
+      const activeSustainWindow = seq.filter(other => {
+        const otherType = other.type || other.noteType || 'tap';
+        return isSustainedType(otherType) && Math.abs(Number(other.time || 0) - t) <= minOpeningDragGapSec;
+      }).length;
+      if (profile.inCalmWindow && localWindow > profile.localDensityCap && (originalType !== 'tap' && originalType !== 'flick')) {
         note.type = 'tap';
         note.noteType = 'tap';
         stripComplexPath(note);
         continue;
       }
-      if (t <= heavyStartSec && ['ribbon', 'pulseHold', 'gate'].includes(type)) {
-        note.type = type === 'gate' ? 'flick' : 'drag';
+      if (t <= chimeSuppressionSec && ['drag', 'ribbon', 'pulseHold'].includes(originalType) && localWindow >= 3) {
+        note.type = originalType === 'pulseHold' ? 'tap' : 'flick';
+        note.noteType = note.type;
+        stripComplexPath(note);
+        continue;
+      }
+      if (t <= heavyStartSec && ['ribbon', 'pulseHold', 'gate'].includes(originalType)) {
+        note.type = originalType === 'gate' ? 'flick' : 'drag';
         note.noteType = note.type;
         if (note.noteType !== 'drag') stripComplexPath(note);
       }
-      const effectiveType = note.type || note.noteType || type;
+      const effectiveType = note.type || note.noteType || originalType;
       if (!isSustainedType(effectiveType)) continue;
       sustainedUsed += 1;
       if (effectiveType === 'pulseHold') holdUsed += 1;
+      if (['drag', 'ribbon'].includes(effectiveType) && t - lastOpeningDragTime < minOpeningDragGapSec) {
+        note.type = 'tap';
+        note.noteType = 'tap';
+        stripComplexPath(note);
+        continue;
+      }
+      if (activeSustainWindow > openingConcurrencyCap) {
+        note.type = 'tap';
+        note.noteType = 'tap';
+        stripComplexPath(note);
+        continue;
+      }
       if (t <= calmWindowSec && effectiveType !== 'drag') {
         note.type = 'drag';
         note.noteType = 'drag';
-        continue;
       }
-      if (holdUsed > 1 || sustainedUsed > (t <= heavyStartSec ? 3 : 4)) {
-        note.type = t <= heavyStartSec ? 'drag' : 'tap';
+      if (holdUsed > 1 || sustainedUsed > (t <= heavyStartSec ? 2 : 3)) {
+        note.type = t <= heavyStartSec ? 'tap' : 'drag';
         note.noteType = note.type;
         if (note.noteType === 'tap') stripComplexPath(note);
       }
+      if (['drag', 'ribbon'].includes(note.type || note.noteType)) {
+        note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), 1.2);
+        note.minCompletionWindowSec = Number(options.openingDragCompletionWindowSec || 1.35);
+        lastOpeningDragTime = t;
+      }
+    }
+    const firstHalf = seq.filter(n => Number(n.time || 0) <= firstHalfWindowSec);
+    const sustainedFirstHalf = firstHalf.filter(n => isSustainedType(n.type || n.noteType || 'tap'));
+    while (firstHalf.length && sustainedFirstHalf.length / firstHalf.length > firstHalfSustainRatioCap) {
+      const candidate = sustainedFirstHalf.pop();
+      if (!candidate) break;
+      candidate.type = 'tap';
+      candidate.noteType = 'tap';
+      stripComplexPath(candidate);
     }
     return seq;
   }

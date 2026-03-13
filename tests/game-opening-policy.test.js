@@ -23,9 +23,9 @@ describe('opening policy', () => {
     ];
     const out = p.applyOpeningWindowPolicy(notes, { openingSeconds: 12, openingCalmWindowSec: 2.4, openingHeavyStartSec: 4.8, openingPreviewBoostSec: 1.1 });
     expect(out[0].spawnLeadBiasSec).toBeGreaterThan(0.5);
-    expect(out[0].type).toBe('drag');
+    expect(['tap', 'drag']).toContain(out[0].type);
     expect(['drag', 'flick']).toContain(out[2].type);
-    expect(out[3].type).toBe('drag');
+    expect(['tap', 'drag']).toContain(out[3].type);
   });
 
   it('enforces global sustained cooldown for mouse playability', () => {
@@ -40,5 +40,21 @@ describe('opening policy', () => {
     const sustained = out.filter(n => p.isSustainedType(n.type || n.noteType));
     expect(sustained.length).toBeLessThanOrEqual(2);
     expect((out[1].type || out[1].noteType)).toBe('tap');
+  });
+
+  it('hard-caps opening sustained density and suppresses early chime-like drag piles', () => {
+    const p = loadPolicy();
+    const notes = [
+      { time: 1.0, type: 'drag', noteType: 'drag', laneHint: 0, segmentLabel: 'intro' },
+      { time: 1.6, type: 'drag', noteType: 'drag', laneHint: 1, segmentLabel: 'intro' },
+      { time: 2.0, type: 'ribbon', noteType: 'ribbon', laneHint: 2, segmentLabel: 'intro' },
+      { time: 2.5, type: 'drag', noteType: 'drag', laneHint: 3, segmentLabel: 'intro' },
+      { time: 4.8, type: 'drag', noteType: 'drag', laneHint: 1, segmentLabel: 'verse' }
+    ];
+    const out = p.applyOpeningWindowPolicy(notes, { openingCalmWindowSec: 2.4, openingHeavyStartSec: 5.4, openingSustainConcurrencyCap: 1, minOpeningDragGapSec: 1.8, chimeSuppressionSec: 8 });
+    const openingSustained = out.filter(n => Number(n.time) <= 8 && p.isSustainedType(n.type || n.noteType));
+    expect(openingSustained.length).toBeLessThanOrEqual(2);
+    expect(['tap', 'flick']).toContain(out[1].type);
+    expect(['tap', 'flick']).toContain(out[2].type);
   });
 });
