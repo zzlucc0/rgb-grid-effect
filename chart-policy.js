@@ -203,6 +203,7 @@
       const note = seq[i];
       const t = Number(note.time || 0);
       const seg = note.segmentLabel || 'verse';
+      const proposalType = note.proposalType || note.type || note.noteType || 'tap';
       const profile = openingPressureProfile(t, options);
       const candidates = candidatesFor(seg, t);
       const weights = segmentWeights(seg);
@@ -214,6 +215,7 @@
 
       for (const type of candidates) {
         let score = (weights[type] || 0.05) * 10;
+        if (type === proposalType) score += 1.15;
         const fam = familyOf(type);
         const familyRun = recentFamilyRun(i, fam);
         const typeRun = recentTypeRun(i, type);

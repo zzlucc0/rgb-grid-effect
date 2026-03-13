@@ -618,7 +618,8 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     const strength = nearDownbeat ? 1.05 : (isStrong ? 1.0 : (dense ? 0.78 : 0.68));
     notes.push({
       time: t,
-      type,
+      proposalType: type,
+      type: 'tap',
       laneHint: lane,
       phrase: phraseIndex,
       phraseIntent,
@@ -634,10 +635,10 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
   }
 
   // ensure variety: if no drag generated, inject on suitable strong beats in non-intro segments
-  if (!notes.some(n => n.type === 'drag')) {
+  if (!notes.some(n => n.proposalType === 'drag')) {
     for (let i = 0; i < notes.length; i++) {
       if (notes[i].segmentLabel !== 'intro' && i % 6 === 0) {
-        notes[i].type = 'drag';
+        notes[i].proposalType = 'drag';
         break;
       }
     }
@@ -705,7 +706,8 @@ function ensureTailCoverage(notes, durationSec = 0, difficulty = 'normal', chart
   const prev = out[out.length - 1] || { laneHint: 0, phrase: 0, strength: 0.85, segmentLabel: 'outro', energy: 'mid' };
   out.push({
     time: insertAt,
-    type: gap > 5.5 ? 'drag' : 'tap',
+    proposalType: gap > 5.5 ? 'drag' : 'tap',
+    type: 'tap',
     laneHint: (Number(prev.laneHint || 0) + 1) % 4,
     phrase: Number(prev.phrase || 0) + 1,
     strength: 0.9,
