@@ -16,4 +16,11 @@ describe('layer boundary cleanup', () => {
     expect(game).toContain('note.finalMechanicLocked = true');
     expect(game).toContain('groupMechanicContext');
   });
+
+  it('does not use pickChartNoteType as the modern chart-mode fallback anymore', () => {
+    const game = fs.readFileSync(new URL('../game.js', import.meta.url), 'utf8');
+    const chartCreation = game.split('RhythmGame.prototype.createChartNoteFromData = function')[1].split('RhythmGame.prototype.spawnBurstCluster')[0];
+    expect(chartCreation).not.toContain('pickChartNoteType');
+    expect(chartCreation).toContain("const noteType = chartNote.type || 'tap'");
+  });
 });

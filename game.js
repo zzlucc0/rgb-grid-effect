@@ -603,11 +603,10 @@ class RhythmGame {
                 const phraseKey = Number.isFinite(n?.phrase) ? n.phrase : Math.floor(idx / 6);
                 const inPhraseIndex = phraseCounts.get(phraseKey) || 0;
                 phraseCounts.set(phraseKey, inPhraseIndex + 1);
-                const seededType = this.pickChartNoteType(n, idx, inPhraseIndex);
                 return {
                     ...n,
                     time: Number(Math.max(0.6, normalizedTime + nudge + (idx % 8 === 0 ? 0.005 : 0)).toFixed(3)),
-                    type: n.type || seededType,
+                    type: n.type || 'tap',
                     phrase: phraseKey,
                     groupSlot: inPhraseIndex
                 };
@@ -3120,7 +3119,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             previousLane,
             phraseIntent: chartNote.phraseIntent || null
         });
-        const probe = { x: pos.x, y: pos.y, type: chartNote.type || this.pickChartNoteType(chartNote, chartIndex, groupSlot) };
+        const probe = { x: pos.x, y: pos.y, type: chartNote.type || 'tap' };
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
         const collides = active.some(existing => {
             if (!window.ChartPolicy?.makeFootprint || !window.ChartPolicy?.footprintsOverlap) return false;
@@ -3142,7 +3141,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     const x = basePos.x;
     const y = basePos.y;
 
-    const noteType = chartNote.type || this.pickChartNoteType(chartNote, chartIndex, groupSlot);
+    const noteType = chartNote.type || 'tap';
     const note = {
         x,
         y,
