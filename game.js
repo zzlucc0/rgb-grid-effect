@@ -3454,12 +3454,7 @@ RhythmGame.prototype.applyGroupMechanics = function (notes, context = {}) {
         note.groupSize = size;
         note.groupRole = idx === 0 ? 'lead' : (idx === size - 1 ? 'accent' : 'body');
         note.groupKey = `${note.segmentLabel || context.segmentLabel || 'none'}:${note.groupIndex || context.groupIndex || 0}`;
-        const seg = note.segmentLabel || context.segmentLabel || 'verse';
-        if (size >= 3 && pattern === 'burst' && idx === size - 1 && (note.noteType === 'tap' || note.noteType === 'drag') && seg === 'chorus') note.noteType = 'cut';
-        if (size >= 3 && pattern === 'diamond' && idx === 1 && (note.noteType === 'tap' || note.noteType === 'drag') && Math.abs(note.groupIndex || 0) % 2 === 0) note.noteType = 'flick';
-        if (size >= 4 && pattern === 'ladder' && idx === 0 && (note.noteType === 'tap' || note.noteType === 'drag') && seg !== 'chorus') note.noteType = 'pulseHold';
-        if (size >= 4 && pattern === 'fan' && idx === size - 1 && seg === 'bridge' && note.noteType === 'tap') note.noteType = 'gate';
-        this.applyNoteMechanicProfile(note);
+        this.applyNoteMechanicProfile(note, { pattern, size, idx, segmentLabel: note.segmentLabel || context.segmentLabel || 'verse' });
     });
     return notes;
 };
@@ -3525,8 +3520,15 @@ RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCo
     return { x, y, pattern, laneFloat: blendedLane, anchorLane };
 };
 
-RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
+RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
     if (!note) return note;
+    note.finalMechanicLocked = true;
+    note.groupMechanicContext = {
+        pattern: context.pattern || note.groupPattern || null,
+        size: context.size || note.groupSize || 1,
+        idx: context.idx ?? 0,
+        segmentLabel: context.segmentLabel || note.segmentLabel || 'verse'
+    };
     if (note.noteType === 'flick' || note.noteType === 'cut') {
         const dirs = [
             { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0.8, y: -0.6 }, { x: -0.8, y: -0.6 }
