@@ -503,6 +503,14 @@
             color: #f6fdff;
             font-weight: 700;
         }
+        .debug-strip span.warn {
+            border-color: rgba(255, 111, 136, 0.42);
+            background: rgba(255, 111, 136, 0.12);
+        }
+        .debug-strip span.good {
+            border-color: rgba(255, 213, 131, 0.34);
+            background: rgba(255, 213, 131, 0.08);
+        }
         .score-meter-fill {
             width: 38%;
             height: 100%;
@@ -590,6 +598,8 @@
             <span>Group <b id="debugGroupState">--</b></span>
             <span>Playback <b id="debugPlaybackState">--</b></span>
             <span>Diag <b id="debugDiagState">--</b></span>
+            <span id="debugReviewScoreWrap">Review <b id="debugReviewScore">--</b></span>
+            <span id="debugReviewStateWrap">Flags <b id="debugReviewState">--</b></span>
         </div>
     </div>
     <div id="uploadContainer">
@@ -704,9 +714,9 @@
     <script src="run-completion.js?v=20260312a"></script>
     <script src="playback-controller.js?v=20260312a"></script>
     <script src="chart-policy.js?v=20260313c"></script>
-    <script src="chart-reviewer.js?v=20260313a"></script>
+    <script src="chart-reviewer.js?v=20260313b"></script>
     <script src="path-templates.js?v=20260313b"></script>
-    <script src="game.js?v=20260313e"></script>
+    <script src="game.js?v=20260313f"></script>
     <script src="youtube-client.js?v=20260311d"></script>
 </body>
 </html>

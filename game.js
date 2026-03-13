@@ -968,6 +968,10 @@ class RhythmGame {
         const debugGroupState = document.getElementById('debugGroupState');
         const debugPlaybackState = document.getElementById('debugPlaybackState');
         const debugDiagState = document.getElementById('debugDiagState');
+        const debugReviewScore = document.getElementById('debugReviewScore');
+        const debugReviewState = document.getElementById('debugReviewState');
+        const debugReviewScoreWrap = document.getElementById('debugReviewScoreWrap');
+        const debugReviewStateWrap = document.getElementById('debugReviewStateWrap');
         const comboNode = document.getElementById('comboValue');
         const modeNode = document.getElementById('hudMode');
         const diffNode = document.getElementById('hudDifficulty');
@@ -1035,6 +1039,27 @@ class RhythmGame {
             const p = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress() : { nextIndex: this.nextChartIndex || 0, total: this.chartData?.notes?.length || 0, spawnedCount: this.spawnedChartNotes || 0 };
             const diag = this.diagnostics || {};
             debugDiagState.textContent = `${diag.lastDiag || '-'}:rt${Number(diag.lastRunTime || 0).toFixed(1)}:pt${Number(diag.lastPlayerTime || 0).toFixed(1)}:sp${p.spawnedCount || 0}:ac${diag.lastActiveNotes || 0}`;
+        }
+        const review = this.diagnostics?.reviewResult?.review || null;
+        if (debugReviewScore) {
+            if (!review?.scores) debugReviewScore.textContent = '--';
+            else {
+                const avg = (Number(review.scores.opening || 0) + Number(review.scores.variety || 0) + Number(review.scores.spatialFlow || 0) + Number(review.scores.geometrySurfacing || 0)) / 4;
+                debugReviewScore.textContent = `${avg.toFixed(1)}/10`;
+            }
+        }
+        if (debugReviewState) {
+            const issueCount = Array.isArray(review?.issues) ? review.issues.length : 0;
+            const topArea = review?.issues?.[0]?.area || 'clear';
+            debugReviewState.textContent = review ? `${topArea}:${issueCount}` : '--';
+        }
+        if (debugReviewScoreWrap) {
+            debugReviewScoreWrap.classList.toggle('warn', Number(review?.scores?.spatialFlow || 10) < 6 || Number(review?.scores?.geometrySurfacing || 10) < 6);
+            debugReviewScoreWrap.classList.toggle('good', !!review && Number(review?.scores?.spatialFlow || 0) >= 7 && Number(review?.scores?.geometrySurfacing || 0) >= 7);
+        }
+        if (debugReviewStateWrap) {
+            debugReviewStateWrap.classList.toggle('warn', Array.isArray(review?.issues) && review.issues.length >= 3);
+            debugReviewStateWrap.classList.toggle('good', !!review && Array.isArray(review?.issues) && review.issues.length <= 1);
         }
     }
 
@@ -1175,21 +1200,42 @@ class RhythmGame {
                 this.spawnedChartNotes += spawned.length;
                 const activeNotes = this.notes.filter(n => !n.hit && !n.completed);
                 const chartShapeAudit = window.ChartPolicy?.auditChartShape ? window.ChartPolicy.auditChartShape(activeNotes) : null;
-                const reviewerRequest = window.ChartReviewer?.buildReviewerRequest
-                    ? window.ChartReviewer.buildReviewerRequest({ notes: activeNotes }, {
-                        lastChartSpawnAt: chartTime,
-                        lastChartSpawnCount: spawned.length,
-                        lastSpawnedCount: this.spawnedChartNotes,
-                        chartShapeAudit
-                    })
-                    : null;
-                this.captureRuntimeDiagnostics('chart-spawn', {
+                const reviewerDiagnostics = {
                     lastChartSpawnAt: chartTime,
                     lastChartSpawnCount: spawned.length,
                     lastSpawnedCount: this.spawnedChartNotes,
-                    chartShapeAudit,
+                    chartShapeAudit
+                };
+                const reviewerRequest = window.ChartReviewer?.buildReviewerRequest
+                    ? window.ChartReviewer.buildReviewerRequest({ notes: activeNotes }, reviewerDiagnostics)
+                    : null;
+                this.captureRuntimeDiagnostics('chart-spawn', {
+                    ...reviewerDiagnostics,
                     reviewerRequest
                 });
+                const nowMs = performance.now();
+                const shouldReview = !!window.ChartReviewer?.requestReview
+                    && !!reviewerRequest
+                    && !this.reviewRequestInFlight
+                    && activeNotes.length >= 8
+                    && (!this.lastReviewerAtMs || nowMs - this.lastReviewerAtMs > 2200);
+                if (shouldReview) {
+                    this.reviewRequestInFlight = true;
+                    const apiBase = `${window.location.protocol}//${window.location.hostname}:8787`;
+                    window.ChartReviewer.requestReview(apiBase, { notes: activeNotes }, reviewerDiagnostics)
+                        .then((reviewResult) => {
+                            this.lastReviewerAtMs = performance.now();
+                            this.captureRuntimeDiagnostics('chart-review', { reviewResult });
+                            this.updateHUD();
+                        })
+                        .catch((err) => {
+                            this.lastReviewerAtMs = performance.now();
+                            this.captureRuntimeDiagnostics('chart-review-error', { reviewError: err?.message || String(err) });
+                        })
+                        .finally(() => {
+                            this.reviewRequestInFlight = false;
+                        });
+                }
             }
             this.nextChartIndex = this.chartRuntime.getProgress().nextIndex;
             return spawned.length;
