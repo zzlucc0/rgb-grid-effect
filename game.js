@@ -1165,7 +1165,8 @@ class RhythmGame {
         const chartTime = this.resolveChartClock();
         if (this.liveMode) this.applySegmentProfile(chartTime);
         if (this.chartRuntime?.spawnUntil) {
-            const spawned = this.chartRuntime.spawnUntil(chartTime, (currentTime, chartNote, chartIndex) => this.createChartNoteFromData(currentTime, chartNote, chartIndex));
+            const visibleSustainedCount = (this.notes || []).filter(n => !n.hit && !n.completed && ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(n.noteType || n.type)).length;
+            const spawned = this.chartRuntime.spawnUntil(chartTime, (currentTime, chartNote, chartIndex) => this.createChartNoteFromData(currentTime, chartNote, chartIndex), { openingRampSec: 2.8, visibleSustainedCap: chartTime < 3.2 ? 1 : 2, visibleSustainedCount });
             if (spawned?.length) {
                 this.notes.push(...spawned);
                 this.spawnedChartNotes += spawned.length;

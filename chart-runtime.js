@@ -30,30 +30,40 @@
       return this.chart?.notes || [];
     }
 
-    spawnUntil(currentTime, createNote) {
+    spawnUntil(currentTime, createNote, options = {}) {
       const chartTime = Number.isFinite(Number(currentTime)) ? Number(currentTime) : 0;
       if (!this.hasChart() || typeof createNote !== 'function') return [];
 
       const spawned = [];
       const notes = this.getNotes();
-      const lookaheadSec = this.approachRateMs / 1000 + Math.max(0, Number(this.leadInBiasSec || 0));
+      const fullLookaheadSec = this.approachRateMs / 1000 + Math.max(0, Number(this.leadInBiasSec || 0));
+      const openingRampSec = Number(options.openingRampSec || 2.8);
+      const openingScale = chartTime < openingRampSec ? (0.28 + 0.72 * (chartTime / Math.max(0.001, openingRampSec))) : 1;
+      const lookaheadSec = fullLookaheadSec * Math.max(0.22, Math.min(1, openingScale));
       const missGraceSec = this.goodRangeMs / 1000;
+      const visibleSustainedCap = Number(options.visibleSustainedCap || 1);
+      let visibleSustained = Number(options.visibleSustainedCount || 0);
+      const isSustained = (type) => ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
 
       while (this.nextIndex < notes.length && Number(notes[this.nextIndex]?.time || 0) <= chartTime + lookaheadSec) {
         const chartIndex = this.nextIndex;
         const chartNote = notes[chartIndex];
         const hitTime = Number(chartNote?.time || 0);
+        const noteType = chartNote?.type || 'tap';
 
         if (hitTime < chartTime - missGraceSec) {
           this.nextIndex += 1;
           continue;
         }
 
+        if (isSustained(noteType) && visibleSustained >= visibleSustainedCap) break;
+
         const note = createNote(chartTime, chartNote, chartIndex);
         if (!note) break;
         this.nextIndex += 1;
         this.spawnedCount += 1;
         this.lastSpawnTime = chartTime;
+        if (isSustained(note.noteType || note.type || noteType)) visibleSustained += 1;
         spawned.push(note);
       }
 

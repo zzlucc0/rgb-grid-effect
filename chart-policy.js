@@ -66,11 +66,11 @@
   function assignMechanics(notes) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
     const quotaPlan = {
-      full: { ribbon: 10, cut: 12, flick: 18, gate: 10, pulseHold: 12, drag: 16 },
-      chorus: { ribbon: 4, cut: 4, flick: 3, gate: 2 },
-      verse: { pulseHold: 3, flick: 3, drag: 3, gate: 1 },
-      bridge: { gate: 3, pulseHold: 2, flick: 3, cut: 2 },
-      intro: { flick: 1, drag: 2 }
+      full: { ribbon: 11, cut: 8, flick: 8, gate: 6, pulseHold: 12, drag: 18 },
+      chorus: { ribbon: 4, cut: 2, flick: 1, gate: 1 },
+      verse: { pulseHold: 3, flick: 1, drag: 4, gate: 0 },
+      bridge: { gate: 1, pulseHold: 2, flick: 1, cut: 1 },
+      intro: { flick: 0, drag: 2 }
     };
     const replaceable = new Set(['tap', 'drag']);
     const countType = (entries, type) => entries.filter(entry => (entry.note.type || entry.note.noteType) === type).length;
@@ -119,7 +119,7 @@
     for (const [seg, entries] of bySegment.entries()) {
       applyPlan(entries, quotaPlan[seg] || quotaPlan.verse);
     }
-    applyPlan(latterHalf, { flick: 6, pulseHold: 4, gate: 3, drag: 5, ribbon: 3, cut: 4 });
+    applyPlan(latterHalf, { flick: 2, pulseHold: 5, gate: 1, drag: 6, ribbon: 4, cut: 2 });
     return notes;
   }
 
@@ -330,9 +330,9 @@
       for (const note of seq) {
         if ((note.type || note.noteType || 'tap') !== 'tap') continue;
         const seg = note.segmentLabel || 'verse';
-        if (seg === 'chorus') note.type = 'flick';
-        else if (seg === 'bridge') note.type = 'gate';
-        else note.type = 'pulseHold';
+        if (seg === 'chorus') note.type = 'drag';
+        else if (seg === 'bridge') note.type = 'pulseHold';
+        else note.type = 'drag';
         note.noteType = note.type;
         if (mechanicMixStats(seq).tapRatio <= maxTapRatio) break;
       }
@@ -341,7 +341,7 @@
       const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
       for (const note of latter) {
         if ((note.type || note.noteType || 'tap') !== 'tap') continue;
-        note.type = (note.segmentLabel || 'verse') === 'chorus' ? 'cut' : ((note.segmentLabel || 'verse') === 'bridge' ? 'gate' : 'flick');
+        note.type = (note.segmentLabel || 'verse') === 'chorus' ? 'ribbon' : ((note.segmentLabel || 'verse') === 'bridge' ? 'pulseHold' : 'drag');
         note.noteType = note.type;
         if (mechanicMixStats(seq).latterSpecialRatio >= minLatterSpecialRatio) break;
       }
