@@ -4,6 +4,24 @@
     delete note.endX; delete note.endY; delete note.controlX; delete note.controlY; delete note.extraPath;
     note.keyboardCheckpoint = false;
     note.keyboardHint = null;
+    if (note.pathVariant && note.pathVariant !== 'arc') note.pathVariant = null;
+    return note;
+  }
+
+  function normalizeNoteSchema(note, options = {}) {
+    if (!note) return note;
+    const legacyType = note.type || note.noteType || 'tap';
+    const proposalMechanic = note.proposalMechanic || note.proposalType || legacyType;
+    note.proposalMechanic = proposalMechanic;
+    note.proposalType = proposalMechanic;
+    note.mechanic = note.mechanic || legacyType;
+    note.type = note.mechanic;
+    note.noteType = note.mechanic;
+    note.inputChannel = note.inputChannel || (note.mechanic === 'drag' || note.mechanic === 'spin' ? 'mouse' : 'shared');
+    note.proposalInputChannel = note.proposalInputChannel || note.inputChannel;
+    note.exclusivity = note.exclusivity || (note.mechanic === 'spin' ? 'solo-mouse' : 'normal');
+    note.keyHint = note.keyHint || null;
+    note.pathVariant = note.pathVariant || (note.pathTemplate || (note.mechanic === 'drag' ? 'arc' : null));
     return note;
   }
 
@@ -64,6 +82,7 @@
         return isSustainedType(otherType) && Math.abs(Number(other.time || 0) - t) <= minOpeningDragGapSec;
       }).length;
       if (profile.inCalmWindow && localWindow > profile.localDensityCap && (originalType !== 'tap' && originalType !== 'flick')) {
+        note.mechanic = 'tap';
         note.type = 'tap';
         note.noteType = 'tap';
         stripComplexPath(note);
@@ -238,8 +257,11 @@
         }
       }
 
+      note.mechanic = bestType;
       note.type = bestType;
       note.noteType = bestType;
+      note.inputChannel = note.inputChannel === 'mouse' ? 'mouse' : (bestType === 'drag' || bestType === 'spin' ? 'mouse' : 'shared');
+      note.exclusivity = bestType === 'spin' ? 'solo-mouse' : 'normal';
       windowCounts.push(bestType);
     }
 
@@ -247,7 +269,9 @@
   }
 
   function layerABaseChartProposal(notes) {
-    return [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => ({ ...note }));
+    return [...(notes || [])]
+      .sort((a, b) => Number(a.time || 0) - Number(b.time || 0))
+      .map(note => normalizeNoteSchema({ ...note }));
   }
 
   function layerBMechanicPlanner(notes, options = {}) {
