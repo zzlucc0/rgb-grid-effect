@@ -1212,6 +1212,98 @@ async function searchArchive(query, limit = 5) {
   }
 }
 
+function clampScore(value) {
+  return Math.max(1, Math.min(10, Number(value || 0)));
+}
+
+function reviewChartPayload(payload) {
+  const audit = payload?.audit || {};
+  const mechanic = audit.mechanic || {};
+  const spatial = audit.spatial || {};
+  const geometry = audit.geometry || {};
+  const chart = payload?.chart || {};
+  const issues = [];
+  const priorities = [];
+
+  if (Number(spatial.largeJumpCount || 0) >= 3 || Number(spatial.avgLaneJump || 0) > 1.15) {
+    issues.push({
+      area: 'spatial',
+      severity: 'high',
+      evidence: `avgLaneJump=${Number(spatial.avgLaneJump || 0).toFixed(2)}, largeJumpCount=${Number(spatial.largeJumpCount || 0)}`,
+      recommendation: 'Tighten locality bias and reduce cross-lane jump budget inside each phrase.'
+    });
+    priorities.push({ rank: 1, change: 'Reduce phrase-internal lane travel and cap consecutive wide jumps.', expectedImpact: 'Less frantic left/right snapping.' });
+  }
+  if (Number(spatial.directionReversalCount || 0) >= 3) {
+    issues.push({
+      area: 'spatial',
+      severity: 'medium',
+      evidence: `directionReversalCount=${Number(spatial.directionReversalCount || 0)}`,
+      recommendation: 'Smooth motion arcs so patterns do not bounce direction every note.'
+    });
+  }
+  if (Number(geometry.geometryRatio || 0) < 0.25) {
+    issues.push({
+      area: 'geometry',
+      severity: 'high',
+      evidence: `geometryRatio=${Number(geometry.geometryRatio || 0).toFixed(2)}, geometryCount=${Number(geometry.geometryCount || 0)}`,
+      recommendation: 'Guarantee more non-orbit templates in chorus/bridge windows.'
+    });
+    priorities.push({ rank: 2, change: 'Raise non-orbit geometry floor and protect surviving geometry after conflict resolution.', expectedImpact: 'More memorable path mechanics.' });
+  }
+  if (Number(geometry.runtimeVisibleRatio || 0) < 0.7) {
+    issues.push({
+      area: 'geometry',
+      severity: 'medium',
+      evidence: `runtimeVisibleRatio=${Number(geometry.runtimeVisibleRatio || 0).toFixed(2)}`,
+      recommendation: 'Promote geometry that remains visually distinct after runtime shaping.'
+    });
+  }
+  if (Number(mechanic.tapRatio || 0) > 0.5) {
+    issues.push({
+      area: 'variety',
+      severity: 'medium',
+      evidence: `tapRatio=${Number(mechanic.tapRatio || 0).toFixed(2)}`,
+      recommendation: 'Trade some tap density for drag/ribbon/pulseHold variation in mid-song windows.'
+    });
+  }
+  if (Number(mechanic.latterSpecialRatio || 0) < 0.35) {
+    issues.push({
+      area: 'variety',
+      severity: 'medium',
+      evidence: `latterSpecialRatio=${Number(mechanic.latterSpecialRatio || 0).toFixed(2)}`,
+      recommendation: 'Inject more late-song special mechanics to avoid flat endings.'
+    });
+  }
+  const openingWindow = Array.isArray(chart.windows) ? chart.windows.find(w => Number(w.start || 0) < 8) : null;
+  if (openingWindow && Number(openingWindow.sustain || 0) >= 3) {
+    issues.push({
+      area: 'opening',
+      severity: 'medium',
+      evidence: `opening sustain=${openingWindow.sustain} in first ${Number(openingWindow.end || 8)}s window`,
+      recommendation: 'Preserve preview bias but delay heavy sustained stacking a bit further.'
+    });
+    priorities.push({ rank: 3, change: 'Extend post-countdown calm window or reduce early sustain clustering.', expectedImpact: 'Cleaner opening read.' });
+  }
+
+  const scores = {
+    opening: clampScore(9.5 - Number((openingWindow?.sustain || 0) * 1.2) - Number(spatial.largeJumpCount || 0) * 0.3),
+    variety: clampScore(8.8 - Number(mechanic.tapRatio || 0) * 7 + Number(mechanic.latterSpecialRatio || 0) * 3),
+    spatialFlow: clampScore(9.2 - Number(spatial.avgLaneJump || 0) * 3 - Number(spatial.directionReversalCount || 0) * 0.4),
+    geometrySurfacing: clampScore(3.5 + Number(geometry.geometryRatio || 0) * 6 + Number(geometry.runtimeVisibleRatio || 0) * 1.5)
+  };
+
+  priorities.sort((a, b) => a.rank - b.rank);
+  return {
+    summary: issues.length
+      ? `Chart review found ${issues.length} notable issue(s). Strongest concern: ${issues[0].area}.`
+      : 'Chart review found no major structural issues in the supplied audit.',
+    scores,
+    issues,
+    priorities
+  };
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "rgb-grid-effect-server", version: API_VERSION, chartSchema: CHART_SCHEMA_VERSION });
 });
@@ -1228,6 +1320,17 @@ app.post("/api/resolve-source", (req, res) => {
   const sourceType = isYouTubeUrl(url) ? "youtube" : (looksLikeDirectMedia(url) ? "direct-media" : (isBilibiliUrl(url) ? "bilibili" : "webpage"));
   const preferred = LINK_PLAY_ONLY ? "online" : (sourceType === "webpage" ? "online" : "offline");
   res.json({ sourceType, preferredMode: preferred, fallbackMode: "online", linkPlayOnly: LINK_PLAY_ONLY });
+});
+
+app.post("/api/chart-review", (req, res) => {
+  try {
+    const payload = req.body?.payload;
+    if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'payload is required' });
+    const review = reviewChartPayload(payload);
+    res.json({ ok: true, review, model: 'local-heuristic-v1' });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err) });
+  }
 });
 
 app.post("/api/search-bilibili", async (req, res) => {

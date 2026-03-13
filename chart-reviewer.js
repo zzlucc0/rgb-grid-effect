@@ -101,7 +101,26 @@
     };
   }
 
-  const api = { buildReviewerPayload, buildReviewerPrompt, buildReviewerRequest };
+  async function requestReview(apiBase, chart, diagnostics = {}) {
+    const request = buildReviewerRequest(chart, diagnostics);
+    const base = String(apiBase || '').replace(/\/$/, '');
+    const fetchImpl = (typeof fetch === 'function' && fetch)
+      || (typeof window !== 'undefined' && typeof window.fetch === 'function' && window.fetch.bind(window))
+      || (typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function' && globalThis.fetch.bind(globalThis));
+    if (!fetchImpl) throw new Error('fetch is not available');
+    const response = await fetchImpl(`${base}/api/chart-review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `chart review failed (${response.status})`);
+    }
+    return response.json();
+  }
+
+  const api = { buildReviewerPayload, buildReviewerPrompt, buildReviewerRequest, requestReview };
   if (typeof window !== 'undefined') window.ChartReviewer = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
