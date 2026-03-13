@@ -68,6 +68,7 @@ class RhythmGame {
             lastPlayerTime: 0,
             lastDiag: 'idle'
         };
+        this.runtimeTuning = null;
         this.tutorialSeenCounts = {};
         this.visualBursts = [];
         this.signatureBursts = [];
@@ -1194,7 +1195,12 @@ class RhythmGame {
         if (this.liveMode) this.applySegmentProfile(chartTime);
         if (this.chartRuntime?.spawnUntil) {
             const visibleSustainedCount = (this.notes || []).filter(n => !n.hit && !n.completed && ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(n.noteType || n.type)).length;
-            const spawned = this.chartRuntime.spawnUntil(chartTime, (currentTime, chartNote, chartIndex) => this.createChartNoteFromData(currentTime, chartNote, chartIndex), { openingRampSec: 2.8, visibleSustainedCap: chartTime < 3.2 ? 1 : 2, visibleSustainedCount });
+            const tuning = this.runtimeTuning || {};
+            const spawned = this.chartRuntime.spawnUntil(chartTime, (currentTime, chartNote, chartIndex) => this.createChartNoteFromData(currentTime, chartNote, chartIndex), {
+                openingRampSec: tuning.openingCalmWindowSec ? Math.max(2.8, Number(tuning.openingCalmWindowSec) + 0.4) : 2.8,
+                visibleSustainedCap: chartTime < (tuning.openingHeavyStartSec || 3.2) ? 1 : 2,
+                visibleSustainedCount
+            });
             if (spawned?.length) {
                 this.notes.push(...spawned);
                 this.spawnedChartNotes += spawned.length;
@@ -1225,7 +1231,11 @@ class RhythmGame {
                     window.ChartReviewer.requestReview(apiBase, { notes: activeNotes }, reviewerDiagnostics)
                         .then((reviewResult) => {
                             this.lastReviewerAtMs = performance.now();
-                            this.captureRuntimeDiagnostics('chart-review', { reviewResult });
+                            const tuningPatch = window.ChartReviewer?.deriveTuningPatch ? window.ChartReviewer.deriveTuningPatch(reviewResult) : null;
+                            if (tuningPatch && Object.keys(tuningPatch).length) {
+                                this.runtimeTuning = { ...(this.runtimeTuning || {}), ...tuningPatch };
+                            }
+                            this.captureRuntimeDiagnostics('chart-review', { reviewResult, tuningPatch: this.runtimeTuning || tuningPatch || null });
                             this.updateHUD();
                         })
                         .catch((err) => {

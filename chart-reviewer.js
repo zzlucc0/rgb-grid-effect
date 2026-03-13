@@ -120,7 +120,36 @@
     return response.json();
   }
 
-  const api = { buildReviewerPayload, buildReviewerPrompt, buildReviewerRequest, requestReview };
+  function deriveTuningPatch(reviewResult) {
+    const scores = reviewResult?.review?.scores || {};
+    const patch = {};
+    const opening = Number(scores.opening || 0);
+    const variety = Number(scores.variety || 0);
+    const spatial = Number(scores.spatialFlow || 0);
+    const geometry = Number(scores.geometrySurfacing || 0);
+
+    if (opening > 0 && opening < 6) {
+      patch.openingCalmWindowSec = 2.9;
+      patch.openingHeavyStartSec = 5.6;
+      patch.openingPreviewBoostSec = 1.15;
+    }
+    if (variety > 0 && variety < 6) {
+      patch.varietyBoost = 0.24;
+      patch.tapPenaltyBoost = 0.55;
+    }
+    if (spatial > 0 && spatial < 6) {
+      patch.localityBias = 0.88;
+      patch.maxJumpBudget = 1;
+      patch.jumpPenaltyBoost = 0.7;
+    }
+    if (geometry > 0 && geometry < 6) {
+      patch.forceGeometryFloor = 3;
+      patch.geometryBiasBoost = 0.8;
+    }
+    return patch;
+  }
+
+  const api = { buildReviewerPayload, buildReviewerPrompt, buildReviewerRequest, requestReview, deriveTuningPatch };
   if (typeof window !== 'undefined') window.ChartReviewer = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

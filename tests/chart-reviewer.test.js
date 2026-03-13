@@ -47,4 +47,22 @@ describe('chart reviewer payload builder', () => {
     expect(fetchCalls[0].url).toContain('/api/chart-review');
     expect(result.review.summary).toBe('stub');
   });
+
+  it('derives runtime tuning patches from low review scores', () => {
+    const win = loadBrowserScripts(['chart-policy.js', 'chart-reviewer.js']);
+    const patch = win.ChartReviewer.deriveTuningPatch({
+      review: {
+        scores: {
+          opening: 4.8,
+          variety: 5.4,
+          spatialFlow: 4.2,
+          geometrySurfacing: 4.9
+        }
+      }
+    });
+    expect(patch.openingCalmWindowSec).toBeGreaterThan(2.5);
+    expect(patch.maxJumpBudget).toBe(1);
+    expect(patch.forceGeometryFloor).toBeGreaterThanOrEqual(3);
+    expect(patch.tapPenaltyBoost).toBeGreaterThan(0);
+  });
 });
