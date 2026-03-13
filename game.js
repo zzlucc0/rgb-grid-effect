@@ -1818,6 +1818,14 @@ class RhythmGame {
 
     drawNotes = () => {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const pulseNow = this.resolveChartClock();
+        const bgPulse = 0.08 + (0.04 * (0.5 + 0.5 * Math.sin(pulseNow * 2.4)));
+        const bgGrad = this.ctx.createRadialGradient(this.canvas.width / 2, this.canvas.height * 0.58, this.circleSize * 1.5, this.canvas.width / 2, this.canvas.height * 0.58, Math.max(this.canvas.width, this.canvas.height) * 0.6);
+        bgGrad.addColorStop(0, `rgba(84,241,255,${bgPulse.toFixed(3)})`);
+        bgGrad.addColorStop(0.45, `rgba(198,163,255,${(bgPulse * 0.45).toFixed(3)})`);
+        bgGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        this.ctx.fillStyle = bgGrad;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
         // Debug mode: Display safe area and debug information
         if (this.debugMode) {
@@ -2645,6 +2653,9 @@ RhythmGame.prototype.drawComboHUD = function () {
     this.ctx.font = '600 18px Rajdhani';
     const modeText = `${String(this.playMode || 'casual').toUpperCase()}${this.runInvalid ? ' · INVALID RUN' : ''}`;
     this.ctx.fillText(modeText, this.canvas.width / 2, 92);
+    const underPulse = 0.24 + 0.12 * (0.5 + 0.5 * Math.sin(performance.now() / 260));
+    this.ctx.fillStyle = `rgba(255,215,168,${underPulse.toFixed(3)})`;
+    this.ctx.fillRect(this.canvas.width / 2 - 64, 100, 128, 2.5);
 };
 
 
