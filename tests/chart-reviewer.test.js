@@ -21,7 +21,7 @@ describe('chart reviewer payload builder', () => {
       notes: [
         { time: 1, type: 'tap', laneHint: 1, segmentLabel: 'intro' },
         { time: 4, type: 'drag', noteType: 'drag', laneHint: 2, pathTemplate: 'diamondLoop', extraPath: { points: [{ x: 0, y: 0 }] }, segmentLabel: 'verse' },
-        { time: 8, type: 'ribbon', noteType: 'ribbon', laneHint: 1, pathTemplate: 'starTrace', keyboardCheckpoint: true, segmentLabel: 'chorus' }
+        { time: 8, type: 'drag', noteType: 'drag', laneHint: 1, pathTemplate: 'starTrace', segmentLabel: 'chorus' }
       ]
     };
     const request = win.ChartReviewer.buildReviewerRequest(chart, {});
@@ -37,10 +37,7 @@ describe('chart reviewer payload builder', () => {
     const fetchCalls = [];
     const fetchStub = async (url, options) => {
       fetchCalls.push({ url, options });
-      return {
-        ok: true,
-        async json() { return { ok: true, review: { summary: 'stub' } }; }
-      };
+      return { ok: true, async json() { return { ok: true, review: { summary: 'stub' } }; } };
     };
     const win = loadBrowserScripts(['chart-policy.js', 'chart-reviewer.js'], { fetch: fetchStub, window: { fetch: fetchStub } });
     const result = await win.ChartReviewer.requestReview('http://127.0.0.1:8787', { notes: [{ time: 1, type: 'tap' }] }, {});
@@ -51,14 +48,7 @@ describe('chart reviewer payload builder', () => {
   it('derives runtime tuning patches from low review scores', () => {
     const win = loadBrowserScripts(['chart-policy.js', 'chart-reviewer.js']);
     const patch = win.ChartReviewer.deriveTuningPatch({
-      review: {
-        scores: {
-          opening: 4.8,
-          variety: 5.4,
-          spatialFlow: 4.2,
-          geometrySurfacing: 4.9
-        }
-      }
+      review: { scores: { opening: 4.8, variety: 5.4, spatialFlow: 4.2, geometrySurfacing: 4.9 } }
     });
     expect(patch.openingCalmWindowSec).toBeGreaterThan(2.5);
     expect(patch.maxJumpBudget).toBe(1);

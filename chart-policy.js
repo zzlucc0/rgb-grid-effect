@@ -1,32 +1,47 @@
 (function () {
+  function legacyToModern(type, note = {}) {
+    const value = String(type || note?.mechanic || note?.type || note?.noteType || 'tap');
+    if (value === 'spin') return { mechanic: 'spin', pathVariant: null };
+    if (value === 'drag') return { mechanic: 'drag', pathVariant: note.pathVariant || note.pathTemplate || 'arc' };
+    if (value === 'ribbon') return { mechanic: 'drag', pathVariant: note.pathVariant || note.pathTemplate || 'starTrace' };
+    if (value === 'pulseHold' || value === 'hold') return { mechanic: 'hold', pathVariant: null };
+    if (value === 'flick' || value === 'cut' || value === 'gate') return { mechanic: 'tap', pathVariant: null };
+    return { mechanic: 'tap', pathVariant: null };
+  }
+
   function stripComplexPath(note) {
     if (!note) return note;
     delete note.endX; delete note.endY; delete note.controlX; delete note.controlY; delete note.extraPath;
     note.keyboardCheckpoint = false;
     note.keyboardHint = null;
-    if (note.pathVariant && note.pathVariant !== 'arc') note.pathVariant = null;
+    note.pathVariant = null;
+    note.pathTemplate = null;
     return note;
   }
 
-  function normalizeNoteSchema(note, options = {}) {
+  function normalizeNoteSchema(note) {
     if (!note) return note;
-    const legacyType = note.type || note.noteType || 'tap';
-    const proposalMechanic = note.proposalMechanic || note.proposalType || legacyType;
-    note.proposalMechanic = proposalMechanic;
-    note.proposalType = proposalMechanic;
-    note.mechanic = note.mechanic || legacyType;
-    note.type = note.mechanic;
-    note.noteType = note.mechanic;
-    note.inputChannel = note.inputChannel || (note.mechanic === 'drag' || note.mechanic === 'spin' ? 'mouse' : 'shared');
+    const proposal = legacyToModern(note.proposalMechanic || note.proposalType || note.type || note.noteType, note);
+    const current = legacyToModern(note.mechanic || note.type || note.noteType, note);
+    note.proposalMechanic = proposal.mechanic;
+    note.proposalType = proposal.mechanic;
+    note.mechanic = current.mechanic;
+    note.type = current.mechanic;
+    note.noteType = current.mechanic;
+    note.pathVariant = note.pathVariant || current.pathVariant || proposal.pathVariant || (note.mechanic === 'drag' ? 'arc' : null);
+    note.pathTemplate = note.pathTemplate || note.pathVariant || null;
+    note.keyHint = note.keyHint || null;
+    note.keyboardKey = note.keyboardKey || (note.keyHint ? String(note.keyHint).toLowerCase() : null);
+    if (!note.inputChannel) note.inputChannel = (note.mechanic === 'drag' || note.mechanic === 'spin') ? 'mouse' : 'shared';
     note.proposalInputChannel = note.proposalInputChannel || note.inputChannel;
     note.exclusivity = note.exclusivity || (note.mechanic === 'spin' ? 'solo-mouse' : 'normal');
-    note.keyHint = note.keyHint || null;
-    note.pathVariant = note.pathVariant || (note.pathTemplate || (note.mechanic === 'drag' ? 'arc' : null));
+    note.keyboardCheckpoint = false;
+    note.keyboardHint = null;
     return note;
   }
 
   function isSustainedType(type) {
-    return ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
+    return ['hold', 'drag', 'spin'].includes(String(type || 'tap'));
   }
 
   function stableUnit(note, salt = 0) {
@@ -42,241 +57,68 @@
 
   function openingPressureProfile(timeSec, options = {}) {
     const openingSeconds = Number(options.openingSeconds || 12);
-    const calmWindowSec = Number(options.openingCalmWindowSec || 2.4);
-    const heavyStartSec = Number(options.openingHeavyStartSec || 4.8);
+    const calmWindowSec = Number(options.openingCalmWindowSec || 2.6);
+    const heavyStartSec = Number(options.openingHeavyStartSec || 5.2);
     const previewBoostSec = Number(options.openingPreviewBoostSec || 0.9);
     const normalized = Math.max(0, Math.min(1, Number(timeSec || 0) / Math.max(0.001, openingSeconds)));
     return {
       inOpening: Number(timeSec || 0) <= openingSeconds,
       inCalmWindow: Number(timeSec || 0) <= calmWindowSec,
       beforeHeavyStart: Number(timeSec || 0) <= heavyStartSec,
-      previewBoostSec: previewBoostSec * (1.1 - normalized * 0.55),
+      previewBoostSec: previewBoostSec * (1.1 - normalized * 0.5),
       localDensityCap: Number(timeSec || 0) <= calmWindowSec ? 2 : (Number(timeSec || 0) <= heavyStartSec ? 3 : 4)
     };
-  }
-
-  function applyOpeningWindowPolicy(notes, options = {}) {
-    const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
-    const calmWindowSec = Number(options.openingCalmWindowSec || 2.4);
-    const heavyStartSec = Number(options.openingHeavyStartSec || 4.8);
-    const openingConcurrencyCap = Number(options.openingSustainConcurrencyCap || 1);
-    const firstHalfWindowSec = Number(options.firstHalfWindowSec || 30);
-    const firstHalfSustainRatioCap = Number(options.firstHalfSustainRatioCap || 0.34);
-    const chimeSuppressionSec = Number(options.chimeSuppressionSec || 8);
-    const minOpeningDragGapSec = Number(options.minOpeningDragGapSec || 1.8);
-    let sustainedUsed = 0;
-    let holdUsed = 0;
-    let lastOpeningDragTime = -Infinity;
-    for (let i = 0; i < seq.length; i++) {
-      const note = seq[i];
-      const t = Number(note.time || 0);
-      const profile = openingPressureProfile(t, options);
-      note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), profile.inOpening ? profile.previewBoostSec : 0);
-      note.openingCalmWindow = profile.inCalmWindow;
-      note.openingSequence = i;
-      const originalType = note.type || note.noteType || 'tap';
-      if (!profile.inOpening) continue;
-      const localWindow = seq.filter(other => Math.abs(Number(other.time || 0) - t) <= 1.35).length;
-      const activeSustainWindow = seq.filter(other => {
-        const otherType = other.type || other.noteType || 'tap';
-        return isSustainedType(otherType) && Math.abs(Number(other.time || 0) - t) <= minOpeningDragGapSec;
-      }).length;
-      if (profile.inCalmWindow && localWindow > profile.localDensityCap && (originalType !== 'tap' && originalType !== 'flick')) {
-        note.mechanic = 'tap';
-        note.type = 'tap';
-        note.noteType = 'tap';
-        stripComplexPath(note);
-        continue;
-      }
-      if (t <= chimeSuppressionSec && ['drag', 'ribbon', 'pulseHold'].includes(originalType) && localWindow >= 3) {
-        note.type = originalType === 'pulseHold' ? 'tap' : 'flick';
-        note.noteType = note.type;
-        stripComplexPath(note);
-        continue;
-      }
-      if (t <= heavyStartSec && ['ribbon', 'pulseHold', 'gate'].includes(originalType)) {
-        note.type = originalType === 'gate' ? 'flick' : 'drag';
-        note.noteType = note.type;
-        if (note.noteType !== 'drag') stripComplexPath(note);
-      }
-      const effectiveType = note.type || note.noteType || originalType;
-      if (!isSustainedType(effectiveType)) continue;
-      sustainedUsed += 1;
-      if (effectiveType === 'pulseHold') holdUsed += 1;
-      if (['drag', 'ribbon'].includes(effectiveType) && t - lastOpeningDragTime < minOpeningDragGapSec) {
-        note.type = 'tap';
-        note.noteType = 'tap';
-        stripComplexPath(note);
-        continue;
-      }
-      if (activeSustainWindow > openingConcurrencyCap) {
-        note.type = 'tap';
-        note.noteType = 'tap';
-        stripComplexPath(note);
-        continue;
-      }
-      if (t <= calmWindowSec && effectiveType !== 'drag') {
-        note.type = 'drag';
-        note.noteType = 'drag';
-      }
-      if (holdUsed > 1 || sustainedUsed > (t <= heavyStartSec ? 2 : 3)) {
-        note.type = t <= heavyStartSec ? 'tap' : 'drag';
-        note.noteType = note.type;
-        if (note.noteType === 'tap') stripComplexPath(note);
-      }
-      if (['drag', 'ribbon'].includes(note.type || note.noteType)) {
-        note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), 1.2);
-        note.minCompletionWindowSec = Number(options.openingDragCompletionWindowSec || 1.35);
-        lastOpeningDragTime = t;
-      }
-    }
-    const firstHalf = seq.filter(n => Number(n.time || 0) <= firstHalfWindowSec);
-    const sustainedFirstHalf = firstHalf.filter(n => isSustainedType(n.type || n.noteType || 'tap'));
-    while (firstHalf.length && sustainedFirstHalf.length / firstHalf.length > firstHalfSustainRatioCap) {
-      const candidate = sustainedFirstHalf.pop();
-      if (!candidate) break;
-      candidate.type = 'tap';
-      candidate.noteType = 'tap';
-      stripComplexPath(candidate);
-    }
-    return seq;
-  }
-
-  function applyMousePlayabilityFilter(notes, options = {}) {
-    const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
-    const sustainedCooldown = Number(options.sustainedCooldownSec || 1.6);
-    const holdCooldown = Number(options.holdCooldownSec || 2.6);
-    let lastSustainedTime = -Infinity;
-    let lastHoldTime = -Infinity;
-    for (const note of seq) {
-      const type = note.type || note.noteType || 'tap';
-      const t = Number(note.time || 0);
-      if (!isSustainedType(type)) continue;
-      if (type === 'pulseHold') {
-        if (t - lastHoldTime < holdCooldown || t - lastSustainedTime < sustainedCooldown) {
-          note.type = 'tap';
-          note.noteType = 'tap';
-          stripComplexPath(note);
-          continue;
-        }
-        lastHoldTime = t;
-        lastSustainedTime = t;
-        continue;
-      }
-      if (t - lastSustainedTime < sustainedCooldown) {
-        note.type = 'tap';
-        note.noteType = 'tap';
-        stripComplexPath(note);
-        continue;
-      }
-      lastSustainedTime = t;
-    }
-    return seq;
   }
 
   function assignMechanics(notes, options = {}) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
     const seq = [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
-    const windowCounts = [];
-    const familyOf = (type) => {
-      if (['drag', 'ribbon', 'pulseHold'].includes(type)) return 'sustain';
-      if (['gate', 'cut', 'flick'].includes(type)) return 'accent';
-      return 'tap';
-    };
-    const segmentWeights = (segment = 'verse') => {
-      const varietyBoost = Number(options.varietyBoost || 0);
-      const tapPenaltyBoost = Number(options.tapPenaltyBoost || 0);
-      if (segment === 'chorus') return { tap: 0.18 - tapPenaltyBoost * 0.06, drag: 0.24, ribbon: 0.18 + varietyBoost * 0.1, pulseHold: 0.12, flick: 0.11, cut: 0.1 + varietyBoost * 0.05, gate: 0.07 };
-      if (segment === 'bridge') return { tap: 0.24 - tapPenaltyBoost * 0.05, drag: 0.17, ribbon: 0.08 + varietyBoost * 0.04, pulseHold: 0.2 + varietyBoost * 0.06, flick: 0.1, cut: 0.06, gate: 0.15 + varietyBoost * 0.04 };
-      if (segment === 'intro') return { tap: 0.52 - tapPenaltyBoost * 0.03, drag: 0.26, ribbon: 0.02, pulseHold: 0.07, flick: 0.08 + varietyBoost * 0.03, cut: 0.03, gate: 0.02 };
-      return { tap: 0.3 - tapPenaltyBoost * 0.05, drag: 0.24 + varietyBoost * 0.04, ribbon: 0.08 + varietyBoost * 0.05, pulseHold: 0.16 + varietyBoost * 0.04, flick: 0.1, cut: 0.06 + varietyBoost * 0.03, gate: 0.06 };
-    };
-    const candidatesFor = (segment = 'verse', t = 0, proposalType = 'tap') => {
-      const p = openingPressureProfile(t, options);
-      if (proposalType === 'spin') return ['spin'];
-      if (p.inCalmWindow) return ['tap', 'drag', 'pulseHold'];
-      if (p.beforeHeavyStart) return ['tap', 'drag', 'pulseHold'];
-      if (segment === 'chorus') return ['tap', 'drag', 'pulseHold'];
-      if (segment === 'bridge') return ['tap', 'drag', 'pulseHold'];
-      return ['tap', 'drag', 'pulseHold'];
-    };
-    const recentFamilyRun = (idx, fam) => {
-      let run = 0;
-      for (let i = idx - 1; i >= 0; i -= 1) {
-        const prevType = seq[i].type || seq[i].noteType || 'tap';
-        if (familyOf(prevType) !== fam) break;
-        run += 1;
-      }
-      return run;
-    };
-    const recentTypeRun = (idx, type) => {
-      let run = 0;
-      for (let i = idx - 1; i >= 0; i -= 1) {
-        const prevType = seq[i].type || seq[i].noteType || 'tap';
-        if (prevType !== type) break;
-        run += 1;
-      }
-      return run;
-    };
-
+    let lastDragTime = -Infinity;
+    let spinCount = 0;
     for (let i = 0; i < seq.length; i += 1) {
       const note = seq[i];
+      normalizeNoteSchema(note);
       const t = Number(note.time || 0);
       const seg = note.segmentLabel || 'verse';
-      const proposalType = note.proposalType || note.type || note.noteType || 'tap';
-      const profile = openingPressureProfile(t, options);
-      const candidates = candidatesFor(seg, t, proposalType);
-      const weights = segmentWeights(seg);
-      let bestType = 'tap';
-      let bestScore = -Infinity;
-      const recent = seq.slice(Math.max(0, i - 6), i);
-      const recentTypes = recent.map(n => n.type || n.noteType || 'tap');
-      const counts = recentTypes.reduce((acc, type) => { acc[type] = (acc[type] || 0) + 1; return acc; }, {});
-
-      for (const type of candidates) {
-        let score = (weights[type] || 0.05) * 10;
-        if (type === proposalType) score += 1.15;
-        const fam = familyOf(type);
-        const familyRun = recentFamilyRun(i, fam);
-        const typeRun = recentTypeRun(i, type);
-        score -= familyRun >= 2 ? 3.4 + familyRun * 1.25 : 0;
-        score -= typeRun >= 1 ? 1.6 * typeRun : 0;
-        score -= (counts[type] || 0) * 0.95;
-        if (profile.inCalmWindow && fam === 'sustain' && type !== 'drag') score -= 4.2;
-        if (profile.beforeHeavyStart && ['ribbon', 'gate', 'pulseHold'].includes(type)) score -= 2.8;
-        if (seg === 'chorus' && ['ribbon', 'cut', 'drag'].includes(type)) score += 1.15;
-        if (seg === 'bridge' && ['pulseHold', 'gate'].includes(type)) score += 1.05;
-        if (seg === 'intro' && type === 'tap') score += 1.25;
-        const phrasePos = i % 6;
-        if (phrasePos === 0 && ['drag', 'pulseHold'].includes(type)) score += 0.8;
-        if (phrasePos >= 4 && ['cut', 'flick', 'gate'].includes(type)) score += 0.65;
-        if (i >= Math.floor(seq.length * 0.55) && type !== 'tap') score += 0.45;
-        score += stableUnit(note, i + type.length) * 1.35;
-        if (score > bestScore) {
-          bestScore = score;
-          bestType = type;
-        }
+      const proposal = note.proposalMechanic || 'tap';
+      const p = openingPressureProfile(t, options);
+      let mechanic = 'tap';
+      if (proposal === 'spin' && spinCount < 2 && !p.inOpening) {
+        mechanic = 'spin';
+        spinCount += 1;
+      } else if (proposal === 'drag') {
+        const minGap = p.beforeHeavyStart ? 1.8 : 1.35;
+        mechanic = t - lastDragTime >= minGap ? 'drag' : 'tap';
+      } else if (proposal === 'hold') {
+        mechanic = 'hold';
+      } else if (proposal === 'tap') {
+        const later = i >= Math.floor(seq.length * 0.55);
+        const chorusBoost = seg === 'chorus' || seg === 'bridge';
+        const holdChance = later ? 0.18 : 0.1;
+        const dragChance = (!p.beforeHeavyStart && chorusBoost) ? 0.14 : 0.04;
+        const roll = stableUnit(note, i + 17);
+        if (roll < dragChance && t - lastDragTime > 1.5) mechanic = 'drag';
+        else if (roll < dragChance + holdChance) mechanic = 'hold';
       }
-
-      note.mechanic = bestType;
-      note.type = bestType;
-      note.noteType = bestType;
-      note.inputChannel = note.inputChannel === 'mouse' ? 'mouse' : (bestType === 'drag' || bestType === 'spin' ? 'mouse' : 'shared');
-      note.exclusivity = bestType === 'spin' ? 'solo-mouse' : 'normal';
-      windowCounts.push(bestType);
+      if (p.inCalmWindow && mechanic === 'drag') mechanic = 'tap';
+      note.mechanic = mechanic;
+      note.type = mechanic;
+      note.noteType = mechanic;
+      if (mechanic === 'drag') {
+        lastDragTime = t;
+        note.pathVariant = note.pathVariant || note.pathTemplate || (seg === 'chorus' ? 'starTrace' : (seg === 'bridge' ? 'diamondLoop' : 'arc'));
+        note.pathTemplate = note.pathVariant;
+      } else {
+        stripComplexPath(note);
+      }
+      if (mechanic === 'spin') {
+        note.pathVariant = null;
+        note.pathTemplate = null;
+        note.inputChannel = 'mouse';
+        note.exclusivity = 'solo-mouse';
+      }
     }
-
     return seq;
-  }
-
-  function layerABaseChartProposal(notes) {
-    return [...(notes || [])]
-      .sort((a, b) => Number(a.time || 0) - Number(b.time || 0))
-      .map(note => normalizeNoteSchema({ ...note }));
-  }
-
-  function layerBMechanicPlanner(notes, options = {}) {
-    return assignMechanics(notes, options);
   }
 
   function keyboardLayoutForDifficulty(difficulty = 'normal') {
@@ -285,172 +127,178 @@
     return ['F', 'G', 'H', 'J'];
   }
 
+  function layerABaseChartProposal(notes) {
+    return [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => normalizeNoteSchema({ ...note }));
+  }
+
+  function layerBMechanicPlanner(notes, options = {}) {
+    return assignMechanics(notes, options);
+  }
+
   function layerCInputChannelPlanner(notes, options = {}) {
     const difficulty = options.difficulty || 'normal';
     const keyset = keyboardLayoutForDifficulty(difficulty);
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
-    const halfway = seq.length ? Math.floor(seq.length * 0.45) : 0;
+    const total = seq.length || 1;
     seq.forEach((note, idx) => {
+      const progress = idx / total;
       const mechanic = note.mechanic || note.type || note.noteType || 'tap';
+      const key = keyset[Math.abs(Number(note.laneHint || idx)) % keyset.length] || null;
+      note.keyHint = key;
+      note.keyboardKey = key ? String(key).toLowerCase() : null;
       if (mechanic === 'drag' || mechanic === 'spin') {
         note.inputChannel = 'mouse';
         note.keyHint = null;
+        note.keyboardKey = null;
         note.exclusivity = mechanic === 'spin' ? 'solo-mouse' : 'normal';
         return;
       }
-      const laneSeed = Math.abs(Number(note.laneHint || 0) + idx) % keyset.length;
-      const assignedKey = keyset[laneSeed];
-      if (idx < halfway) {
-        note.inputChannel = idx % 2 === 0 ? 'keyboard' : 'mouse';
-      } else {
-        note.inputChannel = 'shared';
+      if (mechanic === 'hold') {
+        note.inputChannel = progress < 0.42 ? ((idx % 4 === 0 || idx % 4 === 1) ? 'keyboard' : 'mouse') : ((idx + Math.round(Number(note.phrase || 0))) % 2 === 0 ? 'keyboard' : 'mouse');
+        note.exclusivity = 'normal';
+        return;
       }
-      note.keyHint = assignedKey || null;
-      note.keyboardKey = assignedKey ? assignedKey.toLowerCase() : null;
+      if (progress < 0.35) note.inputChannel = idx % 2 === 0 ? 'keyboard' : 'mouse';
+      else if (progress < 0.7) note.inputChannel = idx % 3 === 0 ? 'shared' : ((idx % 2 === 0) ? 'keyboard' : 'mouse');
+      else note.inputChannel = idx % 2 === 0 ? 'shared' : ((idx + 1) % 3 === 0 ? 'mouse' : 'keyboard');
       note.exclusivity = 'normal';
     });
     return seq;
   }
 
-  function layerDOpeningGuard(notes, options = {}) {
-    let seq = applyMousePlayabilityFilter(notes, options);
-    seq = applyOpeningWindowPolicy(seq, options);
+  function applyMousePlayabilityFilter(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const dragCooldown = Number(options.sustainedCooldownSec || 1.5);
+    const holdCooldown = Number(options.holdCooldownSec || 1.2);
+    const spinRadius = Number(options.spinIsolationSec || 2.4);
+    let lastDragTime = -Infinity;
+    let lastHoldTime = -Infinity;
+    for (const note of seq) {
+      const type = note.type || note.noteType || 'tap';
+      const t = Number(note.time || 0);
+      if (type === 'spin') continue;
+      const nearbySpin = seq.some(other => other !== note && (other.type || other.noteType) === 'spin' && Math.abs(Number(other.time || 0) - t) < spinRadius);
+      if (nearbySpin) {
+        note.type = 'tap';
+        note.noteType = 'tap';
+        note.mechanic = 'tap';
+        stripComplexPath(note);
+        continue;
+      }
+      if (type === 'drag') {
+        if (t - lastDragTime < dragCooldown) {
+          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
+        }
+        lastDragTime = t;
+      }
+      if (type === 'hold') {
+        if (t - lastHoldTime < holdCooldown) {
+          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; continue;
+        }
+        lastHoldTime = t;
+      }
+    }
     return seq;
   }
 
-  function layerEPlayabilityGuard(notes, options = {}) {
-    let seq = enforceChartPlayability(notes);
-    seq = resolvePathConflicts(seq, Number(options.circleSize || 36));
+  function applyOpeningWindowPolicy(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const firstHalfWindowSec = Number(options.firstHalfWindowSec || 30);
+    const firstHalfDragRatioCap = Number(options.firstHalfSustainRatioCap || 0.28);
+    let lastOpeningDrag = -Infinity;
+    for (let i = 0; i < seq.length; i += 1) {
+      const note = seq[i];
+      const t = Number(note.time || 0);
+      const profile = openingPressureProfile(t, options);
+      note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), profile.inOpening ? profile.previewBoostSec : 0);
+      note.openingCalmWindow = profile.inCalmWindow;
+      if (!profile.inOpening) continue;
+      if (note.type === 'spin') {
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; continue;
+      }
+      if (profile.inCalmWindow && note.type !== 'tap') {
+        if (note.type === 'hold' && note.inputChannel === 'keyboard') {
+          note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), 1.1);
+          continue;
+        }
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
+      }
+      if (note.type === 'drag') {
+        if (t - lastOpeningDrag < 1.8) {
+          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
+        }
+        note.minCompletionWindowSec = Number(options.openingDragCompletionWindowSec || 1.35);
+        lastOpeningDrag = t;
+      }
+    }
+    const firstHalf = seq.filter(n => Number(n.time || 0) <= firstHalfWindowSec);
+    const drags = firstHalf.filter(n => (n.type || n.noteType) === 'drag');
+    while (firstHalf.length && drags.length / firstHalf.length > firstHalfDragRatioCap) {
+      const candidate = drags.pop();
+      if (!candidate) break;
+      candidate.type = 'tap'; candidate.noteType = 'tap'; candidate.mechanic = 'tap'; stripComplexPath(candidate);
+    }
     return seq;
-  }
-
-  function layerFGeometryPrep(notes, options = {}) {
-    return assignKeyboardCheckpoints(notes, options);
-  }
-
-  function layerGRuntimeAudit(notes, options = {}) {
-    const seq = enforceDensityFloor(notes, options);
-    return {
-      notes: seq,
-      audit: auditChartShape(seq)
-    };
-  }
-
-  function spreadQuotaPromotions(notes) {
-    return layerBMechanicPlanner(notes);
   }
 
   function downgradeType(type) {
-    const map = {
-      ribbon: 'drag',
-      drag: 'pulseHold',
-      pulseHold: 'tap',
-      gate: 'flick',
-      cut: 'flick',
-      flick: 'tap'
-    };
-    return map[type] || 'tap';
+    const modern = legacyToModern(type).mechanic;
+    if (modern === 'spin') return 'drag';
+    if (modern === 'drag') return 'hold';
+    if (modern === 'hold') return 'tap';
+    return 'tap';
   }
 
   function enforceChartPlayability(notes) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
-    const sustained = new Set(['pulseHold', 'drag', 'ribbon']);
-    const heavyTap = new Set(['flick', 'cut', 'gate']);
-    const minGapByType = {
-      pulseHold: 1.15,
-      ribbon: 1.0,
-      drag: 0.8,
-      gate: 0.55,
-      flick: 0.4,
-      cut: 0.45
-    };
-    for (let i = 0; i < notes.length; i++) {
+    for (let i = 0; i < notes.length; i += 1) {
       const note = notes[i];
-      const type = note.type || 'tap';
-      const lane = Number.isFinite(note.laneHint) ? note.laneHint : (i % 4);
-      const minGap = minGapByType[type] || 0.28;
-      for (let j = i + 1; j < notes.length; j++) {
+      const type = note.type || note.noteType || 'tap';
+      const lane = Number.isFinite(note.laneHint) ? Number(note.laneHint) : 0;
+      for (let j = i + 1; j < notes.length; j += 1) {
         const next = notes[j];
         const dt = Number(next.time || 0) - Number(note.time || 0);
-        if (dt > Math.max(1.4, minGap + 0.25)) break;
-        const nextType = next.type || 'tap';
-        const nextLane = Number.isFinite(next.laneHint) ? next.laneHint : (j % 4);
+        if (dt > 2.5) break;
+        const nextType = next.type || next.noteType || 'tap';
+        const nextLane = Number.isFinite(next.laneHint) ? Number(next.laneHint) : lane;
         const laneClose = Math.abs(nextLane - lane) <= 1;
-        if (sustained.has(type) && heavyTap.has(nextType) && dt < minGap && laneClose) {
-          next.type = downgradeType(nextType);
-          next.noteType = next.type;
+        if (type === 'spin' && dt < 2.4) {
+          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap'; stripComplexPath(next);
+          continue;
         }
-        if (sustained.has(type) && sustained.has(nextType) && dt < minGap + 0.15) {
-          next.type = downgradeType(nextType);
-          next.noteType = next.type;
+        if (type === 'drag' && nextType === 'drag' && dt < 1.2) {
+          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap'; stripComplexPath(next);
         }
-        if ((type === 'gate' || nextType === 'gate') && laneClose && dt < 0.48) {
-          next.type = downgradeType(nextType);
-          next.noteType = next.type;
-        }
-        if (dt < 0.24 && laneClose) {
-          next.laneHint = (lane + 2 + (j % 2)) % 4;
+        if (type === 'hold' && nextType === 'hold' && dt < 0.9 && laneClose) {
+          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap';
         }
       }
     }
     return notes;
   }
 
-  function tutorialLabelForType(type) {
-    const map = {
-      tap: 'TAP',
-      drag: 'DRAG',
-      ribbon: 'TRACE',
-      pulseHold: 'HOLD',
-      gate: 'PASS',
-      flick: 'FLICK',
-      cut: 'SLASH'
-    };
-    return map[type] || String(type || 'TAP').toUpperCase();
+  function tutorialLabelForType(type, note = null) {
+    const modern = legacyToModern(type, note || {}).mechanic;
+    if (modern === 'drag') return 'DRAG';
+    if (modern === 'hold') return note?.inputChannel === 'keyboard' ? 'KEY HOLD' : 'HOLD';
+    if (modern === 'spin') return 'SPIN';
+    return 'TAP';
   }
 
-  function assignKeyboardCheckpoints(notes, options = {}) {
-    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
-    const minGapSec = Number(options.keyboardCheckpointGapSec || 2.2);
-    const earlyGraceSec = Number(options.keyboardCheckpointEarlyGraceSec || 10);
-    let lastCheckpointTime = -Infinity;
-
-    for (const note of seq) {
+  function assignKeyboardCheckpoints(notes) {
+    return [...(notes || [])].map(note => {
       note.keyboardCheckpoint = false;
-      note.keyboardKey = null;
       note.keyboardHint = null;
-      note.keyboardHit = Boolean(note.keyboardHit);
-
-      const type = note.type || note.noteType || 'tap';
-      const template = note.pathTemplate || null;
-      const eligible = (type === 'drag' || type === 'ribbon') && template && template !== 'orbit';
-      if (!eligible) continue;
-      if (Number(note.time || 0) <= earlyGraceSec) continue;
-
-      const nearbyConflict = seq.some(other => {
-        if (other === note) return false;
-        const otherType = other.type || other.noteType || 'tap';
-        if (otherType !== 'pulseHold' && other.keyboardCheckpoint !== true) return false;
-        return Math.abs(Number(other.time || 0) - Number(note.time || 0)) < minGapSec;
-      });
-      if (nearbyConflict) continue;
-      if (Number(note.time || 0) - lastCheckpointTime < minGapSec) continue;
-
-      note.keyboardCheckpoint = true;
-      note.keyboardKey = 'space';
-      note.keyboardHint = 'SPACE';
       note.keyboardHit = false;
-      lastCheckpointTime = Number(note.time || 0);
-    }
-
-    return seq;
+      return note;
+    });
   }
 
   function noteRadius(note, circleSize = 36) {
     const type = note?.type || note?.noteType || 'tap';
-    if (type === 'pulseHold') return circleSize * 1.45;
-    if (type === 'gate') return circleSize * 1.3;
-    if (type === 'flick' || type === 'cut') return circleSize * 1.05;
+    if (type === 'spin') return circleSize * 1.8;
+    if (type === 'hold') return circleSize * 1.45;
+    if (type === 'drag') return circleSize * 1.05;
     return circleSize * 0.95;
   }
 
@@ -460,25 +308,15 @@
     const ab2 = abx * abx + aby * aby || 1;
     const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
     const cx = ax + abx * t, cy = ay + aby * t;
-    const dx = px - cx, dy = py - cy;
-    return Math.sqrt(dx * dx + dy * dy);
+    return Math.hypot(px - cx, py - cy);
   }
 
   function makeFootprint(note, circleSize = 36) {
     const radius = noteRadius(note, circleSize);
     const fp = { center: { x: note.x, y: note.y, r: radius }, endpoint: null, path: null };
     if (Number.isFinite(note?.endX) && Number.isFinite(note?.endY)) {
-      fp.endpoint = { x: note.endX, y: note.endY, r: radius * 0.9 };
-      fp.path = {
-        ax: note.x,
-        ay: note.y,
-        bx: note.endX,
-        by: note.endY,
-        r: (note?.noteType === 'ribbon' ? radius * 0.9 : radius * 0.65)
-      };
-    }
-    if ((note?.type || note?.noteType) === 'gate') {
-      fp.box = { x: note.x, y: note.y, w: note.gateWidth || circleSize * 2.4, h: circleSize * 1.5 };
+      fp.endpoint = { x: note.endX, y: note.endY, r: radius * 0.88 };
+      fp.path = { ax: note.x, ay: note.y, bx: note.endX, by: note.endY, r: radius * (note?.pathVariant === 'starTrace' ? 0.95 : 0.72) };
     }
     return fp;
   }
@@ -495,22 +333,18 @@
 
   function footprintSeverity(note) {
     const type = note?.type || note?.noteType || 'tap';
-    if (type === 'ribbon') return 6;
+    if (type === 'spin') return 7;
     if (type === 'drag') return 5;
-    if (type === 'gate') return 4;
-    if (type === 'pulseHold') return 3;
-    if (type === 'cut' || type === 'flick') return 2;
+    if (type === 'hold') return 3;
     return 1;
   }
 
   function auditFootprints(notes, circleSize = 36) {
     const issues = [];
     const fps = (notes || []).map(note => ({ note, fp: makeFootprint(note, circleSize) }));
-    for (let i = 0; i < fps.length; i++) {
-      for (let j = i + 1; j < fps.length; j++) {
-        if (footprintsOverlap(fps[i].fp, fps[j].fp)) {
-          issues.push({ a: fps[i].note, b: fps[j].note, severity: footprintSeverity(fps[i].note) + footprintSeverity(fps[j].note) });
-        }
+    for (let i = 0; i < fps.length; i += 1) {
+      for (let j = i + 1; j < fps.length; j += 1) {
+        if (footprintsOverlap(fps[i].fp, fps[j].fp)) issues.push({ a: fps[i].note, b: fps[j].note, severity: footprintSeverity(fps[i].note) + footprintSeverity(fps[j].note) });
       }
     }
     return issues.sort((a, b) => b.severity - a.severity);
@@ -518,6 +352,28 @@
 
   function sortByLayoutPriority(notes) {
     return [...(notes || [])].sort((a, b) => footprintSeverity(b) - footprintSeverity(a));
+  }
+
+  function resolvePathConflicts(notes, circleSize = 36) {
+    const sorted = sortByLayoutPriority(notes);
+    const kept = [];
+    for (const note of sorted) {
+      const conflicts = auditFootprints([...kept, note], circleSize).filter(issue => issue.a === note || issue.b === note);
+      if (!conflicts.length) {
+        kept.push(note);
+        continue;
+      }
+      if ((note.type || note.noteType) === 'drag') {
+        note.pathVariant = note.pathVariant === 'starTrace' ? 'diamondLoop' : 'arc';
+        note.pathTemplate = note.pathVariant;
+      } else if ((note.type || note.noteType) === 'spin') {
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap';
+      } else {
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap';
+      }
+      kept.push(note);
+    }
+    return kept;
   }
 
   function densityStats(notes, windowSec = 10, horizonSec = 30) {
@@ -538,25 +394,13 @@
     const tapCount = seq.filter(n => (n.type || n.noteType || 'tap') === 'tap').length;
     const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
     const latterSpecial = latter.filter(n => (n.type || n.noteType || 'tap') !== 'tap').length;
-    return {
-      tapRatio: tapCount / total,
-      latterSpecial,
-      latterTotal: latter.length || 1,
-      latterSpecialRatio: latterSpecial / (latter.length || 1)
-    };
+    return { tapRatio: tapCount / total, latterSpecial, latterTotal: latter.length || 1, latterSpecialRatio: latterSpecial / (latter.length || 1) };
   }
 
   function spatialFlowStats(notes) {
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
-    if (seq.length <= 1) {
-      return { transitions: 0, avgLaneJump: 0, maxLaneJump: 0, largeJumpCount: 0, directionReversalCount: 0, centerBiasRatio: 0 };
-    }
-    let totalJump = 0;
-    let maxLaneJump = 0;
-    let largeJumpCount = 0;
-    let directionReversalCount = 0;
-    let centerBiasHits = 0;
-    let prevDelta = 0;
+    if (seq.length <= 1) return { transitions: 0, avgLaneJump: 0, maxLaneJump: 0, largeJumpCount: 0, directionReversalCount: 0, centerBiasRatio: 0 };
+    let totalJump = 0, maxLaneJump = 0, largeJumpCount = 0, directionReversalCount = 0, centerBiasHits = 0, prevDelta = 0;
     for (let i = 1; i < seq.length; i += 1) {
       const prevLane = Number.isFinite(seq[i - 1].laneFloat) ? Number(seq[i - 1].laneFloat) : Number(seq[i - 1].laneHint || 0);
       const lane = Number.isFinite(seq[i].laneFloat) ? Number(seq[i].laneFloat) : Number(seq[i].laneHint || 0);
@@ -569,122 +413,104 @@
       if (i > 1 && Math.abs(delta) >= 0.4 && Math.abs(prevDelta) >= 0.4 && Math.sign(delta) !== Math.sign(prevDelta)) directionReversalCount += 1;
       if (Math.abs(delta) >= 0.4) prevDelta = delta;
     }
-    return {
-      transitions: seq.length - 1,
-      avgLaneJump: totalJump / Math.max(1, seq.length - 1),
-      maxLaneJump,
-      largeJumpCount,
-      directionReversalCount,
-      centerBiasRatio: centerBiasHits / Math.max(1, seq.length - 1)
-    };
+    return { transitions: seq.length - 1, avgLaneJump: totalJump / Math.max(1, seq.length - 1), maxLaneJump, largeJumpCount, directionReversalCount, centerBiasRatio: centerBiasHits / Math.max(1, seq.length - 1) };
   }
 
   function geometryTemplateStats(notes) {
     const seq = [...(notes || [])];
-    const eligible = seq.filter(n => ['drag', 'ribbon'].includes(n.type || n.noteType || 'tap'));
-    const templates = eligible.map(n => n.pathTemplate).filter(Boolean);
-    const geometry = templates.filter(name => name !== 'orbit');
+    const eligible = seq.filter(n => (n.type || n.noteType || 'tap') === 'drag');
+    const templates = eligible.map(n => n.pathTemplate || n.pathVariant).filter(Boolean);
+    const geometry = templates.filter(name => name !== 'arc' && name !== 'orbit');
     const diamondLoopCount = geometry.filter(name => name === 'diamondLoop').length;
     const starTraceCount = geometry.filter(name => name === 'starTrace').length;
-    const runtimeGeometryVisible = eligible.filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate) && (n.extraPath?.points?.length || n.keyboardCheckpoint)).length;
-    return {
-      eligibleCount: eligible.length,
-      templatedCount: templates.length,
-      geometryCount: geometry.length,
-      orbitCount: templates.filter(name => name === 'orbit').length,
-      diamondLoopCount,
-      starTraceCount,
-      geometryRatio: geometry.length / Math.max(1, eligible.length),
-      runtimeVisibleRatio: runtimeGeometryVisible / Math.max(1, geometry.length)
-    };
+    const runtimeGeometryVisible = eligible.filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate || n.pathVariant) && (n.extraPath?.points?.length || true)).length;
+    return { eligibleCount: eligible.length, templatedCount: templates.length, geometryCount: geometry.length, orbitCount: templates.filter(name => name === 'orbit' || name === 'arc').length, diamondLoopCount, starTraceCount, geometryRatio: geometry.length / Math.max(1, eligible.length), runtimeVisibleRatio: runtimeGeometryVisible / Math.max(1, geometry.length) };
   }
 
   function enforceDensityFloor(notes, options = {}) {
     const minFirst30 = Number(options.minFirst30 || 12);
     const minPer10 = Number(options.minPer10 || 3);
-    const maxTapRatio = Number(options.maxTapRatio || 0.45);
-    const minLatterSpecialRatio = Number(options.minLatterSpecialRatio || 0.4);
+    const maxTapRatio = Number(options.maxTapRatio || 0.58);
+    const minLatterSpecialRatio = Number(options.minLatterSpecialRatio || 0.22);
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
     const stats = densityStats(seq, 10, 30);
-    if (stats.first30 < minFirst30) {
+    if (stats.first30 < minFirst30 || stats.minWindowCount < minPer10) return seq;
+    if (mechanicMixStats(seq).tapRatio > maxTapRatio) {
       for (const note of seq) {
-        const type = note.type || note.noteType || 'tap';
-        if (type === 'ribbon') continue;
-        if (type !== 'tap' && type !== 'drag') {
-          note.type = 'tap';
-          note.noteType = 'tap';
-          delete note.endX; delete note.endY; delete note.controlX; delete note.controlY;
-        }
-      }
-    }
-    if (stats.minWindowCount < minPer10) {
-      let lastTapTime = -Infinity;
-      for (const note of seq) {
-        if (Number(note.time || 0) > 30) break;
-        if (Number(note.time || 0) - lastTapTime >= 1.8) {
-          note.type = note.type || 'tap';
-          note.noteType = note.noteType || note.type;
-          lastTapTime = Number(note.time || 0);
-        }
-      }
-    }
-    const mix = mechanicMixStats(seq);
-    if (mix.tapRatio > maxTapRatio) {
-      for (const note of seq) {
-        if ((note.type || note.noteType || 'tap') !== 'tap') continue;
-        const seg = note.segmentLabel || 'verse';
-        if (seg === 'chorus') note.type = 'drag';
-        else if (seg === 'bridge') note.type = 'pulseHold';
-        else note.type = 'drag';
+        if ((note.type || note.noteType) !== 'tap') continue;
+        if (Number(note.time || 0) < 10) continue;
+        note.type = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') ? 'drag' : 'hold';
         note.noteType = note.type;
+        note.mechanic = note.type;
+        if (note.type === 'drag') {
+          note.pathVariant = note.pathVariant || (note.segmentLabel === 'chorus' ? 'starTrace' : 'diamondLoop');
+          note.pathTemplate = note.pathVariant;
+        }
         if (mechanicMixStats(seq).tapRatio <= maxTapRatio) break;
       }
     }
-    if (mix.latterSpecialRatio < minLatterSpecialRatio) {
+    if (mechanicMixStats(seq).latterSpecialRatio < minLatterSpecialRatio) {
       const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
       for (const note of latter) {
-        if ((note.type || note.noteType || 'tap') !== 'tap') continue;
-        note.type = (note.segmentLabel || 'verse') === 'chorus' ? 'ribbon' : ((note.segmentLabel || 'verse') === 'bridge' ? 'pulseHold' : 'drag');
+        if ((note.type || note.noteType) !== 'tap') continue;
+        note.type = note.segmentLabel === 'chorus' ? 'drag' : 'hold';
         note.noteType = note.type;
+        note.mechanic = note.type;
+        if (note.type === 'drag') {
+          note.pathVariant = note.pathVariant || (note.segmentLabel === 'chorus' ? 'starTrace' : 'diamondLoop');
+          note.pathTemplate = note.pathVariant;
+        }
         if (mechanicMixStats(seq).latterSpecialRatio >= minLatterSpecialRatio) break;
       }
     }
     return seq;
   }
 
-  function resolvePathConflicts(notes, circleSize = 36) {
-    const sorted = sortByLayoutPriority(notes);
-    const kept = [];
-    for (const note of sorted) {
-      const conflicts = auditFootprints([...kept, note], circleSize).filter(issue => issue.a === note || issue.b === note);
-      if (!conflicts.length) {
-        kept.push(note);
-        continue;
-      }
-      const type = note.type || note.noteType || 'tap';
-      const earlyTime = Number(note.time || 0) <= 30;
-      if (type === 'ribbon') {
-        note.type = 'drag';
-        note.noteType = 'drag';
-      } else if (type === 'drag' || type === 'gate') {
-        note.type = earlyTime ? 'drag' : 'tap';
-        note.noteType = note.type;
-        if (note.type === 'tap') stripComplexPath(note);
-      } else if (type === 'cut' || type === 'flick') {
-        note.type = 'tap';
-        note.noteType = 'tap';
-      }
-      kept.push(note);
+  function enforceSpinPlacement(notes) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const spins = seq.filter(n => (n.type || n.noteType) === 'spin');
+    while (spins.length > 2) {
+      const victim = spins.pop();
+      victim.type = 'tap'; victim.noteType = 'tap'; victim.mechanic = 'tap';
     }
-    return kept;
+    return seq;
   }
 
+  function layerDOpeningGuard(notes, options = {}) {
+    return applyOpeningWindowPolicy(applyMousePlayabilityFilter(notes, options), options);
+  }
+
+  function layerEPlayabilityGuard(notes, options = {}) {
+    return resolvePathConflicts(enforceChartPlayability(enforceSpinPlacement(notes)), Number(options.circleSize || 36));
+  }
+
+  function layerFGeometryPrep(notes, options = {}) {
+    const seq = assignKeyboardCheckpoints(notes, options);
+    let dragCount = 0;
+    let nonArcCount = 0;
+    const difficulty = options.difficulty || 'normal';
+    for (const note of seq) {
+      if ((note.type || note.noteType) !== 'drag') continue;
+      dragCount += 1;
+      if (!note.pathVariant || note.pathVariant === 'orbit') note.pathVariant = 'arc';
+      if (difficulty !== 'easy' && (nonArcCount < 2 || (dragCount >= 3 && stableUnit(note, dragCount) > 0.34))) {
+        note.pathVariant = note.pathVariant === 'arc' ? (dragCount % 2 === 0 ? 'diamondLoop' : 'starTrace') : note.pathVariant;
+      }
+      if (note.pathVariant !== 'arc') nonArcCount += 1;
+      note.pathTemplate = note.pathVariant;
+    }
+    return seq;
+  }
+
+  function layerGRuntimeAudit(notes, options = {}) {
+    const seq = enforceDensityFloor(notes, options);
+    return { notes: seq, audit: auditChartShape(seq) };
+  }
+
+  function spreadQuotaPromotions(notes) { return layerBMechanicPlanner(notes); }
+
   function auditChartShape(notes) {
-    return {
-      mechanic: mechanicMixStats(notes),
-      spatial: spatialFlowStats(notes),
-      geometry: geometryTemplateStats(notes)
-    };
+    return { mechanic: mechanicMixStats(notes), spatial: spatialFlowStats(notes), geometry: geometryTemplateStats(notes) };
   }
 
   function finalizePlayableChartPipeline(notes, options = {}) {
@@ -698,7 +524,7 @@
     return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

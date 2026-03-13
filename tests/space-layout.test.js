@@ -23,39 +23,39 @@ function loadPathTemplates() {
 }
 
 describe('space layout policy', () => {
-  it('exports tutorial labels', () => {
+  it('exports modern tutorial labels', () => {
     const p = loadPolicy();
-    expect(p.tutorialLabelForType('gate')).toBe('PASS');
+    expect(p.tutorialLabelForType('spin')).toBe('SPIN');
   });
 
-  it('detects footprint overlap between ribbon path and nearby note', () => {
+  it('detects footprint overlap between geometry drag path and nearby note', () => {
     const p = loadPolicy();
-    const ribbon = { x: 100, y: 100, endX: 260, endY: 100, noteType: 'ribbon' };
+    const drag = { x: 100, y: 100, endX: 260, endY: 100, noteType: 'drag', pathVariant: 'starTrace' };
     const tap = { x: 180, y: 110, noteType: 'tap' };
-    const issues = p.auditFootprints([ribbon, tap], 36);
+    const issues = p.auditFootprints([drag, tap], 36);
     expect(issues.length).toBeGreaterThan(0);
   });
 
-  it('sorts long-path notes ahead of taps for layout priority', () => {
+  it('sorts spin and drags ahead of taps for layout priority', () => {
     const p = loadPolicy();
     const sorted = p.sortByLayoutPriority([
       { noteType: 'tap' },
       { noteType: 'drag' },
-      { noteType: 'ribbon' },
-      { noteType: 'gate' }
+      { noteType: 'spin' },
+      { noteType: 'hold' }
     ]);
-    expect(sorted[0].noteType).toBe('ribbon');
+    expect(sorted[0].noteType).toBe('spin');
     expect(sorted[1].noteType).toBe('drag');
   });
 
   it('downgrades later long-path conflicts when footprints overlap badly', () => {
     const p = loadPolicy();
     const notes = [
-      { x: 100, y: 100, endX: 260, endY: 100, noteType: 'ribbon', type: 'ribbon' },
-      { x: 120, y: 110, endX: 280, endY: 110, noteType: 'ribbon', type: 'ribbon' }
+      { x: 100, y: 100, endX: 260, endY: 100, noteType: 'drag', type: 'drag', pathVariant: 'starTrace' },
+      { x: 120, y: 110, endX: 280, endY: 110, noteType: 'drag', type: 'drag', pathVariant: 'starTrace' }
     ];
     const resolved = p.resolvePathConflicts(notes, 36);
-    expect(resolved[0].type).toBe('ribbon');
+    expect(resolved[0].type).toBe('drag');
     expect(['drag', 'tap']).toContain(resolved[1].type);
   });
 
@@ -89,12 +89,12 @@ describe('space layout policy', () => {
     expect(stats.directionReversalCount).toBeGreaterThan(0);
   });
 
-  it('reports geometry surfacing ratios for non-orbit templates', () => {
+  it('reports geometry surfacing ratios for non-arc templates', () => {
     const p = loadPolicy();
     const stats = p.geometryTemplateStats([
-      { type: 'drag', noteType: 'drag', pathTemplate: 'orbit' },
+      { type: 'drag', noteType: 'drag', pathTemplate: 'arc' },
       { type: 'drag', noteType: 'drag', pathTemplate: 'diamondLoop', extraPath: { points: [{x:0,y:0}] } },
-      { type: 'ribbon', noteType: 'ribbon', pathTemplate: 'starTrace', keyboardCheckpoint: true }
+      { type: 'drag', noteType: 'drag', pathTemplate: 'starTrace' }
     ]);
     expect(stats.geometryCount).toBe(2);
     expect(stats.geometryRatio).toBeGreaterThan(0.5);

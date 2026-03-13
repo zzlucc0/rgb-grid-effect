@@ -13,50 +13,54 @@ function loadPolicy() {
 }
 
 describe('phase 1 input schema migration', () => {
-  it('normalizes base proposals into mechanic/input schema fields', () => {
+  it('normalizes legacy proposals into modern mechanic/input schema fields', () => {
     const policy = loadPolicy();
     const [note] = policy.layerABaseChartProposal([
-      { time: 1.2, proposalType: 'drag', type: 'tap', laneHint: 1, segmentLabel: 'chorus' }
+      { time: 1.2, proposalType: 'ribbon', type: 'tap', laneHint: 1, segmentLabel: 'chorus' }
     ]);
     expect(note.proposalMechanic).toBe('drag');
     expect(note.mechanic).toBe('tap');
     expect(note.inputChannel).toBe('shared');
     expect(note.exclusivity).toBe('normal');
-    expect(note.pathVariant).toBeNull();
+    expect(note.pathVariant).toBe('starTrace');
   });
 
-  it('lets mechanic planner set modern mechanic fields consistently', () => {
+  it('lets mechanic planner emit only modern runtime mechanics', () => {
     const policy = loadPolicy();
-    const [note] = policy.layerBMechanicPlanner(policy.layerABaseChartProposal([
-      { time: 8, proposalType: 'drag', type: 'tap', laneHint: 0, segmentLabel: 'chorus' }
+    const out = policy.layerBMechanicPlanner(policy.layerABaseChartProposal([
+      { time: 8, proposalType: 'drag', type: 'tap', laneHint: 0, segmentLabel: 'chorus' },
+      { time: 30, proposalType: 'spin', type: 'tap', laneHint: 1, segmentLabel: 'bridge' }
     ]), {});
-    expect(note.mechanic).toBe(note.type);
-    expect(note.noteType).toBe(note.type);
-    expect(['mouse', 'shared']).toContain(note.inputChannel);
+    expect(['tap', 'hold', 'drag', 'spin']).toContain(out[0].mechanic);
+    expect(out[1].mechanic).toBe('spin');
+    expect(out[1].exclusivity).toBe('solo-mouse');
   });
 
   it('documents difficulty-scaled keyboard layout and spin constraints', () => {
     const doc = fs.readFileSync(new URL('../docs/input-system-redesign.md', import.meta.url), 'utf8');
+    expect(doc).toContain('Easy: 2 keys');
     expect(doc).toContain('Normal: 4 keys');
     expect(doc).toContain('Hard: 6 keys');
     expect(doc).toContain('Appears **exactly twice per song**');
-    expect(doc).toContain('shared does **not** mean fully mixed from the start');
   });
 
-  it('assigns keyboard layouts by difficulty and upgrades later notes to shared channel', () => {
+  it('assigns difficulty keyboard layouts, mouse-only drags, and late shared taps', () => {
     const policy = loadPolicy();
     const notes = policy.layerCInputChannelPlanner(policy.layerABaseChartProposal([
       { time: 1, type: 'tap', laneHint: 0 },
-      { time: 2, type: 'tap', laneHint: 1 },
-      { time: 3, type: 'tap', laneHint: 2 },
+      { time: 2, type: 'hold', laneHint: 1 },
+      { time: 3, type: 'drag', laneHint: 2 },
       { time: 4, type: 'tap', laneHint: 3 },
       { time: 5, type: 'tap', laneHint: 0 },
-      { time: 6, type: 'tap', laneHint: 1 }
+      { time: 6, type: 'tap', laneHint: 1 },
+      { time: 7, type: 'tap', laneHint: 2 },
+      { time: 8, type: 'tap', laneHint: 3 }
     ]), { difficulty: 'normal' });
     expect(policy.keyboardLayoutForDifficulty('normal')).toEqual(['F', 'G', 'H', 'J']);
     expect(policy.keyboardLayoutForDifficulty('hard')).toEqual(['A', 'S', 'D', 'J', 'K', 'L']);
-    expect(['keyboard', 'mouse']).toContain(notes[0].inputChannel);
-    expect(notes[5].inputChannel).toBe('shared');
-    expect(['F', 'G', 'H', 'J']).toContain(notes[0].keyHint);
+    expect(notes[2].inputChannel).toBe('mouse');
+    expect(notes[2].keyHint).toBeNull();
+    expect(['keyboard', 'mouse']).toContain(notes[1].inputChannel);
+    expect(notes.slice(4).some(note => note.inputChannel === 'shared')).toBe(true);
   });
 });

@@ -8,9 +8,10 @@ describe('server proposal-type boundary', () => {
     expect(server).toContain("type: 'tap'");
   });
 
-  it('lets chart-policy use proposalType as planner input bias', () => {
+  it('lets chart-policy bias final mechanics from proposalType while preserving modern output', () => {
     const policy = fs.readFileSync(new URL('../chart-policy.js', import.meta.url), 'utf8');
-    expect(policy).toContain('const proposalType = note.proposalType');
-    expect(policy).toContain('if (type === proposalType) score += 1.15;');
+    expect(policy).toContain('proposalMechanic');
+    expect(policy).toContain("const proposal = note.proposalMechanic || 'tap'");
+    expect(policy).toContain("note.type = mechanic;");
   });
 });

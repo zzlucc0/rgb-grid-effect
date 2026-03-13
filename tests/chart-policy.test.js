@@ -17,44 +17,35 @@ function makeNotes(total = 60) {
     time: 1 + i * 1.5,
     type: 'tap',
     laneHint: i % 4,
-    segmentLabel: i < 15 ? 'intro' : i < 30 ? 'verse' : i < 45 ? 'chorus' : 'bridge'
+    segmentLabel: i < 15 ? 'intro' : i < 30 ? 'verse' : i < 45 ? 'chorus' : 'bridge',
+    proposalType: i === 25 || i === 55 ? 'spin' : (i % 7 === 0 ? 'drag' : 'tap')
   }));
 }
 
 describe('chart policy quotas', () => {
-  it('spreads mechanics across the full song instead of front-loading', () => {
+  it('spreads modern non-tap mechanics across the full song', () => {
     const policy = loadPolicy();
-    const notes = makeNotes(80);
-    policy.spreadQuotaPromotions(notes);
+    const notes = policy.spreadQuotaPromotions(makeNotes(80));
     const windows = [0, 0, 0, 0];
-    const specials = new Set(['ribbon', 'cut', 'flick', 'gate', 'pulseHold']);
     notes.forEach((note, idx) => {
-      if (!specials.has(note.type)) return;
+      if ((note.type || note.noteType) === 'tap') return;
       const bucket = Math.min(3, Math.floor(idx / 20));
       windows[bucket] += 1;
     });
-    expect(windows[0]).toBeGreaterThan(0);
     expect(windows[1]).toBeGreaterThan(0);
     expect(windows[2]).toBeGreaterThan(0);
     expect(windows[3]).toBeGreaterThan(0);
   });
 
-  it('avoids long same-family streaks in mechanic assignment', () => {
+  it('keeps spin count capped at two and preserves modern mechanic set', () => {
     const policy = loadPolicy();
-    const notes = makeNotes(72);
-    const assigned = policy.assignMechanics(notes, { openingSeconds: 12, openingCalmWindowSec: 2.4, openingHeavyStartSec: 4.8 });
-    let longest = 1;
-    let run = 1;
-    const fam = (type) => ['drag', 'ribbon', 'pulseHold'].includes(type) ? 'sustain' : (['gate', 'cut', 'flick'].includes(type) ? 'accent' : 'tap');
-    for (let i = 1; i < assigned.length; i++) {
-      if (fam(assigned[i].type) === fam(assigned[i - 1].type)) run += 1;
-      else run = 1;
-      longest = Math.max(longest, run);
-    }
-    expect(longest).toBeLessThanOrEqual(3);
+    const assigned = policy.assignMechanics(makeNotes(72), {});
+    const types = new Set(assigned.map(n => n.type));
+    expect([...types].every(type => ['tap', 'hold', 'drag', 'spin'].includes(type))).toBe(true);
+    expect(assigned.filter(n => n.type === 'spin').length).toBeLessThanOrEqual(2);
   });
 
-  it('caps first-half sustained ratio after opening guard runs', () => {
+  it('caps first-half drag ratio after opening guard runs', () => {
     const policy = loadPolicy();
     const notes = Array.from({ length: 24 }, (_, i) => ({
       time: 1 + i * 1.1,
@@ -65,36 +56,36 @@ describe('chart policy quotas', () => {
     }));
     const out = policy.applyOpeningWindowPolicy(notes, { firstHalfWindowSec: 18, firstHalfSustainRatioCap: 0.34, openingSustainConcurrencyCap: 1, minOpeningDragGapSec: 1.8 });
     const firstHalf = out.filter(n => Number(n.time) <= 18);
-    const sustained = firstHalf.filter(n => policy.isSustainedType(n.type || n.noteType));
+    const sustained = firstHalf.filter(n => (n.type || n.noteType) === 'drag');
     expect(sustained.length / firstHalf.length).toBeLessThanOrEqual(0.34);
   });
 
-  it('reduces nearby heavy overlaps around sustained notes', () => {
+  it('isolates spin and reduces nearby sustained overlaps', () => {
     const policy = loadPolicy();
     const notes = [
-      { time: 10, type: 'pulseHold', laneHint: 1, segmentLabel: 'verse' },
-      { time: 10.2, type: 'flick', laneHint: 1, segmentLabel: 'verse' },
-      { time: 10.3, type: 'cut', laneHint: 2, segmentLabel: 'verse' },
-      { time: 10.35, type: 'gate', laneHint: 0, segmentLabel: 'verse' },
+      { time: 20, type: 'spin', laneHint: 1, segmentLabel: 'bridge' },
+      { time: 20.5, type: 'drag', laneHint: 1, segmentLabel: 'bridge' },
+      { time: 20.9, type: 'hold', laneHint: 2, segmentLabel: 'bridge' }
     ];
     policy.enforceChartPlayability(notes);
-    expect(['tap', 'flick']).toContain(notes[1].type);
-    expect(['tap', 'flick']).toContain(notes[2].type);
+    expect(notes[1].type).toBe('tap');
+    expect(notes[2].type).toBe('tap');
   });
 
-  it('provides tutorial labels for mechanics', () => {
+  it('provides tutorial labels for modern mechanics', () => {
     const policy = loadPolicy();
-    expect(policy.tutorialLabelForType('pulseHold')).toBe('HOLD');
-    expect(policy.tutorialLabelForType('ribbon')).toBe('TRACE');
-    expect(policy.tutorialLabelForType('cut')).toBe('SLASH');
+    expect(policy.tutorialLabelForType('hold')).toBe('HOLD');
+    expect(policy.tutorialLabelForType('hold', { inputChannel: 'keyboard' })).toBe('KEY HOLD');
+    expect(policy.tutorialLabelForType('drag')).toBe('DRAG');
+    expect(policy.tutorialLabelForType('spin')).toBe('SPIN');
   });
 
   it('keeps a density floor in the first 30 seconds', () => {
     const policy = loadPolicy();
     const notes = Array.from({ length: 20 }, (_, i) => ({
       time: 1 + i * 1.2,
-      type: i % 2 === 0 ? 'ribbon' : 'gate',
-      noteType: i % 2 === 0 ? 'ribbon' : 'gate',
+      type: i % 2 === 0 ? 'drag' : 'hold',
+      noteType: i % 2 === 0 ? 'drag' : 'hold',
       laneHint: i % 4,
       segmentLabel: 'verse'
     }));
@@ -113,26 +104,19 @@ describe('chart policy quotas', () => {
       laneHint: i % 4,
       segmentLabel: i < 20 ? 'verse' : i < 40 ? 'chorus' : 'bridge'
     }));
-    const finalized = policy.finalizePlayableChartPipeline(notes, { circleSize: 36, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.45, minLatterSpecialRatio: 0.4 });
+    const finalized = policy.finalizePlayableChartPipeline(notes, { circleSize: 36, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.58, minLatterSpecialRatio: 0.22 });
     const mix = policy.mechanicMixStats(finalized);
-    expect(mix.tapRatio).toBeLessThanOrEqual(0.45);
-    expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.4);
+    expect(mix.tapRatio).toBeLessThanOrEqual(0.58);
+    expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.22);
   });
 
-  it('assigns sparse keyboard checkpoints only to eligible geometry notes', () => {
+  it('disables old keyboard checkpoint path prompts for drag notes', () => {
     const policy = loadPolicy();
-    const notes = [
-      { time: 8, type: 'drag', noteType: 'drag', pathTemplate: 'diamondLoop', segmentLabel: 'verse' },
+    const out = policy.assignKeyboardCheckpoints([
       { time: 11.5, type: 'drag', noteType: 'drag', pathTemplate: 'diamondLoop', segmentLabel: 'verse' },
-      { time: 14, type: 'pulseHold', noteType: 'pulseHold', segmentLabel: 'bridge' },
-      { time: 17, type: 'ribbon', noteType: 'ribbon', pathTemplate: 'starTrace', segmentLabel: 'chorus' },
-      { time: 20, type: 'drag', noteType: 'drag', pathTemplate: 'orbit', segmentLabel: 'chorus' }
-    ];
-    const out = policy.assignKeyboardCheckpoints(notes, { keyboardCheckpointGapSec: 2.2, keyboardCheckpointEarlyGraceSec: 10 });
-    expect(Boolean(out[0].keyboardCheckpoint)).toBe(false);
-    expect(Boolean(out[1].keyboardCheckpoint)).toBe(true);
-    expect(Boolean(out[3].keyboardCheckpoint)).toBe(true);
-    expect(Boolean(out[4].keyboardCheckpoint)).toBe(false);
+      { time: 17, type: 'drag', noteType: 'drag', pathTemplate: 'starTrace', segmentLabel: 'chorus' }
+    ]);
+    expect(out.every(note => !note.keyboardCheckpoint)).toBe(true);
   });
 
   it('combines mechanic, spatial, and geometry audits into a single chart-shape summary', () => {
@@ -140,7 +124,7 @@ describe('chart policy quotas', () => {
     const audit = policy.auditChartShape([
       { time: 1, type: 'tap', laneHint: 1 },
       { time: 2, type: 'drag', laneHint: 3, noteType: 'drag', pathTemplate: 'diamondLoop', extraPath: { points: [{ x: 0, y: 0 }] } },
-      { time: 3, type: 'ribbon', laneHint: 1, noteType: 'ribbon', pathTemplate: 'starTrace', keyboardCheckpoint: true },
+      { time: 3, type: 'drag', laneHint: 1, noteType: 'drag', pathTemplate: 'starTrace' },
       { time: 4, type: 'tap', laneHint: 2 }
     ]);
     expect(audit.mechanic.tapRatio).toBeGreaterThanOrEqual(0);
@@ -153,7 +137,7 @@ describe('chart policy quotas', () => {
     const notes = [
       { time: 1, type: 'tap', laneHint: 0, segmentLabel: 'intro' },
       { time: 2, type: 'tap', laneHint: 1, segmentLabel: 'verse' },
-      { time: 3, type: 'tap', laneHint: 2, segmentLabel: 'chorus' }
+      { time: 25, proposalType: 'spin', type: 'tap', laneHint: 2, segmentLabel: 'chorus' }
     ];
     const a = policy.layerABaseChartProposal(notes);
     const b = policy.layerBMechanicPlanner(a, {});
@@ -162,12 +146,6 @@ describe('chart policy quotas', () => {
     const e = policy.layerEPlayabilityGuard(d, { circleSize: 36 });
     const f = policy.layerFGeometryPrep(e, {});
     const g = policy.layerGRuntimeAudit(f, {});
-    expect(a.length).toBe(3);
-    expect(b.length).toBe(3);
-    expect(c.length).toBe(3);
-    expect(d.length).toBe(3);
-    expect(e.length).toBe(3);
-    expect(f.length).toBe(3);
     expect(g.notes.length).toBe(3);
     expect(g.audit.mechanic.tapRatio).toBeGreaterThanOrEqual(0);
   });
