@@ -1956,13 +1956,14 @@ class RhythmGame {
                         const t = i / 40;
                         const px = Math.pow(1-t, 2) * note.x + 2 * (1-t) * t * note.controlX + Math.pow(t, 2) * note.endX;
                         const py = Math.pow(1-t, 2) * note.y + 2 * (1-t) * t * note.controlY + Math.pow(t, 2) * note.endY;
-                        ribbonPts.push({ x: px, y: py, wobble: Math.sin(t * Math.PI * 4 + performance.now() / 220) * this.circleSize * 0.08 });
+                        ribbonPts.push({ x: px, y: py, wobble: Math.sin(t * Math.PI * 4 + performance.now() / 220) * this.circleSize * 0.08, flow: Math.sin(performance.now() / 160 + t * 9) * this.circleSize * 0.035 });
                     }
                     this.ctx.beginPath();
                     ribbonPts.forEach((pt, idx) => {
                         const y = pt.y + pt.wobble;
-                        if (idx === 0) this.ctx.moveTo(pt.x, y);
-                        else this.ctx.lineTo(pt.x, y);
+                        const x = pt.x + pt.flow;
+                        if (idx === 0) this.ctx.moveTo(x, y);
+                        else this.ctx.lineTo(x, y);
                     });
                     this.ctx.strokeStyle = palette.glow.replace('.38', '.20').replace('.36', '.20').replace('.34', '.20');
                     this.ctx.lineWidth = this.circleSize * 0.92;
@@ -2029,6 +2030,13 @@ class RhythmGame {
                     
                     this.ctx.stroke();
                     this.ctx.shadowBlur = 0;
+                    if (note.keyboardCheckpoint && note.keyboardHit) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(currentX, currentY, this.circleSize * (0.92 + Math.sin(performance.now() / 120) * 0.08), 0, Math.PI * 2);
+                        this.ctx.strokeStyle = 'rgba(255,255,255,0.34)';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.stroke();
+                    }
                     
                     // Draw drag point
                     this.ctx.beginPath();
@@ -2113,8 +2121,11 @@ class RhythmGame {
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit ? `${tutorialLabel} + ${note.keyboardHint || 'SPACE'}` : tutorialLabel;
                     const labelW = Math.max(this.circleSize * 1.8, displayLabel.length * 12);
                     const labelH = this.circleSize * 0.7;
+                    const labelRise = (1 - note.approachProgress) * 6;
+                    const labelAlpha = Math.min(1, 0.25 + note.approachProgress * 1.05);
+                    this.ctx.globalAlpha = labelAlpha;
                     this.ctx.beginPath();
-                    this.ctx.roundRect(note.x - labelW / 2, note.y - labelH / 2, labelW, labelH, 10);
+                    this.ctx.roundRect(note.x - labelW / 2, note.y - labelH / 2 - labelRise, labelW, labelH, 10);
                     this.ctx.fillStyle = 'rgba(10,16,26,0.78)';
                     this.ctx.fill();
                     this.ctx.lineWidth = 2.5;
@@ -2124,8 +2135,9 @@ class RhythmGame {
                     this.ctx.shadowColor = palette.edge;
                     this.ctx.font = '900 20px "Trebuchet MS", "Arial Black", sans-serif';
                     this.ctx.fillStyle = '#f8fcff';
-                    this.ctx.fillText(displayLabel, note.x, note.y + 0.5);
+                    this.ctx.fillText(displayLabel, note.x, note.y + 0.5 - labelRise);
                     this.ctx.shadowBlur = 0;
+                    this.ctx.globalAlpha = 1;
                 } else {
                     this.ctx.font = '700 22px Arial';
                     this.ctx.fillStyle = '#f3fcff';
@@ -2185,6 +2197,7 @@ class RhythmGame {
             if (String(note.keyboardKey || 'space') !== String(key || 'space')) continue;
             note.keyboardHit = true;
             note.keyboardHitTime = currentTime;
+            this.pushSignatureBurst(note.x, note.y, 'ribbon');
             this.createHitEffect(note.x, note.y, timingDiff <= this.perfectRange ? 'perfect' : 'good');
             this.updateHUD();
             return;
