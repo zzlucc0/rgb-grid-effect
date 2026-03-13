@@ -1173,12 +1173,22 @@ class RhythmGame {
             if (spawned?.length) {
                 this.notes.push(...spawned);
                 this.spawnedChartNotes += spawned.length;
-                const chartShapeAudit = window.ChartPolicy?.auditChartShape ? window.ChartPolicy.auditChartShape(this.notes.filter(n => !n.hit && !n.completed)) : null;
+                const activeNotes = this.notes.filter(n => !n.hit && !n.completed);
+                const chartShapeAudit = window.ChartPolicy?.auditChartShape ? window.ChartPolicy.auditChartShape(activeNotes) : null;
+                const reviewerRequest = window.ChartReviewer?.buildReviewerRequest
+                    ? window.ChartReviewer.buildReviewerRequest({ notes: activeNotes }, {
+                        lastChartSpawnAt: chartTime,
+                        lastChartSpawnCount: spawned.length,
+                        lastSpawnedCount: this.spawnedChartNotes,
+                        chartShapeAudit
+                    })
+                    : null;
                 this.captureRuntimeDiagnostics('chart-spawn', {
                     lastChartSpawnAt: chartTime,
                     lastChartSpawnCount: spawned.length,
                     lastSpawnedCount: this.spawnedChartNotes,
-                    chartShapeAudit
+                    chartShapeAudit,
+                    reviewerRequest
                 });
             }
             this.nextChartIndex = this.chartRuntime.getProgress().nextIndex;
