@@ -2450,8 +2450,8 @@ class RhythmGame {
 
     createHitEffect = (x, y, scoreType = 'perfect') => {
         const particles = [];
-        const particleCount = scoreType === 'perfect' ? 18 : 12;
-        const particleSpeed = scoreType === 'perfect' ? 7 : 4.8;
+        const particleCount = scoreType === 'perfect' ? 22 : scoreType === 'good' ? 12 : 8;
+        const particleSpeed = scoreType === 'perfect' ? 7.4 : scoreType === 'good' ? 4.8 : 3.6;
         let particleColor;
         
         switch (scoreType) {
@@ -2486,9 +2486,9 @@ class RhythmGame {
             particles.forEach(p => {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vx *= 0.985;
-                p.vy *= 0.985;
-                p.life -= 0.026;
+                p.vx *= scoreType === 'perfect' ? 0.978 : 0.985;
+                p.vy *= scoreType === 'perfect' ? 0.978 : 0.985;
+                p.life -= scoreType === 'miss' ? 0.04 : (scoreType === 'good' ? 0.03 : 0.024);
 
                 if (p.life > 0) {
                     this.ctx.beginPath();
@@ -2567,7 +2567,7 @@ RhythmGame.prototype.drawEnergyBurst = function () {
     for (const b of this.visualBursts) {
         const t = Math.min(1, (now - b.at) / 550);
         const alpha = (1 - t) * 0.22;
-        const radius = 60 + t * 180;
+        const radius = (60 + t * 180) * (b.scale || 1);
         this.ctx.beginPath();
         this.ctx.arc(b.x, b.y, radius, 0, Math.PI * 2);
         this.ctx.strokeStyle = b.color.replace('ALPHA', alpha.toFixed(3));
@@ -2598,7 +2598,7 @@ RhythmGame.prototype.pushBurst = function (x, y, type) {
         good: { color: 'rgba(255,184,77,ALPHA)', inner: 'rgba(255,240,196,ALPHA)' },
         miss: { color: 'rgba(255,95,118,ALPHA)', inner: 'rgba(255,170,180,ALPHA)' }
     };
-    this.visualBursts.push({ x, y, at: performance.now(), ...(map[type] || map.perfect) });
+    this.visualBursts.push({ x, y, at: performance.now(), scale: type === 'perfect' ? 1.16 : type === 'good' ? 0.92 : 0.78, ...(map[type] || map.perfect) });
     this.updateHUD();
 };
 
@@ -2616,10 +2616,15 @@ RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'gate') {
 RhythmGame.prototype.drawComboHUD = function () {
     this.updateHUD();
     this.ctx.textAlign = 'center';
+    const comboBounce = 1 + Math.min(0.16, (this.combo % 5) * 0.012);
     if (this.combo > 1) {
+        this.ctx.save();
+        this.ctx.translate(this.canvas.width / 2, 56);
+        this.ctx.scale(comboBounce, comboBounce);
         this.ctx.fillStyle = 'rgba(255,255,255,.92)';
         this.ctx.font = '700 28px Rajdhani';
-        this.ctx.fillText(`${this.combo}x COMBO`, this.canvas.width / 2, 56);
+        this.ctx.fillText(`${this.combo}x COMBO`, 0, 0);
+        this.ctx.restore();
         this.ctx.fillStyle = 'rgba(84,241,255,.22)';
         this.ctx.fillRect(this.canvas.width / 2 - 90, 68, 180, 4);
     }
