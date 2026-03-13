@@ -1862,6 +1862,10 @@ class RhythmGame {
             const visualApproachSec = (this.approachRate / 1000) * profile.lead;
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / Math.max(0.18, visualApproachSec)));
             const palette = this.getNotePalette(note);
+            const spawnPop = Math.min(1, Math.max(0, (performance.now() - ((note.spawnedAtWall || performance.now()) || performance.now())) / 220));
+            const popScale = 0.9 + 0.1 * spawnPop;
+            const tighten = timeUntilHit <= 0.15 ? 1 + (0.15 - Math.max(0, timeUntilHit)) * 1.1 : 1;
+            const bodyPulse = 1 + Math.sin(performance.now() / 150 + (note.noteNumber || 0)) * 0.018 * Math.max(0, note.approachProgress - 0.25);
 
             // Draw contracting circle
             if (!note.hit) {
@@ -2057,7 +2061,7 @@ class RhythmGame {
             
             // Draw starting circle
             this.ctx.beginPath();
-            this.ctx.arc(note.x, note.y, this.circleSize * 0.82, 0, Math.PI * 2);
+            this.ctx.arc(note.x, note.y, this.circleSize * 0.82 * popScale * tighten * bodyPulse, 0, Math.PI * 2);
             const noteGrad = this.ctx.createRadialGradient(note.x - 10, note.y - 12, 4, note.x, note.y, this.circleSize);
             noteGrad.addColorStop(0, '#ffffff');
             noteGrad.addColorStop(.28, palette.core);
@@ -2072,7 +2076,7 @@ class RhythmGame {
             this.ctx.lineWidth = 2.5;
             this.ctx.stroke();
             this.ctx.beginPath();
-            this.ctx.arc(note.x, note.y, this.circleSize * 0.98, 0, Math.PI * 2);
+            this.ctx.arc(note.x, note.y, this.circleSize * (0.98 + Math.max(0, note.approachProgress - 0.85) * 0.12), 0, Math.PI * 2);
             this.ctx.strokeStyle = 'rgba(255,255,255,.08)';
             this.ctx.lineWidth = 1;
             this.ctx.stroke();
@@ -2932,6 +2936,7 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         segmentLabel: liveSeg.label || 'live',
         groupIndex: liveBar,
         groupSlot: this.liveEngine ? ((this.liveEngine.step || 0) % 4) : 0,
+        spawnedAtWall: performance.now(),
         holdDuration: noteType === 'pulseHold' ? Math.max(0.55, (this.liveEngine?.beatSec || 0.48) * 1.6) : 0,
         gateWidth: noteType === 'gate' ? this.circleSize * (2.6 + Math.random() * 0.6) : null
     };
@@ -3031,6 +3036,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         phrase,
         groupIndex: phrase,
         groupSlot,
+        spawnedAtWall: performance.now(),
         holdDuration: noteType === 'pulseHold' ? Math.max(0.6, (chartNote.duration || 0.82)) : 0,
         gateWidth: noteType === 'gate' ? this.circleSize * (2.4 + (chartIndex % 3) * 0.2) : null,
         groupPattern: basePos.pattern
