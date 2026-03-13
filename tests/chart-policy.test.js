@@ -83,9 +83,8 @@ describe('chart policy quotas', () => {
       laneHint: i % 4,
       segmentLabel: i < 20 ? 'verse' : i < 40 ? 'chorus' : 'bridge'
     }));
-    policy.spreadQuotaPromotions(notes);
-    const resolved = policy.resolvePathConflicts(notes, 36);
-    const mix = policy.mechanicMixStats(resolved);
+    const finalized = policy.finalizePlayableChartPipeline(notes, { circleSize: 36, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.45, minLatterSpecialRatio: 0.4 });
+    const mix = policy.mechanicMixStats(finalized);
     expect(mix.tapRatio).toBeLessThanOrEqual(0.45);
     expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.4);
   });

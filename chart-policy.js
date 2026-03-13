@@ -1,26 +1,69 @@
 (function () {
+  function stripComplexPath(note) {
+    if (!note) return note;
+    delete note.endX; delete note.endY; delete note.controlX; delete note.controlY; delete note.extraPath;
+    note.keyboardCheckpoint = false;
+    note.keyboardHint = null;
+    return note;
+  }
+
+  function isSustainedType(type) {
+    return ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
+  }
+
   function applyOpeningWindowPolicy(notes, options = {}) {
     const openingSeconds = Number(options.openingSeconds || 12);
-    const sustained = ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'];
     const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
     let sustainedUsed = 0;
     let holdUsed = 0;
     for (const note of seq) {
       if (Number(note.time || 0) > openingSeconds) break;
       const type = note.type || note.noteType || 'tap';
-      if (!sustained.includes(type)) continue;
+      if (!isSustainedType(type)) continue;
       sustainedUsed += 1;
       if (type === 'pulseHold') holdUsed += 1;
       if (holdUsed > 1 || sustainedUsed > 3) {
         note.type = 'tap';
         note.noteType = 'tap';
-        delete note.endX; delete note.endY; delete note.controlX; delete note.controlY; delete note.extraPath;
+        stripComplexPath(note);
       }
     }
     return seq;
   }
 
-  function spreadQuotaPromotions(notes) {
+  function applyMousePlayabilityFilter(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
+    const sustainedCooldown = Number(options.sustainedCooldownSec || 1.6);
+    const holdCooldown = Number(options.holdCooldownSec || 2.6);
+    let lastSustainedTime = -Infinity;
+    let lastHoldTime = -Infinity;
+    for (const note of seq) {
+      const type = note.type || note.noteType || 'tap';
+      const t = Number(note.time || 0);
+      if (!isSustainedType(type)) continue;
+      if (type === 'pulseHold') {
+        if (t - lastHoldTime < holdCooldown || t - lastSustainedTime < sustainedCooldown) {
+          note.type = 'tap';
+          note.noteType = 'tap';
+          stripComplexPath(note);
+          continue;
+        }
+        lastHoldTime = t;
+        lastSustainedTime = t;
+        continue;
+      }
+      if (t - lastSustainedTime < sustainedCooldown) {
+        note.type = 'tap';
+        note.noteType = 'tap';
+        stripComplexPath(note);
+        continue;
+      }
+      lastSustainedTime = t;
+    }
+    return seq;
+  }
+
+  function assignMechanics(notes) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
     const quotaPlan = {
       full: { ribbon: 10, cut: 12, flick: 18, gate: 10, pulseHold: 12, drag: 16 },
@@ -77,7 +120,11 @@
       applyPlan(entries, quotaPlan[seg] || quotaPlan.verse);
     }
     applyPlan(latterHalf, { flick: 6, pulseHold: 4, gate: 3, drag: 5, ribbon: 3, cut: 4 });
-    return applyOpeningWindowPolicy(notes);
+    return notes;
+  }
+
+  function spreadQuotaPromotions(notes) {
+    return assignMechanics(notes);
   }
 
   function downgradeType(type) {
@@ -319,19 +366,28 @@
       } else if (type === 'drag' || type === 'gate') {
         note.type = earlyTime ? 'drag' : 'tap';
         note.noteType = note.type;
-        if (note.type === 'tap') {
-          delete note.endX; delete note.endY; delete note.controlX; delete note.controlY;
-        }
+        if (note.type === 'tap') stripComplexPath(note);
       } else if (type === 'cut' || type === 'flick') {
         note.type = 'tap';
         note.noteType = 'tap';
       }
       kept.push(note);
     }
-    return enforceDensityFloor(kept);
+    return kept;
   }
 
-  const api = { spreadQuotaPromotions, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType };
+  function finalizePlayableChartPipeline(notes, options = {}) {
+    const circleSize = Number(options.circleSize || 36);
+    let seq = assignMechanics(notes || []);
+    seq = applyMousePlayabilityFilter(seq, options);
+    seq = applyOpeningWindowPolicy(seq, options);
+    seq = enforceChartPlayability(seq);
+    seq = resolvePathConflicts(seq, circleSize);
+    seq = enforceDensityFloor(seq, options);
+    return [...seq].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+  }
+
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType, isSustainedType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

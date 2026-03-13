@@ -29,4 +29,18 @@ describe('opening policy', () => {
     expect(sustained.length).toBeLessThanOrEqual(3);
     expect(holds.length).toBeLessThanOrEqual(1);
   });
+
+  it('enforces global sustained cooldown for mouse playability', () => {
+    const p = loadPolicy();
+    const notes = [
+      { time: 5, type: 'pulseHold', noteType: 'pulseHold', laneHint: 0, segmentLabel: 'verse' },
+      { time: 5.8, type: 'drag', noteType: 'drag', laneHint: 1, segmentLabel: 'verse' },
+      { time: 6.2, type: 'ribbon', noteType: 'ribbon', laneHint: 2, segmentLabel: 'chorus' },
+      { time: 8.9, type: 'drag', noteType: 'drag', laneHint: 2, segmentLabel: 'chorus' }
+    ];
+    const out = p.applyMousePlayabilityFilter(notes, { sustainedCooldownSec: 1.6, holdCooldownSec: 2.6 });
+    const sustained = out.filter(n => p.isSustainedType(n.type || n.noteType));
+    expect(sustained.length).toBeLessThanOrEqual(2);
+    expect((out[1].type || out[1].noteType)).toBe('tap');
+  });
 });

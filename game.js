@@ -622,10 +622,14 @@ class RhythmGame {
                     time: Number(Math.max(0.42, Number(note.time || 0) - leadShift - (idx === 0 ? 0.02 : 0)).toFixed(3))
                 }));
             }
-            this.applyMechanicQuotas(this.chartData.notes);
-            this.enforceChartPlayability(this.chartData.notes);
-            if (window.ChartPolicy?.resolvePathConflicts) {
-                this.chartData.notes = window.ChartPolicy.resolvePathConflicts(this.chartData.notes, this.circleSize);
+            if (window.ChartPolicy?.finalizePlayableChartPipeline) {
+                this.chartData.notes = window.ChartPolicy.finalizePlayableChartPipeline(this.chartData.notes, { circleSize: this.circleSize, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.45, minLatterSpecialRatio: 0.4 });
+            } else {
+                this.applyMechanicQuotas(this.chartData.notes);
+                this.enforceChartPlayability(this.chartData.notes);
+                if (window.ChartPolicy?.resolvePathConflicts) {
+                    this.chartData.notes = window.ChartPolicy.resolvePathConflicts(this.chartData.notes, this.circleSize);
+                }
             }
             const layoutIssues = this.getLayoutAudit(this.chartData.notes.map((n, idx) => ({
                 x: this.safeArea.x + (this.safeArea.width / 4) * (((n.laneHint ?? idx % 4) + 0.5)),
