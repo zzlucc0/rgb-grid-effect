@@ -540,6 +540,36 @@ function pickSegmentForTime(segments, t) {
   return (segments || []).find(seg => t >= Number(seg.start || 0) && t < Number(seg.end || 0)) || null;
 }
 
+function injectSpinProposals(notes, durationSec = 0) {
+  const seq = Array.isArray(notes) ? notes.slice().sort((a, b) => Number(a.time || 0) - Number(b.time || 0)) : [];
+  const duration = Number(durationSec || 0);
+  if (!seq.length || duration < 40) return seq;
+  const targets = [duration * 0.52, duration * 0.86];
+  targets.forEach((target, idx) => {
+    const nearest = seq.reduce((best, note) => {
+      const dt = Math.abs(Number(note.time || 0) - target);
+      return !best || dt < best.dt ? { note, dt } : best;
+    }, null)?.note;
+    const spinTime = Number(Math.max(6, Math.min(duration - 4, target)).toFixed(3));
+    if (seq.some(n => Math.abs(Number(n.time || 0) - spinTime) < 2.4 && n.proposalType === 'spin')) return;
+    seq.push({
+      time: spinTime,
+      proposalType: 'spin',
+      type: 'tap',
+      laneHint: 1,
+      phrase: Number(nearest?.phrase || idx + 2),
+      phraseIntent: 'sweep',
+      phraseAnchor: 1,
+      strength: 1,
+      segmentLabel: idx === 0 ? (nearest?.segmentLabel || 'bridge') : 'outro',
+      energy: 'high',
+      duration: idx === 0 ? 2.2 : 2.8,
+      exclusivity: 'solo-mouse'
+    });
+  });
+  return seq.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+}
+
 function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'normal') {
   const beats = Array.isArray(analysis?.beats) ? analysis.beats.map(Number).filter(n => Number.isFinite(n)) : [];
   const segments = Array.isArray(analysis?.segments) ? analysis.segments : [];
@@ -644,10 +674,13 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     }
   }
 
-  const capped = ensureTailCoverage(
-    downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale * Number(densityCfg.noteScale || 1)))),
-    Number(analysis?.duration || 45),
-    difficulty
+  const capped = injectSpinProposals(
+    ensureTailCoverage(
+      downsampleNotesSpread(notes, Math.max(24, Math.floor(notes.length * difficultyCfg.maxNotesScale * Number(densityCfg.noteScale || 1)))),
+      Number(analysis?.duration || 45),
+      difficulty
+    ),
+    Number(analysis?.duration || 45)
   );
   return {
     version: CHART_SCHEMA_VERSION,

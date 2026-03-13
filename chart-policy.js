@@ -191,13 +191,14 @@
       if (segment === 'intro') return { tap: 0.52 - tapPenaltyBoost * 0.03, drag: 0.26, ribbon: 0.02, pulseHold: 0.07, flick: 0.08 + varietyBoost * 0.03, cut: 0.03, gate: 0.02 };
       return { tap: 0.3 - tapPenaltyBoost * 0.05, drag: 0.24 + varietyBoost * 0.04, ribbon: 0.08 + varietyBoost * 0.05, pulseHold: 0.16 + varietyBoost * 0.04, flick: 0.1, cut: 0.06 + varietyBoost * 0.03, gate: 0.06 };
     };
-    const candidatesFor = (segment = 'verse', t = 0) => {
+    const candidatesFor = (segment = 'verse', t = 0, proposalType = 'tap') => {
       const p = openingPressureProfile(t, options);
-      if (p.inCalmWindow) return ['tap', 'drag', 'flick'];
-      if (p.beforeHeavyStart) return segment === 'chorus' ? ['tap', 'drag', 'flick', 'cut'] : ['tap', 'drag', 'flick', 'pulseHold'];
-      if (segment === 'chorus') return ['tap', 'drag', 'ribbon', 'flick', 'cut', 'gate'];
-      if (segment === 'bridge') return ['tap', 'drag', 'pulseHold', 'gate', 'flick'];
-      return ['tap', 'drag', 'pulseHold', 'flick', 'cut'];
+      if (proposalType === 'spin') return ['spin'];
+      if (p.inCalmWindow) return ['tap', 'drag', 'pulseHold'];
+      if (p.beforeHeavyStart) return ['tap', 'drag', 'pulseHold'];
+      if (segment === 'chorus') return ['tap', 'drag', 'pulseHold'];
+      if (segment === 'bridge') return ['tap', 'drag', 'pulseHold'];
+      return ['tap', 'drag', 'pulseHold'];
     };
     const recentFamilyRun = (idx, fam) => {
       let run = 0;
@@ -224,7 +225,7 @@
       const seg = note.segmentLabel || 'verse';
       const proposalType = note.proposalType || note.type || note.noteType || 'tap';
       const profile = openingPressureProfile(t, options);
-      const candidates = candidatesFor(seg, t);
+      const candidates = candidatesFor(seg, t, proposalType);
       const weights = segmentWeights(seg);
       let bestType = 'tap';
       let bestScore = -Infinity;
@@ -278,23 +279,56 @@
     return assignMechanics(notes, options);
   }
 
-  function layerCOpeningGuard(notes, options = {}) {
+  function keyboardLayoutForDifficulty(difficulty = 'normal') {
+    if (difficulty === 'easy') return ['F', 'J'];
+    if (difficulty === 'hard') return ['A', 'S', 'D', 'J', 'K', 'L'];
+    return ['F', 'G', 'H', 'J'];
+  }
+
+  function layerCInputChannelPlanner(notes, options = {}) {
+    const difficulty = options.difficulty || 'normal';
+    const keyset = keyboardLayoutForDifficulty(difficulty);
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const halfway = seq.length ? Math.floor(seq.length * 0.45) : 0;
+    seq.forEach((note, idx) => {
+      const mechanic = note.mechanic || note.type || note.noteType || 'tap';
+      if (mechanic === 'drag' || mechanic === 'spin') {
+        note.inputChannel = 'mouse';
+        note.keyHint = null;
+        note.exclusivity = mechanic === 'spin' ? 'solo-mouse' : 'normal';
+        return;
+      }
+      const laneSeed = Math.abs(Number(note.laneHint || 0) + idx) % keyset.length;
+      const assignedKey = keyset[laneSeed];
+      if (idx < halfway) {
+        note.inputChannel = idx % 2 === 0 ? 'keyboard' : 'mouse';
+      } else {
+        note.inputChannel = 'shared';
+      }
+      note.keyHint = assignedKey || null;
+      note.keyboardKey = assignedKey ? assignedKey.toLowerCase() : null;
+      note.exclusivity = 'normal';
+    });
+    return seq;
+  }
+
+  function layerDOpeningGuard(notes, options = {}) {
     let seq = applyMousePlayabilityFilter(notes, options);
     seq = applyOpeningWindowPolicy(seq, options);
     return seq;
   }
 
-  function layerDPlayabilityGuard(notes, options = {}) {
+  function layerEPlayabilityGuard(notes, options = {}) {
     let seq = enforceChartPlayability(notes);
     seq = resolvePathConflicts(seq, Number(options.circleSize || 36));
     return seq;
   }
 
-  function layerEGeometryPrep(notes, options = {}) {
+  function layerFGeometryPrep(notes, options = {}) {
     return assignKeyboardCheckpoints(notes, options);
   }
 
-  function layerFRuntimeAudit(notes, options = {}) {
+  function layerGRuntimeAudit(notes, options = {}) {
     const seq = enforceDensityFloor(notes, options);
     return {
       notes: seq,
@@ -656,14 +690,15 @@
   function finalizePlayableChartPipeline(notes, options = {}) {
     let seq = layerABaseChartProposal(notes || []);
     seq = layerBMechanicPlanner(seq, options);
-    seq = layerCOpeningGuard(seq, options);
-    seq = layerDPlayabilityGuard(seq, options);
-    seq = layerEGeometryPrep(seq, options);
-    const result = layerFRuntimeAudit(seq, options);
+    seq = layerCInputChannelPlanner(seq, options);
+    seq = layerDOpeningGuard(seq, options);
+    seq = layerEPlayabilityGuard(seq, options);
+    seq = layerFGeometryPrep(seq, options);
+    const result = layerGRuntimeAudit(seq, options);
     return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, layerABaseChartProposal, layerBMechanicPlanner, layerCOpeningGuard, layerDPlayabilityGuard, layerEGeometryPrep, layerFRuntimeAudit, downgradeType, isSustainedType };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

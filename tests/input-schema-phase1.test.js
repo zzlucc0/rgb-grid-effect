@@ -42,4 +42,21 @@ describe('phase 1 input schema migration', () => {
     expect(doc).toContain('Appears **exactly twice per song**');
     expect(doc).toContain('shared does **not** mean fully mixed from the start');
   });
+
+  it('assigns keyboard layouts by difficulty and upgrades later notes to shared channel', () => {
+    const policy = loadPolicy();
+    const notes = policy.layerCInputChannelPlanner(policy.layerABaseChartProposal([
+      { time: 1, type: 'tap', laneHint: 0 },
+      { time: 2, type: 'tap', laneHint: 1 },
+      { time: 3, type: 'tap', laneHint: 2 },
+      { time: 4, type: 'tap', laneHint: 3 },
+      { time: 5, type: 'tap', laneHint: 0 },
+      { time: 6, type: 'tap', laneHint: 1 }
+    ]), { difficulty: 'normal' });
+    expect(policy.keyboardLayoutForDifficulty('normal')).toEqual(['F', 'G', 'H', 'J']);
+    expect(policy.keyboardLayoutForDifficulty('hard')).toEqual(['A', 'S', 'D', 'J', 'K', 'L']);
+    expect(['keyboard', 'mouse']).toContain(notes[0].inputChannel);
+    expect(notes[5].inputChannel).toBe('shared');
+    expect(['F', 'G', 'H', 'J']).toContain(notes[0].keyHint);
+  });
 });

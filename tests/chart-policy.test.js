@@ -148,7 +148,7 @@ describe('chart policy quotas', () => {
     expect(audit.geometry.geometryCount).toBe(2);
   });
 
-  it('exposes layered A-F pipeline helpers for final mechanic decisions', () => {
+  it('exposes layered pipeline helpers for final mechanic decisions', () => {
     const policy = loadPolicy();
     const notes = [
       { time: 1, type: 'tap', laneHint: 0, segmentLabel: 'intro' },
@@ -157,16 +157,18 @@ describe('chart policy quotas', () => {
     ];
     const a = policy.layerABaseChartProposal(notes);
     const b = policy.layerBMechanicPlanner(a, {});
-    const c = policy.layerCOpeningGuard(b, {});
-    const d = policy.layerDPlayabilityGuard(c, { circleSize: 36 });
-    const e = policy.layerEGeometryPrep(d, {});
-    const f = policy.layerFRuntimeAudit(e, {});
+    const c = policy.layerCInputChannelPlanner(b, { difficulty: 'normal' });
+    const d = policy.layerDOpeningGuard(c, {});
+    const e = policy.layerEPlayabilityGuard(d, { circleSize: 36 });
+    const f = policy.layerFGeometryPrep(e, {});
+    const g = policy.layerGRuntimeAudit(f, {});
     expect(a.length).toBe(3);
     expect(b.length).toBe(3);
     expect(c.length).toBe(3);
     expect(d.length).toBe(3);
     expect(e.length).toBe(3);
-    expect(f.notes.length).toBe(3);
-    expect(f.audit.mechanic.tapRatio).toBeGreaterThanOrEqual(0);
+    expect(f.length).toBe(3);
+    expect(g.notes.length).toBe(3);
+    expect(g.audit.mechanic.tapRatio).toBeGreaterThanOrEqual(0);
   });
 });
