@@ -39,6 +39,21 @@ describe('chart policy quotas', () => {
     expect(windows[3]).toBeGreaterThan(0);
   });
 
+  it('avoids long same-family streaks in mechanic assignment', () => {
+    const policy = loadPolicy();
+    const notes = makeNotes(72);
+    const assigned = policy.assignMechanics(notes, { openingSeconds: 12, openingCalmWindowSec: 2.4, openingHeavyStartSec: 4.8 });
+    let longest = 1;
+    let run = 1;
+    const fam = (type) => ['drag', 'ribbon', 'pulseHold'].includes(type) ? 'sustain' : (['gate', 'cut', 'flick'].includes(type) ? 'accent' : 'tap');
+    for (let i = 1; i < assigned.length; i++) {
+      if (fam(assigned[i].type) === fam(assigned[i - 1].type)) run += 1;
+      else run = 1;
+      longest = Math.max(longest, run);
+    }
+    expect(longest).toBeLessThanOrEqual(3);
+  });
+
   it('reduces nearby heavy overlaps around sustained notes', () => {
     const policy = loadPolicy();
     const notes = [

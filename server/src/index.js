@@ -505,10 +505,29 @@ function buildPatternProfile(seg, difficultyCfg, densityCfg = getDensityConfig('
   const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
   const weakScale = Number(densityCfg.extraWeakScale || 1);
   const dragDensityBoost = Number(densityCfg.dragBoost || 0);
-  if (label === 'intro') return { strongOnly: false, extraWeak: 0.15 * difficultyCfg.weakChance * weakScale, dragBias: 0.06 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: [1, 2] };
-  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.48 * difficultyCfg.weakChance * weakScale, dragBias: 0.24 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: [1, 2, 1] };
-  if (label === 'break') return { strongOnly: true, extraWeak: 0.0, dragBias: 0.04 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: [1] };
-  return { strongOnly: false, extraWeak: (dense ? 0.32 : 0.2) * difficultyCfg.weakChance * weakScale, dragBias: 0.14 + difficultyCfg.dragBoost + dragDensityBoost, laneStep: dense ? [1,2,1] : [1,2] };
+  if (label === 'intro') return { strongOnly: false, extraWeak: 0.14 * difficultyCfg.weakChance * weakScale, dragBias: 0.05 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.08, phraseSpan: 2 };
+  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.42 * difficultyCfg.weakChance * weakScale, dragBias: 0.22 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.22, phraseSpan: 3 };
+  if (label === 'break') return { strongOnly: true, extraWeak: 0.0, dragBias: 0.04 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.04, phraseSpan: 1 };
+  return { strongOnly: false, extraWeak: (dense ? 0.28 : 0.18) * difficultyCfg.weakChance * weakScale, dragBias: 0.12 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: dense ? 0.17 : 0.12, phraseSpan: dense ? 3 : 2 };
+}
+
+function stableRand(seed) {
+  let x = Number(seed || 1) >>> 0;
+  x ^= x << 13; x >>>= 0;
+  x ^= x >> 17; x >>>= 0;
+  x ^= x << 5; x >>>= 0;
+  return (x % 10000) / 10000;
+}
+
+function pickPhraseIntent(seg, phraseIndex, t) {
+  const label = seg?.label || 'verse';
+  const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
+  const roll = stableRand(Math.round(Number(t || 0) * 1000) + phraseIndex * 97 + label.length * 53);
+  if (label === 'intro') return roll < 0.7 ? 'settle' : 'drift';
+  if (label === 'chorus') return roll < 0.34 ? 'surge' : (roll < 0.7 ? 'answer' : 'sweep');
+  if (label === 'bridge') return roll < 0.45 ? 'suspend' : 'pivot';
+  if (dense) return roll < 0.5 ? 'answer' : 'sweep';
+  return roll < 0.5 ? 'drift' : 'pivot';
 }
 
 function nearestDownbeatDistance(downbeats, t) {
@@ -535,10 +554,13 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
   }
 
   const notes = [];
-  let lane = 0;
+  let lane = 1;
   let phraseIndex = 0;
   let lastTime = -99;
-  let lastWasDrag = false;
+  let lastType = 'tap';
+  let phraseIntent = 'settle';
+  let phraseAnchor = 1;
+  let phraseLocalBudget = 3;
 
   for (let i = 0; i < beats.length; i++) {
     const t = Number(beats[i].toFixed(3));
@@ -554,28 +576,44 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     const sparse = seg.label === 'intro' || seg.energy === 'low';
     const profile = buildPatternProfile(seg, difficultyCfg, densityCfg);
     const nearDownbeat = nearestDownbeatDistance(downbeats, t) < 0.08;
+    const localRoll = stableRand(i * 131 + Math.round(t * 1000) + phraseIndex * 19);
+
+    if (mod8 === 0 || i === 0) {
+      phraseIntent = pickPhraseIntent(seg, phraseIndex, t);
+      const anchorShift = localRoll < 0.33 ? -1 : (localRoll > 0.66 ? 1 : 0);
+      phraseAnchor = Math.max(0, Math.min(3, lane + anchorShift));
+      phraseLocalBudget = profile.phraseSpan || 2;
+    }
 
     let spawn = false;
     if (isStrong || nearDownbeat) spawn = true;
     else if (!profile.strongOnly && dense && (mod4 === 2 || mod8 === 6)) spawn = true;
-    else if (!profile.strongOnly && !sparse && isPickup && gapPrev < 0.9) spawn = Math.random() < profile.extraWeak;
-    else if (!profile.strongOnly && !sparse && mod8 === 7) spawn = Math.random() < (profile.extraWeak * 0.55);
+    else if (!profile.strongOnly && !sparse && isPickup && gapPrev < 0.9) spawn = localRoll < profile.extraWeak;
+    else if (!profile.strongOnly && !sparse && mod8 === 7) spawn = localRoll < (profile.extraWeak * 0.55);
 
     if (!spawn) continue;
     if (t - lastTime < difficultyCfg.minGap) continue;
 
     let type = 'tap';
     const segDrag = Number(seg.dragRatio || 0.16) + difficultyCfg.dragBoost + Number(densityCfg.dragBoost || 0);
-    const dragWindow = (isStrong || nearDownbeat) && gapNext > 0.35 && gapNext < 1.4;
-    if (!lastWasDrag && dragWindow && (seg.label === 'chorus' ? mod8 === 0 || mod8 === 4 : mod8 === 0) && Math.random() < Math.min(0.52, profile.dragBias + segDrag)) {
-      type = 'drag';
+    const dragWindow = gapNext > 0.35 && gapNext < 1.5;
+    const introGuard = t < 4.8;
+    if (!introGuard && dragWindow) {
+      if (phraseIntent === 'sweep' && localRoll < Math.min(0.66, profile.dragBias + segDrag + 0.1)) type = 'drag';
+      else if (phraseIntent === 'answer' && isStrong && localRoll < Math.min(0.52, profile.dragBias + segDrag)) type = 'drag';
+      else if (phraseIntent === 'suspend' && isStrong && lastType !== 'pulseHold' && localRoll < 0.34) type = 'drag';
     }
+    if (lastType === type && type !== 'tap' && localRoll < 0.58) type = 'tap';
 
-    const laneSeq = profile.laneStep || [1,2];
-    const laneMove = laneSeq[notes.length % laneSeq.length] || 1;
-    if (isStrong || nearDownbeat) lane = (lane + 1) % 4;
-    else if (type === 'drag') lane = (lane + 2) % 4;
-    else lane = (lane + laneMove) % 4;
+    let laneStep = 0;
+    if (phraseIntent === 'sweep') laneStep = localRoll < profile.jumpBias ? (localRoll < 0.5 ? -2 : 2) : (localRoll < 0.5 ? -1 : 1);
+    else if (phraseIntent === 'answer') laneStep = ((notes.length + phraseIndex) % 2 === 0 ? 1 : -1);
+    else if (phraseIntent === 'pivot') laneStep = lane < phraseAnchor ? 1 : (lane > phraseAnchor ? -1 : (localRoll < 0.5 ? -1 : 1));
+    else laneStep = lane < phraseAnchor ? 1 : (lane > phraseAnchor ? -1 : 0);
+
+    if (phraseLocalBudget <= 0 && Math.abs((lane + laneStep) - phraseAnchor) > 1) laneStep = laneStep > 0 ? 1 : -1;
+    lane = Math.max(0, Math.min(3, lane + laneStep));
+    if (Math.abs(lane - phraseAnchor) <= 1) phraseLocalBudget -= 1;
 
     const strength = nearDownbeat ? 1.05 : (isStrong ? 1.0 : (dense ? 0.78 : 0.68));
     notes.push({
@@ -583,13 +621,15 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
       type,
       laneHint: lane,
       phrase: phraseIndex,
+      phraseIntent,
+      phraseAnchor,
       strength: Number(strength.toFixed(2)),
       segmentLabel: seg.label,
       energy: seg.energy
     });
 
     lastTime = t;
-    lastWasDrag = type === 'drag';
+    lastType = type;
     if (mod8 === 7) phraseIndex += 1;
   }
 

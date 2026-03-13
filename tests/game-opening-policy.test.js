@@ -13,21 +13,19 @@ function loadPolicy() {
 }
 
 describe('opening policy', () => {
-  it('limits sustained mechanics during opening window', () => {
+  it('adds preview bias during opening while softening heavy mechanics', () => {
     const p = loadPolicy();
-    const notes = Array.from({ length: 12 }, (_, i) => ({
-      time: 1 + i * 1.2,
-      type: i < 6 ? 'pulseHold' : 'drag',
-      noteType: i < 6 ? 'pulseHold' : 'drag',
-      laneHint: i % 4,
-      segmentLabel: 'verse'
-    }));
-    const out = p.applyOpeningWindowPolicy(notes, { openingSeconds: 12 });
-    const opening = out.filter(n => n.time <= 12);
-    const sustained = opening.filter(n => ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(n.type || n.noteType));
-    const holds = opening.filter(n => (n.type || n.noteType) === 'pulseHold');
-    expect(sustained.length).toBeLessThanOrEqual(3);
-    expect(holds.length).toBeLessThanOrEqual(1);
+    const notes = [
+      { time: 1.2, type: 'pulseHold', noteType: 'pulseHold', laneHint: 0, segmentLabel: 'verse' },
+      { time: 2.1, type: 'ribbon', noteType: 'ribbon', laneHint: 1, segmentLabel: 'chorus' },
+      { time: 4.2, type: 'gate', noteType: 'gate', laneHint: 2, segmentLabel: 'bridge' },
+      { time: 6.8, type: 'drag', noteType: 'drag', laneHint: 3, segmentLabel: 'chorus' }
+    ];
+    const out = p.applyOpeningWindowPolicy(notes, { openingSeconds: 12, openingCalmWindowSec: 2.4, openingHeavyStartSec: 4.8, openingPreviewBoostSec: 1.1 });
+    expect(out[0].spawnLeadBiasSec).toBeGreaterThan(0.5);
+    expect(out[0].type).toBe('drag');
+    expect(['drag', 'flick']).toContain(out[2].type);
+    expect(out[3].type).toBe('drag');
   });
 
   it('enforces global sustained cooldown for mouse playability', () => {

@@ -49,10 +49,13 @@
       let visibleSustained = Number(options.visibleSustainedCount || 0);
       const isSustained = (type) => ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
 
-      while (this.nextIndex < notes.length && Number(notes[this.nextIndex]?.time || 0) <= chartTime + lookaheadSec) {
+      while (this.nextIndex < notes.length) {
         const chartIndex = this.nextIndex;
         const chartNote = notes[chartIndex];
         const hitTime = Number(chartNote?.time || 0);
+        const noteLeadBiasSec = Math.max(0, Number(chartNote?.spawnLeadBiasSec || 0));
+        const noteLookaheadSec = lookaheadSec + noteLeadBiasSec;
+        if (hitTime > chartTime + noteLookaheadSec) break;
         const noteType = chartNote?.type || 'tap';
 
         if (hitTime < chartTime - missGraceSec) {

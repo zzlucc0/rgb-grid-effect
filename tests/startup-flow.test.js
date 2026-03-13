@@ -46,6 +46,15 @@ describe('ChartRuntime startup scheduling', () => {
     expect(spawned.length).toBe(1);
     expect(spawned[0].note.time).toBe(2.1);
   });
+
+  it('honors per-note opening preview bias so calm-window notes can appear earlier', () => {
+    const win = loadBrowserScript('chart-runtime.js');
+    const runtime = new win.ChartRuntime({ spawnLeadTimeMs: 1200 });
+    runtime.load({ notes: [{ time: 2.45, type: 'drag', spawnLeadBiasSec: 1.0 }] }, { spawnLeadTimeMs: 1200 });
+    const spawned = runtime.spawnUntil(0.3, (currentTime, note, index) => ({ currentTime, note, index }), { openingRampSec: 0.2, visibleSustainedCap: 9, visibleSustainedCount: 0 });
+    expect(spawned.length).toBe(1);
+    expect(spawned[0].note.spawnLeadBiasSec).toBe(1.0);
+  });
 });
 
 describe('RunClockController chart-mode behavior', () => {

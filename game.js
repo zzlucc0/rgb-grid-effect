@@ -3076,7 +3076,9 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         spawnedAtWall: performance.now(),
         holdDuration: noteType === 'pulseHold' ? Math.max(0.6, (chartNote.duration || 0.82)) : 0,
         gateWidth: noteType === 'gate' ? this.circleSize * (2.4 + (chartIndex % 3) * 0.2) : null,
-        groupPattern: basePos.pattern
+        groupPattern: basePos.pattern,
+        spawnLeadBiasSec: Number(chartNote.spawnLeadBiasSec || 0),
+        openingCalmWindow: Boolean(chartNote.openingCalmWindow)
     };
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex);

@@ -11,21 +11,72 @@
     return ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
   }
 
-  function applyOpeningWindowPolicy(notes, options = {}) {
+  function stableUnit(note, salt = 0) {
+    const t = Math.round(Number(note?.time || 0) * 1000);
+    const lane = Math.round(Number(note?.laneHint || 0));
+    const phrase = Math.round(Number(note?.phrase || note?.groupIndex || 0));
+    let x = (t + 101 * (lane + 3) + 271 * (phrase + 7) + 907 * (salt + 11)) >>> 0;
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17; x >>>= 0;
+    x ^= x << 5; x >>>= 0;
+    return (x % 10000) / 10000;
+  }
+
+  function openingPressureProfile(timeSec, options = {}) {
     const openingSeconds = Number(options.openingSeconds || 12);
+    const calmWindowSec = Number(options.openingCalmWindowSec || 2.4);
+    const heavyStartSec = Number(options.openingHeavyStartSec || 4.8);
+    const previewBoostSec = Number(options.openingPreviewBoostSec || 0.9);
+    const normalized = Math.max(0, Math.min(1, Number(timeSec || 0) / Math.max(0.001, openingSeconds)));
+    return {
+      inOpening: Number(timeSec || 0) <= openingSeconds,
+      inCalmWindow: Number(timeSec || 0) <= calmWindowSec,
+      beforeHeavyStart: Number(timeSec || 0) <= heavyStartSec,
+      previewBoostSec: previewBoostSec * (1.1 - normalized * 0.55),
+      localDensityCap: Number(timeSec || 0) <= calmWindowSec ? 2 : (Number(timeSec || 0) <= heavyStartSec ? 3 : 4)
+    };
+  }
+
+  function applyOpeningWindowPolicy(notes, options = {}) {
     const seq = [...(notes || [])].sort((a,b)=>Number(a.time||0)-Number(b.time||0));
+    const calmWindowSec = Number(options.openingCalmWindowSec || 2.4);
+    const heavyStartSec = Number(options.openingHeavyStartSec || 4.8);
     let sustainedUsed = 0;
     let holdUsed = 0;
-    for (const note of seq) {
-      if (Number(note.time || 0) > openingSeconds) break;
+      for (let i = 0; i < seq.length; i++) {
+      const note = seq[i];
+      const t = Number(note.time || 0);
+      const profile = openingPressureProfile(t, options);
+      note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), profile.inOpening ? profile.previewBoostSec : 0);
+      note.openingCalmWindow = profile.inCalmWindow;
+      note.openingSequence = i;
       const type = note.type || note.noteType || 'tap';
-      if (!isSustainedType(type)) continue;
-      sustainedUsed += 1;
-      if (type === 'pulseHold') holdUsed += 1;
-      if (holdUsed > 1 || sustainedUsed > 3) {
+      if (!profile.inOpening) continue;
+      const localWindow = seq.filter(other => Math.abs(Number(other.time || 0) - t) <= 1.35).length;
+      if (profile.inCalmWindow && localWindow > profile.localDensityCap && (type !== 'tap' && type !== 'flick')) {
         note.type = 'tap';
         note.noteType = 'tap';
         stripComplexPath(note);
+        continue;
+      }
+      if (t <= heavyStartSec && ['ribbon', 'pulseHold', 'gate'].includes(type)) {
+        note.type = type === 'gate' ? 'flick' : 'drag';
+        note.noteType = note.type;
+        if (note.noteType !== 'drag') stripComplexPath(note);
+      }
+      const effectiveType = note.type || note.noteType || type;
+      if (!isSustainedType(effectiveType)) continue;
+      sustainedUsed += 1;
+      if (effectiveType === 'pulseHold') holdUsed += 1;
+      if (t <= calmWindowSec && effectiveType !== 'drag') {
+        note.type = 'drag';
+        note.noteType = 'drag';
+        continue;
+      }
+      if (holdUsed > 1 || sustainedUsed > (t <= heavyStartSec ? 3 : 4)) {
+        note.type = t <= heavyStartSec ? 'drag' : 'tap';
+        note.noteType = note.type;
+        if (note.noteType === 'tap') stripComplexPath(note);
       }
     }
     return seq;
@@ -63,64 +114,91 @@
     return seq;
   }
 
-  function assignMechanics(notes) {
+  function assignMechanics(notes, options = {}) {
     if (!Array.isArray(notes) || !notes.length) return notes || [];
-    const quotaPlan = {
-      full: { ribbon: 11, cut: 8, flick: 8, gate: 6, pulseHold: 12, drag: 18 },
-      chorus: { ribbon: 4, cut: 2, flick: 1, gate: 1 },
-      verse: { pulseHold: 3, flick: 1, drag: 4, gate: 0 },
-      bridge: { gate: 1, pulseHold: 2, flick: 1, cut: 1 },
-      intro: { flick: 0, drag: 2 }
+    const seq = [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const windowCounts = [];
+    const familyOf = (type) => {
+      if (['drag', 'ribbon', 'pulseHold'].includes(type)) return 'sustain';
+      if (['gate', 'cut', 'flick'].includes(type)) return 'accent';
+      return 'tap';
     };
-    const replaceable = new Set(['tap', 'drag']);
-    const countType = (entries, type) => entries.filter(entry => (entry.note.type || entry.note.noteType) === type).length;
-    const evenlyPromote = (entries, targetType, target, allow) => {
-      const current = countType(entries, targetType);
-      if (current >= target) return;
-      const candidates = entries.filter(entry => replaceable.has(entry.note.type || entry.note.noteType || 'tap') && (!allow || allow(entry.note, entry.idx)));
-      if (!candidates.length) return;
-      const need = target - current;
-      const step = Math.max(1, Math.floor(candidates.length / need));
-      let cursor = Math.floor(step / 2);
-      let applied = 0;
-      const used = new Set();
-      while (applied < need && used.size < candidates.length) {
-        const idx = Math.min(candidates.length - 1, cursor);
-        let pick = idx;
-        while (used.has(pick) && pick < candidates.length - 1) pick += 1;
-        if (used.has(pick)) break;
-        used.add(pick);
-        candidates[pick].note.type = targetType;
-        applied += 1;
-        cursor += step;
+    const segmentWeights = (segment = 'verse') => {
+      if (segment === 'chorus') return { tap: 0.18, drag: 0.24, ribbon: 0.18, pulseHold: 0.12, flick: 0.11, cut: 0.1, gate: 0.07 };
+      if (segment === 'bridge') return { tap: 0.24, drag: 0.17, ribbon: 0.08, pulseHold: 0.2, flick: 0.1, cut: 0.06, gate: 0.15 };
+      if (segment === 'intro') return { tap: 0.52, drag: 0.26, ribbon: 0.02, pulseHold: 0.07, flick: 0.08, cut: 0.03, gate: 0.02 };
+      return { tap: 0.3, drag: 0.24, ribbon: 0.08, pulseHold: 0.16, flick: 0.1, cut: 0.06, gate: 0.06 };
+    };
+    const candidatesFor = (segment = 'verse', t = 0) => {
+      const p = openingPressureProfile(t, options);
+      if (p.inCalmWindow) return ['tap', 'drag', 'flick'];
+      if (p.beforeHeavyStart) return segment === 'chorus' ? ['tap', 'drag', 'flick', 'cut'] : ['tap', 'drag', 'flick', 'pulseHold'];
+      if (segment === 'chorus') return ['tap', 'drag', 'ribbon', 'flick', 'cut', 'gate'];
+      if (segment === 'bridge') return ['tap', 'drag', 'pulseHold', 'gate', 'flick'];
+      return ['tap', 'drag', 'pulseHold', 'flick', 'cut'];
+    };
+    const recentFamilyRun = (idx, fam) => {
+      let run = 0;
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        const prevType = seq[i].type || seq[i].noteType || 'tap';
+        if (familyOf(prevType) !== fam) break;
+        run += 1;
       }
+      return run;
     };
-    const applyPlan = (entries, plan, allowMap = {}) => {
-      for (const [type, target] of Object.entries(plan || {})) {
-        evenlyPromote(entries, type, target, allowMap[type]);
+    const recentTypeRun = (idx, type) => {
+      let run = 0;
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        const prevType = seq[i].type || seq[i].noteType || 'tap';
+        if (prevType !== type) break;
+        run += 1;
       }
+      return run;
     };
-    const allEntries = notes.map((note, idx) => ({ note, idx }));
-    const latterHalf = allEntries.filter(entry => entry.idx >= Math.floor(allEntries.length * 0.5));
-    applyPlan(allEntries, quotaPlan.full, {
-      ribbon: (note) => (note.segmentLabel || 'verse') === 'chorus',
-      cut: (note) => ['chorus', 'bridge'].includes(note.segmentLabel || 'verse'),
-      gate: (note) => ['chorus', 'bridge', 'verse'].includes(note.segmentLabel || 'verse'),
-      pulseHold: (note) => (note.segmentLabel || 'verse') !== 'chorus',
-      flick: () => true,
-      drag: () => true
-    });
-    const bySegment = new Map();
-    notes.forEach((note, idx) => {
+
+    for (let i = 0; i < seq.length; i += 1) {
+      const note = seq[i];
+      const t = Number(note.time || 0);
       const seg = note.segmentLabel || 'verse';
-      if (!bySegment.has(seg)) bySegment.set(seg, []);
-      bySegment.get(seg).push({ note, idx });
-    });
-    for (const [seg, entries] of bySegment.entries()) {
-      applyPlan(entries, quotaPlan[seg] || quotaPlan.verse);
+      const profile = openingPressureProfile(t, options);
+      const candidates = candidatesFor(seg, t);
+      const weights = segmentWeights(seg);
+      let bestType = 'tap';
+      let bestScore = -Infinity;
+      const recent = seq.slice(Math.max(0, i - 6), i);
+      const recentTypes = recent.map(n => n.type || n.noteType || 'tap');
+      const counts = recentTypes.reduce((acc, type) => { acc[type] = (acc[type] || 0) + 1; return acc; }, {});
+
+      for (const type of candidates) {
+        let score = (weights[type] || 0.05) * 10;
+        const fam = familyOf(type);
+        const familyRun = recentFamilyRun(i, fam);
+        const typeRun = recentTypeRun(i, type);
+        score -= familyRun >= 2 ? 3.4 + familyRun * 1.25 : 0;
+        score -= typeRun >= 1 ? 1.6 * typeRun : 0;
+        score -= (counts[type] || 0) * 0.95;
+        if (profile.inCalmWindow && fam === 'sustain' && type !== 'drag') score -= 4.2;
+        if (profile.beforeHeavyStart && ['ribbon', 'gate', 'pulseHold'].includes(type)) score -= 2.8;
+        if (seg === 'chorus' && ['ribbon', 'cut', 'drag'].includes(type)) score += 1.15;
+        if (seg === 'bridge' && ['pulseHold', 'gate'].includes(type)) score += 1.05;
+        if (seg === 'intro' && type === 'tap') score += 1.25;
+        const phrasePos = i % 6;
+        if (phrasePos === 0 && ['drag', 'pulseHold'].includes(type)) score += 0.8;
+        if (phrasePos >= 4 && ['cut', 'flick', 'gate'].includes(type)) score += 0.65;
+        if (i >= Math.floor(seq.length * 0.55) && type !== 'tap') score += 0.45;
+        score += stableUnit(note, i + type.length) * 1.35;
+        if (score > bestScore) {
+          bestScore = score;
+          bestType = type;
+        }
+      }
+
+      note.type = bestType;
+      note.noteType = bestType;
+      windowCounts.push(bestType);
     }
-    applyPlan(latterHalf, { flick: 2, pulseHold: 5, gate: 1, drag: 6, ribbon: 4, cut: 2 });
-    return notes;
+
+    return seq;
   }
 
   function spreadQuotaPromotions(notes) {
