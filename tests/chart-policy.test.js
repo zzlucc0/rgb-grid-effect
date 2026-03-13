@@ -147,4 +147,26 @@ describe('chart policy quotas', () => {
     expect(audit.spatial.maxLaneJump).toBeGreaterThan(0);
     expect(audit.geometry.geometryCount).toBe(2);
   });
+
+  it('exposes layered A-F pipeline helpers for final mechanic decisions', () => {
+    const policy = loadPolicy();
+    const notes = [
+      { time: 1, type: 'tap', laneHint: 0, segmentLabel: 'intro' },
+      { time: 2, type: 'tap', laneHint: 1, segmentLabel: 'verse' },
+      { time: 3, type: 'tap', laneHint: 2, segmentLabel: 'chorus' }
+    ];
+    const a = policy.layerABaseChartProposal(notes);
+    const b = policy.layerBMechanicPlanner(a, {});
+    const c = policy.layerCOpeningGuard(b, {});
+    const d = policy.layerDPlayabilityGuard(c, { circleSize: 36 });
+    const e = policy.layerEGeometryPrep(d, {});
+    const f = policy.layerFRuntimeAudit(e, {});
+    expect(a.length).toBe(3);
+    expect(b.length).toBe(3);
+    expect(c.length).toBe(3);
+    expect(d.length).toBe(3);
+    expect(e.length).toBe(3);
+    expect(f.notes.length).toBe(3);
+    expect(f.audit.mechanic.tapRatio).toBeGreaterThanOrEqual(0);
+  });
 });

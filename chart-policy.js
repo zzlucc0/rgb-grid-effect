@@ -244,8 +244,40 @@
     return seq;
   }
 
+  function layerABaseChartProposal(notes) {
+    return [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => ({ ...note }));
+  }
+
+  function layerBMechanicPlanner(notes, options = {}) {
+    return assignMechanics(notes, options);
+  }
+
+  function layerCOpeningGuard(notes, options = {}) {
+    let seq = applyMousePlayabilityFilter(notes, options);
+    seq = applyOpeningWindowPolicy(seq, options);
+    return seq;
+  }
+
+  function layerDPlayabilityGuard(notes, options = {}) {
+    let seq = enforceChartPlayability(notes);
+    seq = resolvePathConflicts(seq, Number(options.circleSize || 36));
+    return seq;
+  }
+
+  function layerEGeometryPrep(notes, options = {}) {
+    return assignKeyboardCheckpoints(notes, options);
+  }
+
+  function layerFRuntimeAudit(notes, options = {}) {
+    const seq = enforceDensityFloor(notes, options);
+    return {
+      notes: seq,
+      audit: auditChartShape(seq)
+    };
+  }
+
   function spreadQuotaPromotions(notes) {
-    return assignMechanics(notes);
+    return layerBMechanicPlanner(notes);
   }
 
   function downgradeType(type) {
@@ -596,18 +628,16 @@
   }
 
   function finalizePlayableChartPipeline(notes, options = {}) {
-    const circleSize = Number(options.circleSize || 36);
-    let seq = assignMechanics(notes || []);
-    seq = applyMousePlayabilityFilter(seq, options);
-    seq = applyOpeningWindowPolicy(seq, options);
-    seq = enforceChartPlayability(seq);
-    seq = resolvePathConflicts(seq, circleSize);
-    seq = enforceDensityFloor(seq, options);
-    seq = assignKeyboardCheckpoints(seq, options);
-    return [...seq].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    let seq = layerABaseChartProposal(notes || []);
+    seq = layerBMechanicPlanner(seq, options);
+    seq = layerCOpeningGuard(seq, options);
+    seq = layerDPlayabilityGuard(seq, options);
+    seq = layerEGeometryPrep(seq, options);
+    const result = layerFRuntimeAudit(seq, options);
+    return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, downgradeType, isSustainedType };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, layerABaseChartProposal, layerBMechanicPlanner, layerCOpeningGuard, layerDPlayabilityGuard, layerEGeometryPrep, layerFRuntimeAudit, downgradeType, isSustainedType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
