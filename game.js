@@ -3020,7 +3020,11 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     const laneIndex = Number.isFinite(chartNote.laneHint) ? Math.max(0, Math.min(laneCount - 1, chartNote.laneHint)) : (chartIndex % laneCount);
     const phrase = Number.isFinite(chartNote.phrase) ? chartNote.phrase : Math.floor(chartIndex / 6);
     const groupSlot = Number.isFinite(chartNote.groupSlot) ? chartNote.groupSlot : (chartIndex % 4);
-    const candidateShifts = [0, 1, -1, 2, -2];
+    const previousActive = (this.notes || []).filter(n => !n.hit && !n.completed).slice(-4);
+    const previousNote = previousActive[previousActive.length - 1] || null;
+    const previousLane = previousNote && Number.isFinite(previousNote.laneHint) ? previousNote.laneHint : null;
+    const anchorLane = Number.isFinite(chartNote.phraseAnchor) ? chartNote.phraseAnchor : laneIndex;
+    const candidateShifts = previousLane == null ? [0, 1, -1, 2, -2] : [0, previousLane - laneIndex, 1, -1, 2, -2];
     let basePos = null;
     let chosenLane = laneIndex;
     for (const shift of candidateShifts) {
@@ -3031,7 +3035,10 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             chartIndex,
             phrase,
             groupSlot,
-            segmentLabel: chartNote.segmentLabel || 'verse'
+            segmentLabel: chartNote.segmentLabel || 'verse',
+            phraseAnchor: anchorLane,
+            previousLane,
+            phraseIntent: chartNote.phraseIntent || null
         });
         const probe = { x: pos.x, y: pos.y, type: chartNote.type || this.pickChartNoteType(chartNote, chartIndex, groupSlot) };
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
@@ -3046,7 +3053,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         }
     }
     if (!basePos) {
-        basePos = this.resolveGroupPatternPosition({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse' });
+        basePos = this.resolveGroupPatternPosition({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse', phraseAnchor: anchorLane, previousLane, phraseIntent: chartNote.phraseIntent || null });
     }
     const x = basePos.x;
     const y = basePos.y;
@@ -3078,23 +3085,28 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         gateWidth: noteType === 'gate' ? this.circleSize * (2.4 + (chartIndex % 3) * 0.2) : null,
         groupPattern: basePos.pattern,
         spawnLeadBiasSec: Number(chartNote.spawnLeadBiasSec || 0),
-        openingCalmWindow: Boolean(chartNote.openingCalmWindow)
+        openingCalmWindow: Boolean(chartNote.openingCalmWindow),
+        phraseIntent: chartNote.phraseIntent || null,
+        phraseAnchor: anchorLane,
+        laneFloat: Number(basePos.laneFloat || chosenLane)
     };
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex);
     this.applyGroupMechanics([note], { pattern: basePos.pattern, groupIndex: phrase, segmentLabel: note.segmentLabel || 'verse' });
 
     if (note.isDrag) {
-        const dragLanes = [chosenLane - 1, chosenLane + 1, chosenLane + (chartIndex % 2 === 0 ? 1 : -1), chosenLane];
+        const templateBias = note.pathTemplate === 'starTrace' ? 2 : (note.pathTemplate === 'diamondLoop' ? 1 : 0);
+        const dragLanes = [chosenLane + templateBias, chosenLane - templateBias, chosenLane + 1, chosenLane - 1, chosenLane];
         let endLane = chosenLane;
         for (const candidate of dragLanes) {
-            if (candidate >= 0 && candidate < laneCount && candidate !== laneIndex) {
+            if (candidate >= 0 && candidate < laneCount && Math.abs(candidate - chosenLane) <= 2 && candidate !== laneIndex) {
                 endLane = candidate;
                 break;
             }
         }
+        const localTravel = note.openingCalmWindow ? 1.1 : (note.pathTemplate === 'starTrace' ? 1.9 : (note.pathTemplate === 'diamondLoop' ? 1.55 : 1.35));
         note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * 1.8)));
+        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
         for (const existing of active) {
             const tooCloseEnd = Math.hypot((existing.x || 0) - note.endX, (existing.y || 0) - note.endY) < this.circleSize * 2.2;
@@ -3392,11 +3404,19 @@ RhythmGame.prototype.pickLiveNoteType = function (seq, groupIndex, preferDrag) {
     return preferDrag ? 'drag' : 'tap';
 };
 
-RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel }) {
+RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel, phraseAnchor = null, previousLane = null, phraseIntent = null }) {
     const laneWidth = this.safeArea.width / laneCount;
-    const baseX = this.safeArea.x + laneWidth * (laneIndex + 0.5);
+    const anchorLane = Number.isFinite(phraseAnchor) ? Math.max(0, Math.min(laneCount - 1, phraseAnchor)) : laneIndex;
+    const localizedLane = Number.isFinite(previousLane)
+        ? Math.max(0, Math.min(laneCount - 1, previousLane + Math.max(-1, Math.min(1, laneIndex - previousLane))))
+        : laneIndex;
+    const blendedLane = Number.isFinite(previousLane)
+        ? ((anchorLane * 0.3) + (localizedLane * 0.7))
+        : ((anchorLane * 0.45) + (laneIndex * 0.55));
+    const baseX = this.safeArea.x + laneWidth * (blendedLane + 0.5);
     const rowBand = segmentLabel === 'chorus' ? 0.34 : (segmentLabel === 'verse' ? 0.52 : 0.42);
-    const baseY = this.safeArea.y + this.safeArea.height * rowBand;
+    const intentYOffset = phraseIntent === 'sweep' ? -0.04 : (phraseIntent === 'pivot' ? 0.03 : 0);
+    const baseY = this.safeArea.y + this.safeArea.height * Math.max(0.24, Math.min(0.72, rowBand + intentYOffset));
     const pattern = this.pickGroupPattern(phrase, segmentLabel);
     const offsets = {
         fan: [
@@ -3413,10 +3433,12 @@ RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCo
         ]
     };
     const offset = (offsets[pattern] || offsets.fan)[Math.abs(groupSlot || 0) % 4];
-    const span = this.circleSize * (segmentLabel === 'chorus' ? 1.55 : 1.2);
+    const compactness = Number.isFinite(previousLane) ? 0.82 : 1;
+    const chorusBoost = segmentLabel === 'chorus' ? 1.18 : 1;
+    const span = this.circleSize * (segmentLabel === 'chorus' ? 1.35 : 1.05) * compactness * chorusBoost;
     const x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, baseX + offset.x * span));
     const y = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, baseY + offset.y * span));
-    return { x, y, pattern };
+    return { x, y, pattern, laneFloat: blendedLane, anchorLane };
 };
 
 RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
@@ -3437,7 +3459,13 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note) {
         note.traceStrictness = 0.2;
     }
     if ((note.noteType === 'drag' || note.noteType === 'ribbon') && window.PathTemplates?.chooseTemplate) {
-        note.pathTemplate = window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal');
+        const activeTemplates = (this.notes || []).filter(n => !n.hit && !n.completed).map(n => n.pathTemplate).filter(Boolean).slice(-4);
+        const geometrySeenCount = (this.notes || []).filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate)).length;
+        const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < 2;
+        note.pathTemplate = window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal', {
+            recentTemplates: activeTemplates,
+            forceGeometry: shouldForceGeometry
+        });
     }
     if (window.ChartPolicy?.assignKeyboardCheckpoints) {
         window.ChartPolicy.assignKeyboardCheckpoints([note, ...(this.notes || []).filter(n => !n.hit && !n.completed)], {

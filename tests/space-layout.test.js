@@ -12,6 +12,16 @@ function loadPolicy() {
   return context.window.ChartPolicy;
 }
 
+function loadPathTemplates() {
+  const code = fs.readFileSync(new URL('../path-templates.js', import.meta.url), 'utf8');
+  const context = { window: {}, console };
+  context.global = context;
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(code, context, { filename: 'path-templates.js' });
+  return context.window.PathTemplates;
+}
+
 describe('space layout policy', () => {
   it('exports tutorial labels', () => {
     const p = loadPolicy();
@@ -47,5 +57,22 @@ describe('space layout policy', () => {
     const resolved = p.resolvePathConflicts(notes, 36);
     expect(resolved[0].type).toBe('ribbon');
     expect(['drag', 'tap']).toContain(resolved[1].type);
+  });
+
+  it('prefers non-orbit geometry when surfacing guarantee is requested', () => {
+    const templates = loadPathTemplates();
+    const chosen = templates.chooseTemplate({ noteNumber: 11, segmentLabel: 'chorus', phraseIntent: 'sweep' }, 'normal', {
+      recentTemplates: ['orbit', 'orbit'],
+      forceGeometry: true
+    });
+    expect(['diamondLoop', 'starTrace']).toContain(chosen);
+  });
+
+  it('avoids repeating the same geometry template when recent history is saturated', () => {
+    const templates = loadPathTemplates();
+    const chosen = templates.chooseTemplate({ noteNumber: 18, segmentLabel: 'chorus', phraseIntent: 'pivot' }, 'hard', {
+      recentTemplates: ['starTrace', 'starTrace', 'diamondLoop']
+    });
+    expect(chosen).not.toBe('starTrace');
   });
 });

@@ -45,18 +45,33 @@
     };
   }
 
-  function chooseTemplate(note, difficulty = 'normal') {
+  function chooseTemplate(note, difficulty = 'normal', context = {}) {
     const seq = Math.abs(Number(note?.noteNumber || 0));
-    if (difficulty === 'hard') {
-      if (seq % 5 === 0) return 'starTrace';
-      if (seq % 2 === 0) return 'diamondLoop';
-      return 'orbit';
-    }
-    if (difficulty === 'normal') {
-      if (seq % 3 === 0) return 'diamondLoop';
-      return 'orbit';
-    }
-    return 'orbit';
+    const segment = note?.segmentLabel || 'verse';
+    const intent = note?.phraseIntent || 'drift';
+    const recentTemplates = Array.isArray(context?.recentTemplates) ? context.recentTemplates : [];
+    const countRecent = (name) => recentTemplates.filter(v => v === name).length;
+    const forceGeometry = Boolean(context?.forceGeometry);
+    const inOpening = Boolean(note?.openingCalmWindow) || Number(note?.time || 0) < 6;
+
+    const score = (name) => {
+      let s = 0;
+      if (name === 'orbit') s += difficulty === 'easy' ? 4 : 1.2;
+      if (name === 'diamondLoop') s += segment === 'chorus' ? 3.4 : 2.2;
+      if (name === 'starTrace') s += segment === 'chorus' ? 3.8 : (segment === 'bridge' ? 2.4 : 1.1);
+      if (intent === 'sweep' && name === 'starTrace') s += 1.5;
+      if (intent === 'pivot' && name === 'diamondLoop') s += 1.2;
+      if (inOpening && name !== 'orbit') s -= 0.8;
+      s -= countRecent(name) * 2.1;
+      if (forceGeometry && name !== 'orbit') s += 4.8;
+      if (difficulty === 'hard' && name !== 'orbit') s += 0.9;
+      if (difficulty === 'easy' && name === 'starTrace') s -= 2.2;
+      s += ((seq * (name.length + 3)) % 7) * 0.07;
+      return s;
+    };
+
+    const options = ['orbit', 'diamondLoop', 'starTrace'];
+    return options.sort((a, b) => score(b) - score(a))[0] || 'orbit';
   }
 
   function samplePathPoints(note, steps = 100) {
