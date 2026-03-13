@@ -119,4 +119,17 @@ describe('chart policy quotas', () => {
     expect(Boolean(out[3].keyboardCheckpoint)).toBe(true);
     expect(Boolean(out[4].keyboardCheckpoint)).toBe(false);
   });
+
+  it('combines mechanic, spatial, and geometry audits into a single chart-shape summary', () => {
+    const policy = loadPolicy();
+    const audit = policy.auditChartShape([
+      { time: 1, type: 'tap', laneHint: 1 },
+      { time: 2, type: 'drag', laneHint: 3, noteType: 'drag', pathTemplate: 'diamondLoop', extraPath: { points: [{ x: 0, y: 0 }] } },
+      { time: 3, type: 'ribbon', laneHint: 1, noteType: 'ribbon', pathTemplate: 'starTrace', keyboardCheckpoint: true },
+      { time: 4, type: 'tap', laneHint: 2 }
+    ]);
+    expect(audit.mechanic.tapRatio).toBeGreaterThanOrEqual(0);
+    expect(audit.spatial.maxLaneJump).toBeGreaterThan(0);
+    expect(audit.geometry.geometryCount).toBe(2);
+  });
 });

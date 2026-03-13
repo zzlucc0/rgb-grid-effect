@@ -411,6 +411,59 @@
     };
   }
 
+  function spatialFlowStats(notes) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    if (seq.length <= 1) {
+      return { transitions: 0, avgLaneJump: 0, maxLaneJump: 0, largeJumpCount: 0, directionReversalCount: 0, centerBiasRatio: 0 };
+    }
+    let totalJump = 0;
+    let maxLaneJump = 0;
+    let largeJumpCount = 0;
+    let directionReversalCount = 0;
+    let centerBiasHits = 0;
+    let prevDelta = 0;
+    for (let i = 1; i < seq.length; i += 1) {
+      const prevLane = Number.isFinite(seq[i - 1].laneFloat) ? Number(seq[i - 1].laneFloat) : Number(seq[i - 1].laneHint || 0);
+      const lane = Number.isFinite(seq[i].laneFloat) ? Number(seq[i].laneFloat) : Number(seq[i].laneHint || 0);
+      const delta = lane - prevLane;
+      const jump = Math.abs(delta);
+      totalJump += jump;
+      maxLaneJump = Math.max(maxLaneJump, jump);
+      if (jump >= 1.5) largeJumpCount += 1;
+      if (Math.abs(lane - 1.5) <= 0.75) centerBiasHits += 1;
+      if (i > 1 && Math.abs(delta) >= 0.4 && Math.abs(prevDelta) >= 0.4 && Math.sign(delta) !== Math.sign(prevDelta)) directionReversalCount += 1;
+      if (Math.abs(delta) >= 0.4) prevDelta = delta;
+    }
+    return {
+      transitions: seq.length - 1,
+      avgLaneJump: totalJump / Math.max(1, seq.length - 1),
+      maxLaneJump,
+      largeJumpCount,
+      directionReversalCount,
+      centerBiasRatio: centerBiasHits / Math.max(1, seq.length - 1)
+    };
+  }
+
+  function geometryTemplateStats(notes) {
+    const seq = [...(notes || [])];
+    const eligible = seq.filter(n => ['drag', 'ribbon'].includes(n.type || n.noteType || 'tap'));
+    const templates = eligible.map(n => n.pathTemplate).filter(Boolean);
+    const geometry = templates.filter(name => name !== 'orbit');
+    const diamondLoopCount = geometry.filter(name => name === 'diamondLoop').length;
+    const starTraceCount = geometry.filter(name => name === 'starTrace').length;
+    const runtimeGeometryVisible = eligible.filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate) && (n.extraPath?.points?.length || n.keyboardCheckpoint)).length;
+    return {
+      eligibleCount: eligible.length,
+      templatedCount: templates.length,
+      geometryCount: geometry.length,
+      orbitCount: templates.filter(name => name === 'orbit').length,
+      diamondLoopCount,
+      starTraceCount,
+      geometryRatio: geometry.length / Math.max(1, eligible.length),
+      runtimeVisibleRatio: runtimeGeometryVisible / Math.max(1, geometry.length)
+    };
+  }
+
   function enforceDensityFloor(notes, options = {}) {
     const minFirst30 = Number(options.minFirst30 || 12);
     const minPer10 = Number(options.minPer10 || 3);
@@ -491,6 +544,14 @@
     return kept;
   }
 
+  function auditChartShape(notes) {
+    return {
+      mechanic: mechanicMixStats(notes),
+      spatial: spatialFlowStats(notes),
+      geometry: geometryTemplateStats(notes)
+    };
+  }
+
   function finalizePlayableChartPipeline(notes, options = {}) {
     const circleSize = Number(options.circleSize || 36);
     let seq = assignMechanics(notes || []);
@@ -503,7 +564,7 @@
     return [...seq].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, downgradeType, isSustainedType };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, downgradeType, isSustainedType };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

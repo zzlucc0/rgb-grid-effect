@@ -75,4 +75,29 @@ describe('space layout policy', () => {
     });
     expect(chosen).not.toBe('starTrace');
   });
+
+  it('reports spatial jump and center-bias metrics', () => {
+    const p = loadPolicy();
+    const stats = p.spatialFlowStats([
+      { time: 1, laneHint: 0 },
+      { time: 2, laneHint: 3 },
+      { time: 3, laneHint: 1 },
+      { time: 4, laneHint: 2 }
+    ]);
+    expect(stats.largeJumpCount).toBeGreaterThan(0);
+    expect(stats.maxLaneJump).toBeGreaterThanOrEqual(2);
+    expect(stats.directionReversalCount).toBeGreaterThan(0);
+  });
+
+  it('reports geometry surfacing ratios for non-orbit templates', () => {
+    const p = loadPolicy();
+    const stats = p.geometryTemplateStats([
+      { type: 'drag', noteType: 'drag', pathTemplate: 'orbit' },
+      { type: 'drag', noteType: 'drag', pathTemplate: 'diamondLoop', extraPath: { points: [{x:0,y:0}] } },
+      { type: 'ribbon', noteType: 'ribbon', pathTemplate: 'starTrace', keyboardCheckpoint: true }
+    ]);
+    expect(stats.geometryCount).toBe(2);
+    expect(stats.geometryRatio).toBeGreaterThan(0.5);
+    expect(stats.runtimeVisibleRatio).toBe(1);
+  });
 });
