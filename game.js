@@ -3369,7 +3369,12 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         });
         const probe = { x: pos.x, y: pos.y, type: chartNote.type || 'tap' };
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
+        const minNoteSpacing = this.circleSize * 2.6;
         const collides = active.some(existing => {
+            // Enforce hard minimum center-to-center distance regardless of footprint logic
+            if (Math.hypot(probe.x - (existing.x || 0), probe.y - (existing.y || 0)) < minNoteSpacing) return true;
+            // Also guard against new note spawning on top of an existing drag endpoint
+            if (existing.endX !== undefined && Math.hypot(probe.x - (existing.endX || 0), probe.y - (existing.endY || 0)) < minNoteSpacing) return true;
             if (!window.ChartPolicy?.makeFootprint || !window.ChartPolicy?.footprintsOverlap) return false;
             return window.ChartPolicy.footprintsOverlap(window.ChartPolicy.makeFootprint(probe, this.circleSize), window.ChartPolicy.makeFootprint(existing, this.circleSize));
         });
@@ -3451,10 +3456,17 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
         note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
+        const endMinDist = this.circleSize * 2.6;
         for (const existing of active) {
-            const tooCloseEnd = Math.hypot((existing.x || 0) - note.endX, (existing.y || 0) - note.endY) < this.circleSize * 2.2;
-            if (tooCloseEnd) {
-                note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.endY + this.circleSize * 1.4));
+            const tooCloseToStart = Math.hypot((existing.x || 0) - note.endX, (existing.y || 0) - note.endY) < endMinDist;
+            const tooCloseToEnd = existing.endX !== undefined &&
+                Math.hypot((existing.endX || 0) - note.endX, (existing.endY || 0) - note.endY) < endMinDist;
+            if (tooCloseToStart || tooCloseToEnd) {
+                const nudgeDir = (chartIndex % 2 === 0) ? 1 : -1;
+                note.endY = Math.max(this.safeArea.y + this.circleSize,
+                    Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.endY + nudgeDir * this.circleSize * 1.8));
+                note.endX = Math.max(this.safeArea.x + this.circleSize,
+                    Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.endX + nudgeDir * this.circleSize * 0.6));
             }
         }
         const dx = note.endX - note.x;
@@ -3685,8 +3697,11 @@ RhythmGame.prototype.registerGroupCompletion = function (groupKey, note) {
 RhythmGame.prototype.pickGroupPattern = function (phrase, segmentLabel) {
     const chorusPatterns = ['burst', 'diamond', 'fan', 'ladder'];
     const versePatterns = ['ladder', 'fan', 'diamond', 'burst'];
-    const pool = segmentLabel === 'chorus' ? chorusPatterns : versePatterns;
-    return pool[Math.abs(Number(phrase || 0)) % pool.length];
+    const pool = (segmentLabel === 'chorus' || segmentLabel === 'bridge') ? chorusPatterns : versePatterns;
+    // Golden-ratio hashing: breaks the mod-4 period, gives period ~200+ before repeating
+    const p = Math.abs(Number(phrase || 0));
+    const mixed = Math.floor(((p * 0.6180339887) % 1) * pool.length);
+    return pool[mixed];
 };
 
 RhythmGame.prototype.applyMechanicQuotas = function (notes) {
@@ -3754,7 +3769,9 @@ RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCo
     const baseX = this.safeArea.x + laneWidth * (blendedLane + 0.5);
     const rowBand = segmentLabel === 'chorus' ? 0.34 : (segmentLabel === 'verse' ? 0.52 : 0.42);
     const intentYOffset = phraseIntent === 'sweep' ? -0.04 : (phraseIntent === 'pivot' ? 0.03 : 0);
-    const baseY = this.safeArea.y + this.safeArea.height * Math.max(0.24, Math.min(0.72, rowBand + intentYOffset));
+    // Per-phrase golden-ratio Y jitter: avoids all notes piling in the same horizontal row
+    const phiJitter = (((Math.abs(Number(phrase || 0)) * 0.6180339887) % 1) - 0.5) * 0.22;
+    const baseY = this.safeArea.y + this.safeArea.height * Math.max(0.20, Math.min(0.78, rowBand + intentYOffset + phiJitter));
     const pattern = this.pickGroupPattern(phrase, segmentLabel);
     const offsets = {
         fan: [

@@ -639,7 +639,19 @@
       else if (barIndex < 4 && energyLevel === 'heavy') energyLevel = 'medium';
       else if (barIndex < openingSafeBars && energyLevel === 'climax') energyLevel = 'heavy';
       if (prevPlan && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax') && (energyLevel === 'heavy' || energyLevel === 'climax')) energyLevel = 'medium';
-      if (prevPlan && prevPlan.energyLevel !== 'rest' && energyLevel !== 'rest' && barIndex % Math.max(2, Number(options.breathingMinEveryBars || 3)) === 0) energyLevel = energyLevel === 'heavy' ? 'light' : energyLevel;
+      // Forced full rest every N bars (default 4): gives players real breathing room
+      const breathingEvery = Math.max(2, Number(options.breathingEveryBars || 4));
+      if (barIndex > 2 && barIndex % breathingEvery === 0 && energyLevel !== 'rest') {
+        energyLevel = 'rest';
+      } else if (prevPlan && prevPlan.energyLevel !== 'rest' && energyLevel !== 'rest' && barIndex % Math.max(2, Number(options.breathingMinEveryBars || 3)) === 0) {
+        energyLevel = energyLevel === 'heavy' ? 'light' : energyLevel;
+      }
+      // Insert rest bar at important segment transitions (verse→chorus, chorus→bridge, bridge→outro)
+      const importantTransition = prevPlan &&
+        ((prevPlan.segmentLabel === 'verse' && segmentLabel === 'chorus') ||
+         (prevPlan.segmentLabel === 'chorus' && segmentLabel === 'bridge') ||
+         (prevPlan.segmentLabel === 'bridge' && segmentLabel === 'outro'));
+      if (importantTransition && barIndex > 2 && energyLevel !== 'rest') energyLevel = 'rest';
       const mechanicFamily = chooseBarFamily({ segmentLabel, energyLevel }, prevPlan, options);
       const phraseIndex = Number(candidates[0]?.phrase || prevPlan?.phraseIndex || 0);
       const restRatio = energyLevel === 'rest' ? 1 : (energyLevel === 'light' ? 0.35 : energyLevel === 'medium' ? 0.18 : 0.1);
@@ -671,7 +683,7 @@
         maxWindowStrain: energyLevel === 'rest' ? 1.2 : (energyLevel === 'light' ? 2.6 : (energyLevel === 'medium' ? 4.0 : (energyLevel === 'heavy' ? 5.0 : 5.8))),
         restMode: energyLevel === 'rest' ? 'strong' : (energyLevel === 'light' ? 'partial' : 'none'),
         mustPreserveGapRanges: energyLevel === 'rest'
-          ? [[Number((startTime + (endTime - startTime) * 0.25).toFixed(3)), Number((endTime - (endTime - startTime) * 0.15).toFixed(3))]]
+          ? [[Number(startTime.toFixed(3)), Number(endTime.toFixed(3))]]
           : (mechanicFamily === 'burst-then-rest'
               ? [[Number((startTime + (endTime - startTime) * 0.58).toFixed(3)), Number(endTime.toFixed(3))]]
               : []),

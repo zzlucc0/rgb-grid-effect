@@ -41,9 +41,13 @@
       const spawned = [];
       const notes = this.getNotes();
       const fullLookaheadSec = this.spawnLeadTimeMs / 1000 + Math.max(0, Number(this.leadInBiasSec || 0));
-      const openingRampSec = Number(options.openingRampSec || 2.8);
-      const openingScale = chartTime < openingRampSec ? (0.28 + 0.72 * (chartTime / Math.max(0.001, openingRampSec))) : 1;
-      const lookaheadSec = fullLookaheadSec * Math.max(0.22, Math.min(1, openingScale));
+      // Longer, steeper ramp: start at 10% lookahead and climb over 4.5s to prevent opening burst
+      const openingRampSec = Number(options.openingRampSec || 4.5);
+      const openingScale = chartTime < openingRampSec ? (0.10 + 0.90 * (chartTime / Math.max(0.001, openingRampSec))) : 1;
+      const lookaheadSec = fullLookaheadSec * Math.max(0.10, Math.min(1, openingScale));
+      const inOpeningRamp = chartTime < openingRampSec;
+      // Cap to 1 note per frame during opening ramp to prevent burst on countdown end
+      const maxPerFrame = inOpeningRamp ? 1 : 3;
       const missGraceSec = this.goodRangeMs / 1000;
       const visibleSustainedCap = Number(options.visibleSustainedCap || 1);
       let visibleSustained = Number(options.visibleSustainedCount || 0);
@@ -53,7 +57,8 @@
         const chartIndex = this.nextIndex;
         const chartNote = notes[chartIndex];
         const hitTime = Number(chartNote?.time || 0);
-        const noteLeadBiasSec = Math.max(0, Number(chartNote?.spawnLeadBiasSec || 0));
+        // During opening ramp suppress per-note bias so it can't inflate the lookahead window
+        const noteLeadBiasSec = inOpeningRamp ? 0 : Math.max(0, Number(chartNote?.spawnLeadBiasSec || 0));
         const noteLookaheadSec = lookaheadSec + noteLeadBiasSec;
         if (hitTime > chartTime + noteLookaheadSec) break;
         const noteType = chartNote?.type || 'tap';
@@ -64,6 +69,8 @@
         }
 
         if (isSustained(noteType) && visibleSustained >= visibleSustainedCap) break;
+        // Hard cap on notes spawned per frame during opening to guarantee gradual ramp-in
+        if (spawned.length >= maxPerFrame) break;
 
         const note = createNote(chartTime, chartNote, chartIndex);
         if (!note) break;
