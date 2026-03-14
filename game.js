@@ -2675,6 +2675,9 @@ class RhythmGame {
                     note.swipeStartY = y;
                     return;
                 }
+
+                // Keyboard-exclusive taps must not be triggered by mouse click
+                if (note.inputChannel === 'keyboard') return;
                     
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';

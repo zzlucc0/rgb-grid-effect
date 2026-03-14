@@ -162,6 +162,11 @@
       else if (progress < 0.7) note.inputChannel = idx % 3 === 0 ? 'shared' : ((idx % 2 === 0) ? 'keyboard' : 'mouse');
       else note.inputChannel = idx % 2 === 0 ? 'shared' : ((idx + 1) % 3 === 0 ? 'mouse' : 'keyboard');
       note.exclusivity = 'normal';
+      // Mouse-channel taps must never show a keyboard hint — clear it so the keyboard handler doesn't try to match
+      if (note.inputChannel === 'mouse') {
+        note.keyHint = null;
+        note.keyboardKey = null;
+      }
     });
     return seq;
   }
@@ -604,10 +609,10 @@
     const barCount = barBoundaries ? Math.max(1, barBoundaries.length - 1) : Math.max(1, Math.floor(lastTime / barLengthSec) + 1);
     const budgets = {
       rest: 0.8,
-      light: 2.4,
-      medium: 3.6,
-      heavy: 4.8,
-      climax: 5.4,
+      light: 3.6,
+      medium: 4.2,
+      heavy: 5.2,
+      climax: 6.0,
       ...(options.defaultDensityBudgetByEnergy || {})
     };
     const sustainBudgets = {
@@ -639,8 +644,8 @@
       else if (barIndex < 4 && energyLevel === 'heavy') energyLevel = 'medium';
       else if (barIndex < openingSafeBars && energyLevel === 'climax') energyLevel = 'heavy';
       if (prevPlan && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax') && (energyLevel === 'heavy' || energyLevel === 'climax')) energyLevel = 'medium';
-      // Forced full rest every N bars (default 4): gives players real breathing room
-      const breathingEvery = Math.max(2, Number(options.breathingEveryBars || 4));
+      // Forced full rest every N bars (default 8): gives players real breathing room
+      const breathingEvery = Math.max(4, Number(options.breathingEveryBars || 8));
       if (barIndex > 2 && barIndex % breathingEvery === 0 && energyLevel !== 'rest') {
         energyLevel = 'rest';
       } else if (prevPlan && prevPlan.energyLevel !== 'rest' && energyLevel !== 'rest' && barIndex % Math.max(2, Number(options.breathingMinEveryBars || 3)) === 0) {
@@ -679,8 +684,8 @@
         handTravelBudget: energyLevel === 'heavy' ? 2.0 : 1.6,
         readabilityBudget: energyLevel === 'heavy' ? 2.8 : 2.2,
         targetInputBias: mechanicFamily === 'drag-sweep' ? 'mouse' : (mechanicFamily === 'hold-anchor' ? 'mixed' : 'keyboard'),
-        maxNoteCount: energyLevel === 'rest' ? 1 : (energyLevel === 'light' ? 2 : (energyLevel === 'medium' ? 4 : 5)),
-        maxWindowStrain: energyLevel === 'rest' ? 1.2 : (energyLevel === 'light' ? 2.6 : (energyLevel === 'medium' ? 4.0 : (energyLevel === 'heavy' ? 5.0 : 5.8))),
+        maxNoteCount: energyLevel === 'rest' ? 1 : (energyLevel === 'light' ? 3 : (energyLevel === 'medium' ? 5 : 7)),
+        maxWindowStrain: energyLevel === 'rest' ? 1.2 : (energyLevel === 'light' ? 4.0 : (energyLevel === 'medium' ? 5.5 : (energyLevel === 'heavy' ? 6.5 : 7.5))),
         restMode: energyLevel === 'rest' ? 'strong' : (energyLevel === 'light' ? 'partial' : 'none'),
         mustPreserveGapRanges: energyLevel === 'rest'
           ? [[Number(startTime.toFixed(3)), Number(endTime.toFixed(3))]]
