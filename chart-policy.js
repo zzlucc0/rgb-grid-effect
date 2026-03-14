@@ -773,7 +773,22 @@
 
   function materializeBarPlan(arranged, options = {}) {
     const notes = Array.isArray(arranged?.arrangedNotes) ? arranged.arrangedNotes : [];
-    return [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => normalizeNoteSchema({ ...note }));
+    const bars = Array.isArray(arranged?.bars) ? arranged.bars : [];
+    return [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => {
+      const bar = bars.find(b => Number(note.time || 0) >= Number(b.startTime || 0) && Number(note.time || 0) < Number(b.endTime || 0)) || null;
+      const normalized = normalizeNoteSchema({ ...note });
+      normalized.plannerConstraints = bar ? {
+        barIndex: bar.barIndex,
+        energyLevel: bar.energyLevel,
+        mechanicFamily: bar.mechanicFamily,
+        maxWindowStrain: bar.maxWindowStrain,
+        maxNoteCount: bar.maxNoteCount,
+        restMode: bar.restMode,
+        mustPreserveGapRanges: bar.mustPreserveGapRanges || []
+      } : null;
+      normalized.plannerLocked = true;
+      return normalized;
+    });
   }
 
   function buildMicroWindows(bar, options = {}) {
@@ -866,6 +881,36 @@
     };
   }
 
+  function enforcePlannerConstraints(notes, bars = [], options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const out = [];
+    for (const bar of (bars || [])) {
+      const barNotes = seq.filter(note => Number(note.time || 0) >= Number(bar.startTime || 0) && Number(note.time || 0) < Number(bar.endTime || 0));
+      const filtered = [];
+      for (const note of barNotes) {
+        if (noteInGapRange(note, bar.mustPreserveGapRanges || [])) continue;
+        filtered.push(note);
+      }
+      const cappedByCount = filtered.slice(0, Math.max(0, Number(bar.maxNoteCount || filtered.length)));
+      const microWindows = buildMicroWindows(bar, options);
+      for (const note of cappedByCount) {
+        const window = microWindows.find(w => Number(note.time || 0) >= w.start && Number(note.time || 0) < w.end) || microWindows[microWindows.length - 1];
+        const projected = calculateWindowStrainForNotes([...(window?.notes || []), note], options);
+        if (projected > Number(window?.maxStrain || bar.maxWindowStrain || Infinity)) {
+          const downgraded = { ...note, type: downgradeType(note.type || note.noteType), noteType: downgradeType(note.type || note.noteType), mechanic: downgradeType(note.type || note.noteType) };
+          const downgradedProjected = calculateWindowStrainForNotes([...(window?.notes || []), downgraded], options);
+          if (downgradedProjected > Number(window?.maxStrain || bar.maxWindowStrain || Infinity)) continue;
+          window.notes.push(downgraded);
+          out.push(downgraded);
+          continue;
+        }
+        if (window) window.notes.push(note);
+        out.push(note);
+      }
+    }
+    return out.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+  }
+
   function pipelineSnapshots(notes, options = {}) {
     const candidate = layerABaseChartProposal(notes || []);
     const barPlan = buildBarPlan(candidate, options);
@@ -876,6 +921,7 @@
     finalized = layerDOpeningGuard(finalized, options);
     finalized = layerEPlayabilityGuard(finalized, options);
     finalized = layerFGeometryPrep(finalized, options);
+    finalized = enforcePlannerConstraints(finalized, arranged.bars, options);
     finalized = layerGRuntimeAudit(finalized, options).notes;
     return {
       candidate: summarizeStage(candidate, [], options),
@@ -901,11 +947,12 @@
     seq = layerDOpeningGuard(seq, options);
     seq = layerEPlayabilityGuard(seq, options);
     seq = layerFGeometryPrep(seq, options);
+    seq = enforcePlannerConstraints(seq, arranged.bars, options);
     const result = layerGRuntimeAudit(seq, options);
     return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, buildMicroWindows, noteInGapRange, calculateWindowStrainForNotes, windowStrainStats, summarizeStage, pipelineSnapshots };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, buildMicroWindows, noteInGapRange, calculateWindowStrainForNotes, windowStrainStats, summarizeStage, pipelineSnapshots, enforcePlannerConstraints };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

@@ -157,6 +157,31 @@ describe('chart policy quotas', () => {
     expect(strain.maxStrain).toBeLessThanOrEqual(2.0);
   });
 
+  it('re-applies planner constraints after finalizer layers', () => {
+    const policy = loadPolicy();
+    const notes = [
+      { time: 0.12, proposalType: 'drag', type: 'drag', noteType: 'drag', laneHint: 0, segmentLabel: 'chorus', strength: 1.6, accentWeight: 1.5 },
+      { time: 0.2, proposalType: 'drag', type: 'drag', noteType: 'drag', laneHint: 1, segmentLabel: 'chorus', strength: 1.5, accentWeight: 1.4 },
+      { time: 0.28, proposalType: 'hold', type: 'hold', noteType: 'hold', laneHint: 2, segmentLabel: 'chorus', strength: 1.4, accentWeight: 1.3 },
+      { time: 0.95, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 0, segmentLabel: 'chorus', strength: 1.2, accentWeight: 1.0 }
+    ];
+    const bars = [{
+      barIndex: 0,
+      startTime: 0,
+      endTime: 1.2,
+      segmentLabel: 'chorus',
+      energyLevel: 'light',
+      mechanicFamily: 'burst-then-rest',
+      maxNoteCount: 2,
+      maxWindowStrain: 2.6,
+      mustPreserveGapRanges: [[0.85, 1.2]]
+    }];
+    const constrained = policy.enforcePlannerConstraints(notes, bars, { windowMs: 500 });
+    expect(constrained.every(n => !(n.time >= 0.85 && n.time <= 1.2))).toBe(true);
+    const strain = policy.windowStrainStats(constrained, { windowMs: 500 });
+    expect(strain.maxStrain).toBeLessThanOrEqual(2.6);
+  });
+
   it('keeps tap ratio under control and preserves latter-half specials', () => {
     const policy = loadPolicy();
     const notes = Array.from({ length: 60 }, (_, i) => ({
