@@ -507,6 +507,200 @@
     return { notes: seq, audit: auditChartShape(seq) };
   }
 
+  function estimateBarLengthSec(notes, options = {}) {
+    const beatsPerBar = Math.max(2, Number(options.beatsPerBar || 4));
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const deltas = [];
+    for (let i = 1; i < seq.length; i += 1) {
+      const dt = Number(seq[i].time || 0) - Number(seq[i - 1].time || 0);
+      if (dt > 0.18 && dt < 1.25) deltas.push(dt);
+    }
+    if (!deltas.length) return 60 / 122 * beatsPerBar;
+    deltas.sort((a, b) => a - b);
+    const beatSec = deltas[Math.floor(deltas.length / 2)] || 0.5;
+    return Math.max(1.0, Math.min(4.0, beatSec * beatsPerBar));
+  }
+
+  function estimateNoteCost(note, context = {}) {
+    const proposal = legacyToModern(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType, note || {}).mechanic;
+    let cost = 1.0;
+    if (proposal === 'hold') cost = 1.35;
+    else if (proposal === 'drag') cost = 1.65;
+    else if (proposal === 'spin') cost = 2.2;
+    if (context.largeLaneJump) cost += 0.25;
+    if (context.denseSubWindow) cost += 0.30;
+    if (context.familySwitchLoad) cost += 0.20;
+    if (context.overlapsSustainPressure) cost += 0.35;
+    return cost;
+  }
+
+  function classifyBarEnergy(candidates, prevPlan = null, options = {}) {
+    const heavyThreshold = Number(options.barHeavyThreshold || 5.0);
+    const mediumThreshold = Number(options.barMediumThreshold || 2.8);
+    const totalStrength = candidates.reduce((sum, note) => sum + Number(note?.strength || note?.accentWeight || 1), 0);
+    if (!candidates.length || totalStrength < 0.85) return 'rest';
+    if (prevPlan && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax') && totalStrength >= heavyThreshold) return 'medium';
+    if (totalStrength >= heavyThreshold) return 'heavy';
+    if (totalStrength >= mediumThreshold) return 'medium';
+    return 'light';
+  }
+
+  function chooseBarFamily(plan, prevPlan = null, options = {}) {
+    const seg = String(plan?.segmentLabel || 'verse');
+    const energy = String(plan?.energyLevel || 'light');
+    const familiesBySegment = {
+      intro: ['rest', 'single-tap-accent', 'alternating-taps', 'hold-anchor'],
+      verse: ['alternating-taps', 'hold-anchor', 'mixed-light', 'cross-lane-call-response'],
+      chorus: ['sync-accent', 'drag-sweep', 'mixed-heavy', 'burst-then-rest'],
+      bridge: ['hold-anchor', 'cross-lane-call-response', 'drag-sweep', 'mixed-light'],
+      outro: ['rest', 'single-tap-accent', 'hold-anchor', 'burst-then-rest']
+    };
+    let choices = familiesBySegment[seg] || familiesBySegment.verse;
+    if (energy === 'rest') return 'rest';
+    if (energy === 'light') choices = choices.filter(f => !['mixed-heavy', 'drag-sweep'].includes(f));
+    if (energy === 'medium') choices = choices.filter(f => f !== 'rest');
+    if (energy === 'heavy') choices = choices.filter(f => f !== 'rest');
+    if (!choices.length) choices = ['alternating-taps'];
+    if (prevPlan && prevPlan.mechanicFamily === choices[0] && choices.length > 1) return choices[1];
+    return choices[0];
+  }
+
+  function buildBarPlan(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    if (!seq.length) return { bars: [], stats: { barLengthSec: estimateBarLengthSec([], options) } };
+    const barLengthSec = estimateBarLengthSec(seq, options);
+    const beatsPerBar = Math.max(2, Number(options.beatsPerBar || 4));
+    const openingSafeBars = Math.max(2, Number(options.openingSafeBars || 8));
+    const lastTime = Number(seq[seq.length - 1]?.time || 0);
+    const barCount = Math.max(1, Math.floor(lastTime / barLengthSec) + 1);
+    const budgets = {
+      rest: 0.8,
+      light: 2.4,
+      medium: 3.6,
+      heavy: 4.8,
+      climax: 5.4,
+      ...(options.defaultDensityBudgetByEnergy || {})
+    };
+    const sustainBudgets = {
+      rest: 0,
+      light: 0,
+      medium: 1,
+      heavy: 1,
+      climax: 1,
+      ...(options.defaultSustainBudgetByEnergy || {})
+    };
+    const simultaneousCaps = {
+      rest: 1,
+      light: 1,
+      medium: 2,
+      heavy: 2,
+      climax: 2,
+      ...(options.simultaneousCapByEnergy || {})
+    };
+
+    const bars = [];
+    let prevPlan = null;
+    for (let barIndex = 0; barIndex < barCount; barIndex += 1) {
+      const startTime = Number((barIndex * barLengthSec).toFixed(3));
+      const endTime = Number((startTime + barLengthSec).toFixed(3));
+      const candidates = seq.filter(note => Number(note.time || 0) >= startTime && Number(note.time || 0) < endTime);
+      const segmentLabel = candidates[0]?.segmentLabel || prevPlan?.segmentLabel || 'verse';
+      let energyLevel = classifyBarEnergy(candidates, prevPlan, options);
+      if (barIndex < 2 && energyLevel !== 'rest') energyLevel = 'light';
+      else if (barIndex < 4 && energyLevel === 'heavy') energyLevel = 'medium';
+      else if (barIndex < openingSafeBars && energyLevel === 'climax') energyLevel = 'heavy';
+      if (prevPlan && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax') && (energyLevel === 'heavy' || energyLevel === 'climax')) energyLevel = 'medium';
+      if (prevPlan && prevPlan.energyLevel !== 'rest' && energyLevel !== 'rest' && barIndex % Math.max(2, Number(options.breathingMinEveryBars || 3)) === 0) energyLevel = energyLevel === 'heavy' ? 'light' : energyLevel;
+      const mechanicFamily = chooseBarFamily({ segmentLabel, energyLevel }, prevPlan, options);
+      const phraseIndex = Number(candidates[0]?.phrase || prevPlan?.phraseIndex || 0);
+      const restRatio = energyLevel === 'rest' ? 1 : (energyLevel === 'light' ? 0.35 : energyLevel === 'medium' ? 0.18 : 0.1);
+      const variationSeed = stableUnit({ time: startTime, laneHint: barIndex % 4, phrase: phraseIndex }, barIndex + 41);
+      const repetitionPenalty = prevPlan && prevPlan.mechanicFamily === mechanicFamily ? Math.min(1, Number(prevPlan.repetitionPenalty || 0) + 0.35) : 0;
+      bars.push({
+        barIndex,
+        startTime,
+        endTime,
+        segmentLabel,
+        phraseIndex,
+        energyLevel,
+        densityBudget: Number(budgets[energyLevel] || 3.2),
+        sustainBudget: Number(sustainBudgets[energyLevel] || 0),
+        simultaneousCap: Number(simultaneousCaps[energyLevel] || 1),
+        mechanicFamily,
+        variationSeed,
+        repetitionPenalty,
+        cooldownFlags: {
+          recentHoldHeavy: Boolean(prevPlan && prevPlan.mechanicFamily === 'hold-anchor' && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax')),
+          recentDragHeavy: Boolean(prevPlan && prevPlan.mechanicFamily === 'drag-sweep' && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax'))
+        },
+        accentPattern: energyLevel === 'rest' ? 'sparse' : (energyLevel === 'light' ? 'strong-1' : 'strong-1-3'),
+        restRatio,
+        handTravelBudget: energyLevel === 'heavy' ? 2.0 : 1.6,
+        readabilityBudget: energyLevel === 'heavy' ? 2.8 : 2.2,
+        targetInputBias: mechanicFamily === 'drag-sweep' ? 'mouse' : (mechanicFamily === 'hold-anchor' ? 'mixed' : 'keyboard'),
+        candidateCount: candidates.length
+      });
+      prevPlan = bars[bars.length - 1];
+    }
+    return { bars, stats: { barLengthSec, beatsPerBar, barCount } };
+  }
+
+  function arrangeBars(notes, barPlan, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const bars = Array.isArray(barPlan?.bars) ? barPlan.bars : [];
+    const arrangedNotes = [];
+    const pressureWindowSec = Math.max(0.35, Number(options.pressureWindowMs || 1000) / 1000);
+    for (const plan of bars) {
+      const candidates = seq.filter(note => Number(note.time || 0) >= Number(plan.startTime || 0) && Number(note.time || 0) < Number(plan.endTime || 0));
+      const ranked = candidates.map((note, idx) => {
+        const prev = idx > 0 ? candidates[idx - 1] : null;
+        const dt = prev ? Number(note.time || 0) - Number(prev.time || 0) : 99;
+        const largeLaneJump = prev ? Math.abs(Number(note.laneHint || 0) - Number(prev.laneHint || 0)) >= 2 : false;
+        const denseSubWindow = dt < 0.42;
+        const overlapsSustainPressure = isSustainedType(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType) && arrangedNotes.some(other => isSustainedType(other?.proposalType || other?.type || other?.noteType) && Math.abs(Number(other.time || 0) - Number(note.time || 0)) < pressureWindowSec);
+        const familySwitchLoad = plan.repetitionPenalty >= 0.3 && idx === 0;
+        const cost = estimateNoteCost(note, { largeLaneJump, denseSubWindow, overlapsSustainPressure, familySwitchLoad });
+        const strength = Number(note?.strength || note?.accentWeight || 1);
+        const downbeatBias = Number(note?.downbeatBias || 0);
+        const segBias = ['chorus', 'bridge'].includes(String(note?.segmentLabel || '')) ? 0.15 : 0;
+        return { note, cost, score: strength + downbeatBias + segBias - cost * 0.18 - (denseSubWindow ? 0.12 : 0) };
+      }).sort((a, b) => b.score - a.score || Number(a.note.time || 0) - Number(b.note.time || 0));
+
+      let remainingBudget = Number(plan.densityBudget || 0);
+      let remainingSustain = Number(plan.sustainBudget || 0);
+      const selected = [];
+      for (const item of ranked) {
+        const note = { ...item.note };
+        const proposal = legacyToModern(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType, note).mechanic;
+        const isSustain = isSustainedType(proposal);
+        const tooClose = selected.some(other => Math.abs(Number(other.time || 0) - Number(note.time || 0)) < 0.22);
+        if (tooClose) continue;
+        if (plan.mechanicFamily === 'rest' && selected.length >= 1) continue;
+        if (plan.mechanicFamily === 'single-tap-accent' && selected.length >= 2) continue;
+        if (plan.mechanicFamily === 'hold-anchor' && proposal === 'drag') continue;
+        if (plan.mechanicFamily === 'drag-sweep' && proposal === 'hold') continue;
+        if (isSustain && remainingSustain <= 0) continue;
+        if (remainingBudget - item.cost < -0.05) continue;
+        remainingBudget -= item.cost;
+        if (isSustain) remainingSustain -= 1;
+        note.arranged = true;
+        note.arrangedFamily = plan.mechanicFamily;
+        note.arrangedBarEnergy = plan.energyLevel;
+        note.arrangedCost = Number(item.cost.toFixed(2));
+        note.keepReason = selected.length === 0 ? 'bar-accent' : 'budget-fit';
+        selected.push(note);
+      }
+      selected.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+      arrangedNotes.push(...selected);
+    }
+    return { bars, arrangedNotes: arrangedNotes.sort((a, b) => Number(a.time || 0) - Number(b.time || 0)), stats: { kept: arrangedNotes.length, total: seq.length } };
+  }
+
+  function materializeBarPlan(arranged, options = {}) {
+    const notes = Array.isArray(arranged?.arrangedNotes) ? arranged.arrangedNotes : [];
+    return [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => normalizeNoteSchema({ ...note }));
+  }
+
   function spreadQuotaPromotions(notes) { return layerBMechanicPlanner(notes); }
 
   function auditChartShape(notes) {
@@ -515,6 +709,9 @@
 
   function finalizePlayableChartPipeline(notes, options = {}) {
     let seq = layerABaseChartProposal(notes || []);
+    const barPlan = buildBarPlan(seq, options);
+    const arranged = arrangeBars(seq, barPlan, options);
+    seq = materializeBarPlan(arranged, options);
     seq = layerBMechanicPlanner(seq, options);
     seq = layerCInputChannelPlanner(seq, options);
     seq = layerDOpeningGuard(seq, options);
@@ -524,7 +721,7 @@
     return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

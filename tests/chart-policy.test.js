@@ -109,6 +109,43 @@ describe('chart policy quotas', () => {
     expect(mix.tapRatio).toBeLessThanOrEqual(0.58);
     expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.22);
   });
++
+  it('builds bar plans with opening-safe energy caps and breathing structure', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 24 }, (_, i) => ({
+      time: 0.8 + i * 0.5,
+      type: 'tap',
+      noteType: 'tap',
+      proposalType: i % 5 === 0 ? 'drag' : 'tap',
+      laneHint: i % 4,
+      segmentLabel: i < 8 ? 'intro' : i < 16 ? 'verse' : 'chorus',
+      strength: 1.1
+    }));
+    const built = policy.buildBarPlan(notes, { beatsPerBar: 4, openingSafeBars: 8, breathingMinEveryBars: 3 });
+    expect(built.bars.length).toBeGreaterThan(2);
+    expect(built.bars[0].energyLevel).toBe('light');
+    expect(['light', 'medium']).toContain(built.bars[1].energyLevel);
+    expect(built.bars.some(bar => bar.energyLevel === 'rest' || bar.energyLevel === 'light')).toBe(true);
+  });
+
+  it('arranges bars by pruning overload while keeping accents', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 18 }, (_, i) => ({
+      time: 2 + i * 0.22,
+      type: 'tap',
+      noteType: 'tap',
+      proposalType: i % 4 === 0 ? 'drag' : 'tap',
+      laneHint: i % 4,
+      segmentLabel: 'chorus',
+      strength: i % 3 === 0 ? 1.4 : 0.7,
+      accentWeight: i % 3 === 0 ? 1.2 : 0.6
+    }));
+    const barPlan = policy.buildBarPlan(notes, { beatsPerBar: 4 });
+    const arranged = policy.arrangeBars(notes, barPlan, { pressureWindowMs: 1000 });
+    expect(arranged.arrangedNotes.length).toBeLessThan(notes.length);
+    expect(arranged.arrangedNotes.every(note => note.arranged)).toBe(true);
+    expect(arranged.arrangedNotes.some(note => note.keepReason === 'bar-accent')).toBe(true);
+  });
 
   it('disables old keyboard checkpoint path prompts for drag notes', () => {
     const policy = loadPolicy();
