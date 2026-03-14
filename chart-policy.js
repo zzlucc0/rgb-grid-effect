@@ -818,11 +818,19 @@
   function calculateWindowStrainForNotes(notes, options = {}) {
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
     let strain = 0;
+    const openingSeconds = Number(options.openingSeconds || 12);
+    const openingMultiplier = Number(options.openingWindowStrainMultiplier || 1.25);
     for (let i = 0; i < seq.length; i += 1) {
       const note = seq[i];
+      const type = legacyToModern(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType, note).mechanic;
       strain += estimateNoteCost(note, {});
+      if (type === 'hold') strain += 0.5;
+      if (type === 'drag') strain += 0.2;
+      if (type === 'spin') strain += 0.4;
+      if (Number(note.time || 0) <= Math.min(4, openingSeconds)) strain *= openingMultiplier;
       if (i > 0) {
         const prev = seq[i - 1];
+        const prevType = legacyToModern(prev?.proposalType || prev?.proposalMechanic || prev?.type || prev?.noteType, prev).mechanic;
         const dt = Number(note.time || 0) - Number(prev.time || 0);
         if (dt < 0.12) strain += 1.1;
         else if (dt < 0.18) strain += 0.6;
@@ -830,7 +838,13 @@
         const prevChannel = prev.inputChannel || prev.proposalInputChannel || 'shared';
         const channel = note.inputChannel || note.proposalInputChannel || 'shared';
         if (prevChannel !== channel && prevChannel !== 'shared' && channel !== 'shared') strain += 0.6;
+        if (isSustainedType(prevType) && dt < 0.6) strain += 0.7;
+        if ((prevType === 'drag' || prevType === 'spin' || type === 'drag' || type === 'spin') && dt < 0.7) strain += 0.8;
+        const laneJump = Math.abs(Number(note.laneHint || 0) - Number(prev.laneHint || 0));
+        if (laneJump >= 1.5) strain += 0.3;
+        if (laneJump >= 2.5) strain += 0.4;
       }
+      if (note.pathVariant && ['diamondLoop', 'starTrace'].includes(note.pathVariant)) strain += 0.15;
     }
     return Number(strain.toFixed(2));
   }

@@ -128,6 +128,19 @@ describe('chart policy quotas', () => {
     expect(snapshots.finalized.strain.maxStrain).toBeGreaterThanOrEqual(0);
   });
 
+  it('applies higher strain to sustain overlap, lane jumps, and opening pressure', () => {
+    const policy = loadPolicy();
+    const simple = policy.calculateWindowStrainForNotes([
+      { time: 5.0, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 0, inputChannel: 'keyboard' },
+      { time: 5.5, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 0, inputChannel: 'keyboard' }
+    ], { windowMs: 500, openingSeconds: 12 });
+    const stressful = policy.calculateWindowStrainForNotes([
+      { time: 0.1, proposalType: 'hold', type: 'hold', noteType: 'hold', laneHint: 0, inputChannel: 'keyboard' },
+      { time: 0.22, proposalType: 'drag', type: 'drag', noteType: 'drag', laneHint: 3, inputChannel: 'mouse', pathVariant: 'starTrace' }
+    ], { windowMs: 500, openingSeconds: 12 });
+    expect(stressful).toBeGreaterThan(simple);
+  });
+
   it('enforces preserve-gap ranges and window strain caps during arrangement', () => {
     const policy = loadPolicy();
     const notes = [
