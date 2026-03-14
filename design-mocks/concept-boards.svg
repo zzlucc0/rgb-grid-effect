@@ -1,0 +1,90 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1800' height='2100' viewBox='0 0 1800 2100'>
+  <defs>
+    <linearGradient id='bg1' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='#071225'/><stop offset='100%' stop-color='#050816'/></linearGradient>
+    <linearGradient id='bg2' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='#1a1230'/><stop offset='100%' stop-color='#090913'/></linearGradient>
+    <linearGradient id='bg3' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='#171b21'/><stop offset='100%' stop-color='#0b0d10'/></linearGradient>
+    <filter id='glowC'><feGaussianBlur stdDeviation='10' result='b'/><feMerge><feMergeNode in='b'/><feMergeNode in='SourceGraphic'/></feMerge></filter>
+    <filter id='soft'><feGaussianBlur stdDeviation='18'/></filter>
+  </defs>
+
+  <rect width='1800' height='2100' fill='#05070b'/>
+
+  <!-- Board 1 -->
+  <g transform='translate(70,60)'>
+    <rect width='1660' height='620' rx='34' fill='url(#bg1)' stroke='rgba(255,255,255,0.12)' stroke-width='2'/>
+    <circle cx='240' cy='140' r='170' fill='#54f1ff' opacity='.10' filter='url(#soft)'/>
+    <circle cx='1440' cy='170' r='190' fill='#ff4fd8' opacity='.12' filter='url(#soft)'/>
+    <text x='60' y='78' font-size='22' fill='#7df6ff' font-family='Arial' letter-spacing='5'>CONCEPT 01 / SPECTRAL ARCADE</text>
+    <text x='60' y='158' font-size='72' fill='white' font-family='Arial Black'>Neon competitive</text>
+    <text x='60' y='228' font-size='72' fill='white' font-family='Arial Black'>arena language</text>
+    <text x='62' y='292' font-size='26' fill='rgba(255,255,255,.72)' font-family='Arial'>问题补充：现在 hit feedback 太短、drag 轨道没地位、数字不属于视觉系统。</text>
+    <rect x='760' y='86' width='820' height='470' rx='28' fill='rgba(255,255,255,.04)' stroke='rgba(255,255,255,.08)'/>
+    <circle cx='1160' cy='320' r='172' fill='none' stroke='#54f1ff' stroke-width='4' opacity='.30'/>
+    <circle cx='1160' cy='320' r='116' fill='none' stroke='#ff4fd8' stroke-width='4' opacity='.24'/>
+    <circle cx='1160' cy='320' r='62' fill='none' stroke='#97ff5a' stroke-width='4' opacity='.2'/>
+    <circle cx='980' cy='250' r='42' fill='rgba(84,241,255,.18)' stroke='#54f1ff' stroke-width='4' filter='url(#glowC)'/>
+    <circle cx='1280' cy='300' r='42' fill='rgba(255,79,216,.18)' stroke='#ff4fd8' stroke-width='4' filter='url(#glowC)'/>
+    <circle cx='1060' cy='430' r='42' fill='rgba(151,255,90,.18)' stroke='#97ff5a' stroke-width='4' filter='url(#glowC)'/>
+    <text x='965' y='263' fill='white' font-size='28' font-family='Arial Black'>1</text>
+    <text x='1265' y='313' fill='white' font-size='28' font-family='Arial Black'>2</text>
+    <text x='1045' y='443' fill='white' font-size='28' font-family='Arial Black'>3</text>
+    <rect x='1080' y='360' width='240' height='16' rx='8' fill='url(#bg2)' stroke='#ff4fd8' stroke-width='3'/>
+    <circle cx='1318' cy='368' r='20' fill='white' filter='url(#glowC)'/>
+    <text x='60' y='402' font-size='28' fill='#ffe37c' font-family='Arial Black'>适合：</text>
+    <text x='145' y='402' font-size='28' fill='white' font-family='Arial'>严格模式 / 排名 / 电竞感 / 爆裂 feedback</text>
+    <text x='60' y='468' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• hover 应变成“锁定扫描”而不是单纯放大缩小</text>
+    <text x='60' y='506' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• drag 轨道应有流动电荷、终点吸附、命中爆裂</text>
+    <text x='60' y='544' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• perfect / invalid / pause 都要有统一 HUD 视觉词汇</text>
+  </g>
+
+  <!-- Board 2 -->
+  <g transform='translate(70,740)'>
+    <rect width='1660' height='620' rx='34' fill='url(#bg2)' stroke='rgba(255,255,255,0.12)' stroke-width='2'/>
+    <circle cx='1050' cy='250' r='190' fill='#8d7cff' opacity='.18' filter='url(#soft)'/>
+    <circle cx='1340' cy='240' r='160' fill='#ff78bc' opacity='.16' filter='url(#soft)'/>
+    <circle cx='1180' cy='420' r='220' fill='#78ffcb' opacity='.10' filter='url(#soft)'/>
+    <text x='60' y='78' font-size='22' fill='#d6cbff' font-family='Arial' letter-spacing='5'>CONCEPT 02 / LIQUID PRISM</text>
+    <text x='60' y='158' font-size='74' fill='white' font-family='Arial Black'>Glass + liquid</text>
+    <text x='60' y='228' font-size='74' fill='white' font-family='Arial Black'>music sculpture</text>
+    <text x='62' y='294' font-size='26' fill='rgba(255,255,255,.72)' font-family='Arial'>问题补充：当前空间命中后“立即失忆”，没有残影，没有乐句的视觉记忆。</text>
+    <rect x='860' y='76' width='690' height='500' rx='34' fill='rgba(255,255,255,.05)' stroke='rgba(255,255,255,.08)'/>
+    <ellipse cx='1090' cy='262' rx='60' ry='60' fill='rgba(255,255,255,.12)' stroke='rgba(255,255,255,.5)' stroke-width='2'/>
+    <ellipse cx='1310' cy='300' rx='60' ry='60' fill='rgba(255,255,255,.12)' stroke='rgba(255,255,255,.5)' stroke-width='2'/>
+    <ellipse cx='1130' cy='445' rx='60' ry='60' fill='rgba(255,255,255,.12)' stroke='rgba(255,255,255,.5)' stroke-width='2'/>
+    <text x='1072' y='274' fill='white' font-size='30' font-family='Arial Black'>1</text>
+    <text x='1292' y='312' fill='white' font-size='30' font-family='Arial Black'>2</text>
+    <text x='1112' y='457' fill='white' font-size='30' font-family='Arial Black'>3</text>
+    <rect x='1160' y='356' width='180' height='22' rx='11' fill='rgba(255,255,255,.18)'/>
+    <rect x='1160' y='356' width='180' height='22' rx='11' fill='url(#bg1)' opacity='.35'/>
+    <text x='60' y='404' font-size='28' fill='#78ffcb' font-family='Arial Black'>适合：</text>
+    <text x='145' y='404' font-size='28' fill='white' font-family='Arial'>更高级、艺术装置感、沉浸式、音乐可视化感更强</text>
+    <text x='60' y='468' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• 点击特效应做成液态折射 + 玻璃碎光，而非单色爆圈</text>
+    <text x='60' y='506' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• drag 应是带尾迹的“丝带”，不是单一条硬轨</text>
+    <text x='60' y='544' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• 命中后保留 0.4~0.8s 残影，强化乐句连续性</text>
+  </g>
+
+  <!-- Board 3 -->
+  <g transform='translate(70,1420)'>
+    <rect width='1660' height='620' rx='34' fill='url(#bg3)' stroke='rgba(255,255,255,0.12)' stroke-width='2'/>
+    <text x='60' y='78' font-size='22' fill='#ffb84d' font-family='Arial' letter-spacing='5'>CONCEPT 03 / INDUSTRIAL PULSE</text>
+    <text x='60' y='158' font-size='74' fill='white' font-family='Arial Black'>Mechanical rhythm</text>
+    <text x='60' y='228' font-size='74' fill='white' font-family='Arial Black'>pressure chamber</text>
+    <text x='62' y='294' font-size='26' fill='rgba(255,255,255,.72)' font-family='Arial'>问题补充：当前状态 UI（pause / strict invalid / analysis ready）没有自己的舞台语言。</text>
+    <rect x='760' y='86' width='820' height='470' rx='28' fill='rgba(255,255,255,.03)' stroke='rgba(255,255,255,.08)'/>
+    <line x1='820' y1='210' x2='1520' y2='210' stroke='#ffb84d' stroke-width='2' opacity='.8'/>
+    <line x1='820' y1='430' x2='1520' y2='430' stroke='#74f0ff' stroke-width='2' opacity='.7'/>
+    <rect x='900' y='240' width='84' height='84' rx='18' fill='#1a2026' stroke='rgba(255,255,255,.22)'/>
+    <rect x='1140' y='330' width='84' height='84' rx='18' fill='#302417' stroke='#ffb84d' stroke-width='3'/>
+    <rect x='1360' y='430' width='84' height='84' rx='18' fill='#18272c' stroke='#74f0ff' stroke-width='3'/>
+    <text x='932' y='293' fill='white' font-size='30' font-family='Arial Black'>1</text>
+    <text x='1172' y='383' fill='white' font-size='30' font-family='Arial Black'>2</text>
+    <text x='1392' y='483' fill='white' font-size='30' font-family='Arial Black'>3</text>
+    <rect x='980' y='365' width='270' height='20' rx='10' fill='#ffb84d' opacity='.85'/>
+    <circle cx='1248' cy='375' r='22' fill='#ffb84d' filter='url(#glowC)'/>
+    <text x='60' y='404' font-size='28' fill='#ffb84d' font-family='Arial Black'>适合：</text>
+    <text x='145' y='404' font-size='28' fill='white' font-family='Arial'>强结构、机械冲击、更适合 strict / invalid / combo surge 展示</text>
+    <text x='60' y='468' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• drag 轨道可以做成磁轨/拉杆/导轨，有强烈方向性</text>
+    <text x='60' y='506' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• hit 应带整场景电流闪烁，而不是只在 note 周围亮一下</text>
+    <text x='60' y='544' font-size='24' fill='rgba(255,255,255,.82)' font-family='Arial'>• 暂停、失败、违规应复用同一套工业警示 UI 语言</text>
+  </g>
+</svg>
