@@ -705,7 +705,14 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     if (Math.abs(lane - phraseAnchor) <= 1) phraseLocalBudget -= 1;
 
     const baseStrength = nearDownbeat ? 1.05 : (isStrong ? 1.0 : (dense ? 0.78 : 0.68));
-    const strength = Number(Math.max(0.5, Math.min(1.1, beatStr > 0 ? 0.5 + beatStr * 0.6 : baseStrength)).toFixed(2));
+    // Audio signal enriches strength but MUST NOT weaken structural anchor positions.
+    // arrangeBars sync-accent requires strength >= 1.0 — isStrong/nearDownbeat notes must
+    // always reach that floor even when the onset envelope sampled at the beat frame is low.
+    const audioStrength = beatStr > 0 ? 0.5 + beatStr * 0.6 : baseStrength;
+    const strength = Number(Math.min(1.1, Math.max(
+      (isStrong || nearDownbeat) ? baseStrength : 0.5,
+      audioStrength
+    )).toFixed(2));
     notes.push({
       time: t,
       proposalType: type,
@@ -714,7 +721,8 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
       phrase: phraseIndex,
       phraseIntent,
       phraseAnchor,
-      strength: Number(strength.toFixed(2)),
+      strength,
+      downbeatBias: nearDownbeat ? 0.15 : 0,
       segmentLabel: seg.label,
       energy: seg.energy
     });
@@ -750,6 +758,7 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
       phraseIntent: 'drift',
       phraseAnchor: 2,
       strength: _vStrength,
+      downbeatBias: 0,
       segmentLabel: _vseg.label,
       energy: _vseg.energy,
       vocalInjected: true
