@@ -29,6 +29,8 @@ class RhythmGame {
         this.liveMonitorTimer = null;
         this.livePlaybackStarted = false;
         this.livePlaybackState = 'idle';
+        this.playbackStartToken = 0;
+        this.pendingPlaybackStart = null;
         this.spawnedChartNotes = 0;
         this.playbackViolations = [];
         this.runInvalid = false;
@@ -263,6 +265,7 @@ class RhythmGame {
         this.gameState = phase || this.gameState || 'idle';
         if (phase === 'idle' || phase === 'ready' || phase === 'finished' || phase === 'failed') this.isPlaying = false;
         if (phase === 'starting') this.setScene('countdown');
+        else if (phase === 'awaiting-playback') this.setScene('countdown');
         else if (phase === 'playing') this.setScene('playing');
         else if (phase === 'paused-user' || phase === 'paused-system') this.setScene('playing');
         else if (phase === 'ready') this.setScene('ready');
@@ -281,7 +284,7 @@ class RhythmGame {
     }
 
     isStartingPhase() {
-        return this.gameState === 'starting';
+        return this.gameState === 'starting' || this.gameState === 'awaiting-playback';
     }
 
     renderScene() {
@@ -521,11 +524,24 @@ class RhythmGame {
     }
 
     async enterRunStartSequence() {
-        await this.prepareRun();
-        await this.runCountdown();
-        const dataArray = this.beginRun();
-        this.startPlaybackBackend();
-        this.armGameLoop(dataArray);
+        try {
+            await this.prepareRun();
+            await this.runCountdown();
+            if (this.liveMode) {
+                this.setRunPhase('awaiting-playback');
+                this.setStatusMessage('loading', 'Countdown complete · waiting for playback to begin...');
+                await this.startPlaybackAndWaitUntilPlaying();
+            }
+            const dataArray = this.beginRun();
+            if (!this.liveMode) this.startPlaybackBackend();
+            this.armGameLoop(dataArray);
+        } catch (err) {
+            console.error('enterRunStartSequence failed:', err);
+            if (this.liveMode || this.gameState === 'awaiting-playback') {
+                this.handlePlaybackStartFailure(err);
+            }
+            throw err;
+        }
     }
 
     armGameLoop(dataArray) {
@@ -697,7 +713,67 @@ class RhythmGame {
             this.livePlaybackState = 'backend-error';
             this.setStatusMessage('error', 'Playback backend failed: ' + (err?.message || err));
             this.updateHUD();
+            throw err;
         }
+    }
+
+    async startPlaybackAndWaitUntilPlaying(timeoutMs = 8000) {
+        if (!this.liveMode) return;
+        if (this.pendingPlaybackStart?.promise) return this.pendingPlaybackStart.promise;
+
+        const token = ++this.playbackStartToken;
+        const pending = {};
+        pending.token = token;
+        pending.promise = new Promise((resolve, reject) => {
+            pending.resolve = resolve;
+            pending.reject = reject;
+            pending.timer = setTimeout(() => {
+                if (this.pendingPlaybackStart?.token !== token) return;
+                this.rejectPendingPlaybackStart(new Error('Playback did not start in time'), token);
+            }, Math.max(1500, Number(timeoutMs) || 8000));
+        });
+        this.pendingPlaybackStart = pending;
+
+        try {
+            this.startPlaybackBackend();
+        } catch (err) {
+            this.rejectPendingPlaybackStart(err, token);
+        }
+        return pending.promise;
+    }
+
+    clearPendingPlaybackStart(token = null) {
+        const pending = this.pendingPlaybackStart;
+        if (!pending) return null;
+        if (token != null && pending.token !== token) return null;
+        if (pending.timer) clearTimeout(pending.timer);
+        this.pendingPlaybackStart = null;
+        return pending;
+    }
+
+    resolvePendingPlaybackStart(token = null) {
+        const pending = this.clearPendingPlaybackStart(token);
+        if (pending?.resolve) pending.resolve();
+    }
+
+    rejectPendingPlaybackStart(err, token = null) {
+        const pending = this.clearPendingPlaybackStart(token);
+        if (pending?.reject) pending.reject(err || new Error('Playback failed to start'));
+    }
+
+    handlePlaybackStartFailure(err) {
+        const msg = String(err?.message || err || 'Playback failed to start');
+        const autoplayBlocked = /autoplay/i.test(msg) || this.livePlaybackState === 'autoplay-blocked';
+        this.rejectPendingPlaybackStart(err);
+        this.isPlaying = false;
+        this.pauseReason = 'none';
+        this.livePlaybackStarted = false;
+        this.setRunPhase('ready');
+        this.setScene('ready', { force: true, error: msg });
+        this.setStatusMessage('error', autoplayBlocked ? 'Autoplay blocked. Click Start again to continue.' : ('Playback failed to start: ' + msg));
+        this.syncReadyState();
+        this.updatePauseUI();
+        this.updateHUD();
     }
 
     async resumeRunSequence() {
@@ -878,15 +954,15 @@ class RhythmGame {
     // Show countdown
     async showCountdown(seconds) {
         return new Promise(resolve => {
-            let remaining = seconds;
-            
+            let remaining = Math.max(1, Number(seconds) || 3);
+
             // Get basic song information for display
             const totalVocalSections = this.vocalSections ? this.vocalSections.length : 'Analyzing';
             const avgButtonsPerGroup = this.vocalSections && this.vocalSections.length > 0 ? 
                 Math.round(this.vocalSections.reduce((sum, s) => sum + s.plannedButtonCount, 0) / this.vocalSections.length) : 
                 'Analyzing';
-            
-            const countdownInterval = setInterval(() => {
+
+            const renderCountdown = () => {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 const panelW = Math.min(560, this.canvas.width * 0.72);
                 const panelH = 270;
@@ -923,13 +999,17 @@ class RhythmGame {
                 this.ctx.fillStyle = 'rgba(228,241,248,.58)';
                 this.ctx.font = '600 14px Rajdhani';
                 this.ctx.fillText('Synchronizing track and gameplay shell...', this.canvas.width / 2, y + 232);
-                
-                remaining--;
-                
-                if (remaining < 0) {
+            };
+
+            renderCountdown();
+            const countdownInterval = setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
                     clearInterval(countdownInterval);
                     resolve();
+                    return;
                 }
+                renderCountdown();
             }, 1000);
         });
     }
@@ -998,6 +1078,9 @@ class RhythmGame {
         } else if (this.isPausedPhase()) {
             runState = 'PAUSED';
             runStateAttr = 'paused';
+        } else if (this.gameState === 'awaiting-playback') {
+            runState = 'SYNC';
+            runStateAttr = 'arming';
         } else if (this.isStartingPhase()) {
             runState = 'ARMING';
             runStateAttr = 'arming';
@@ -1187,6 +1270,7 @@ class RhythmGame {
     }
 
     resolveChartClock() {
+        if (this.liveMode && !this.livePlaybackStarted) return 0;
         return this.resolveRunClock();
     }
 
@@ -2963,7 +3047,11 @@ RhythmGame.prototype.markLivePlaybackState = function (state) {
     if (state === 'playing') {
         this.livePlaybackStarted = true;
         if (this.runClock?.markPlaybackStarted) this.runClock.markPlaybackStarted();
-        if (this.runOrchestrator?.startPlaying) this.runOrchestrator.startPlaying({ playbackStarted: false });
+        if (this.runOrchestrator?.startPlaying && this.isPlaying) this.runOrchestrator.startPlaying({ playbackStarted: true });
+        this.resolvePendingPlaybackStart?.();
+    }
+    if (state === 'error' || state === 'yt-init-error' || state === 'autoplay-blocked') {
+        this.rejectPendingPlaybackStart?.(new Error(state || 'playback start failed'));
     }
     if (state === 'ended') {
         this.checkRunCompletion();
