@@ -290,11 +290,30 @@ class RhythmGame {
     renderScene() {
         const uploadContainer = document.getElementById('uploadContainer');
         const pauseOverlay = document.getElementById('pauseOverlay');
+        const overlayText = document.getElementById('pauseOverlayText');
+        const overlaySubtext = document.getElementById('pauseOverlaySubtext');
         const inRun = this.isPlaying || this.isStartingPhase() || this.scene === 'countdown' || this.scene === 'playing' || this.isPausedPhase();
         const showSetup = !inRun && (this.scene === 'input' || this.scene === 'ready');
         if (uploadContainer) uploadContainer.classList.toggle('hidden', !showSetup);
         if (pauseOverlay && (this.scene === 'countdown' || this.scene === 'playing' || this.scene === 'error' || inRun)) {
-            pauseOverlay.classList.toggle('hidden', !(this.isPausedPhase()));
+            const syncing = this.gameState === 'awaiting-playback';
+            const paused = this.isPausedPhase();
+            pauseOverlay.classList.toggle('hidden', !(paused || syncing));
+            if (syncing) {
+                if (overlayText) overlayText.textContent = 'Syncing playback…';
+                if (overlaySubtext) {
+                    const playbackState = String(this.livePlaybackState || 'loading');
+                    const hint = playbackState === 'buffering' || playbackState === 'waiting'
+                        ? 'Player is buffering. Run will begin the moment playback is live.'
+                        : playbackState === 'ready' || playbackState === 'cued' || playbackState === 'loading'
+                            ? 'Preparing hidden player. Run will begin on the first real playback frame.'
+                            : 'Waiting for playback to begin…';
+                    overlaySubtext.textContent = hint;
+                }
+            } else if (!paused) {
+                if (overlayText) overlayText.textContent = 'Paused';
+                if (overlaySubtext) overlaySubtext.textContent = 'Resume will trigger a short countdown.';
+            }
         }
     }
 
@@ -777,7 +796,7 @@ class RhythmGame {
         this.livePlaybackStarted = false;
         this.setRunPhase('ready');
         this.setScene('ready', { force: true, error: msg });
-        this.setStatusMessage('error', autoplayBlocked ? 'Autoplay blocked. Click Start again to continue.' : ('Playback failed to start: ' + msg));
+        this.setStatusMessage('error', autoplayBlocked ? 'Autoplay blocked. Click Start again to continue.' : ('Playback failed to start: ' + msg), autoplayBlocked ? 'Browser policy blocked hidden playback before the run could begin.' : 'The chart is still loaded. You can retry Start without re-analyzing.');
         this.syncReadyState();
         this.updatePauseUI();
         this.updateHUD();
@@ -3054,6 +3073,34 @@ RhythmGame.prototype.resumeGame = async function () {
 RhythmGame.prototype.markLivePlaybackState = function (state) {
     this.livePlaybackState = state || this.livePlaybackState || 'idle';
     this.captureRuntimeDiagnostics('playback-state', { playbackState: this.livePlaybackState });
+
+    if (this.gameState === 'awaiting-playback') {
+        if (state === 'playing') {
+            this.livePlaybackStarted = true;
+            this.resolvePendingPlaybackStart?.();
+            this.renderScene?.();
+            this.updateHUD();
+            return;
+        }
+        if (state === 'error' || state === 'yt-init-error' || state === 'autoplay-blocked') {
+            this.rejectPendingPlaybackStart?.(new Error(state || 'playback start failed'));
+            this.renderScene?.();
+            this.updateHUD();
+            return;
+        }
+        if (state === 'paused') {
+            this.rejectPendingPlaybackStart?.(new Error('Playback paused before start'));
+            this.renderScene?.();
+            this.updateHUD();
+            return;
+        }
+        if (state === 'buffering' || state === 'waiting' || state === 'ready' || state === 'cued' || state === 'loading' || state === 'play') {
+            this.renderScene?.();
+            this.updateHUD();
+            return;
+        }
+    }
+
     if (state === 'playing') {
         this.livePlaybackStarted = true;
         if (this.runClock?.markPlaybackStarted) this.runClock.markPlaybackStarted();
@@ -3066,6 +3113,7 @@ RhythmGame.prototype.markLivePlaybackState = function (state) {
     if (state === 'ended') {
         this.checkRunCompletion();
     }
+    this.renderScene?.();
     this.updateHUD();
 };
 
