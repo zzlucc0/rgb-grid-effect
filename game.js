@@ -456,15 +456,21 @@ class RhythmGame {
         // Start game button
         startButton.addEventListener('click', async () => {
             console.log('Start button clicked', this.audioBuffer);
+            if (this.gameState === 'starting' || this.gameState === 'awaiting-playback' || this.pendingPlaybackStart?.promise) {
+                this.setStatusMessage('loading', 'Run start already in progress...');
+                return;
+            }
             if (this.audioBuffer || this.liveMode || this.readyMode) {
                 try {
                     this.setScene('countdown', { error: '' });
                     await this.startGame();
                 } catch (err) {
                     console.error('startGame failed:', err);
-                    this.setStatusMessage('error', 'Start failed: ' + (err?.message || 'unknown error'));
-                    this.livePlaybackState = 'start-error';
-                    this.setScene('ready', { error: err?.message || 'unknown error' });
+                    if (!(this.liveMode || this.gameState === 'awaiting-playback')) {
+                        this.setStatusMessage('error', 'Start failed: ' + (err?.message || 'unknown error'));
+                        this.livePlaybackState = 'start-error';
+                        this.setScene('ready', { error: err?.message || 'unknown error' });
+                    }
                 }
             } else {
                 this.setStatusMessage('error', 'Please analyze or select media first');
@@ -579,6 +585,7 @@ class RhythmGame {
         this.globalNoteSeq = 0;
         this.livePlaybackStarted = false;
         this.livePlaybackState = 'idle';
+        this.rejectPendingPlaybackStart?.(new Error('superseded by new run'));
         this.spawnedChartNotes = 0;
         this.currentGroupSize = this.notesPerGroup;
         this.setRunPhase('starting');
@@ -1032,8 +1039,11 @@ class RhythmGame {
         const hasOffline = Boolean(this.audioBuffer && this.readyMode === 'offline');
         const hasLive = Boolean(this.readyMode && (this.liveMode || this.chartMode || this.liveConfig || this.chartData));
         const ready = hasOffline || hasLive;
-        if (startButton && !this.isPlaying && this.gameState !== 'starting') {
+        const busyStarting = this.gameState === 'starting' || this.gameState === 'awaiting-playback' || Boolean(this.pendingPlaybackStart?.promise);
+        if (startButton && !this.isPlaying && !busyStarting) {
             startButton.disabled = !ready;
+        } else if (startButton && busyStarting) {
+            startButton.disabled = true;
         }
         this.renderScene();
         return ready;
