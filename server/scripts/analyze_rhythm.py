@@ -60,7 +60,22 @@ def main():
         })
         start += window
 
+    # Normalise per-segment RMS to [0,1] so chart knows the relative loudness across the full song
+    _seg_rms = [s['avgRms'] for s in segments]
+    _rms_min = min(_seg_rms) if _seg_rms else 0.0
+    _rms_max = max(_seg_rms) if _seg_rms else 1.0
+    _rms_span = max(_rms_max - _rms_min, 1e-6)
+    for _i, _seg in enumerate(segments):
+        _seg['energyNorm'] = round((_seg['avgRms'] - _rms_min) / _rms_span, 3)
+        _prev_rms = segments[_i - 1]['avgRms'] if _i > 0 else _seg['avgRms']
+        _delta = _seg['avgRms'] - _prev_rms
+        _seg['gradient'] = 'rising' if _delta > 0.008 else ('falling' if _delta < -0.008 else 'stable')
+
     onset_sample = [round(safe_float(v), 5) for v in onset_env[: min(256, len(onset_env))]]
+    # Per-beat onset strength: onset envelope at each beat frame, normalised to [0,1] song-wide
+    _onset_max = float(np.max(onset_env)) if len(onset_env) > 0 else 1.0
+    _onset_norm = onset_env / max(_onset_max, 1e-6)
+    beat_strengths = [round(float(_onset_norm[min(int(f), len(_onset_norm) - 1)]), 4) for f in beat_frames[:5000]]
 
     print(json.dumps({
         'ok': True,
@@ -71,6 +86,7 @@ def main():
         'meter': 4,
         'segments': segments,
         'onsetSample': onset_sample,
+        'beatStrengths': beat_strengths,
     }))
 
 

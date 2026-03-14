@@ -503,7 +503,9 @@ function readJsonIfExists(file) {
 function buildPatternProfile(seg, difficultyCfg, densityCfg = getDensityConfig('normal')) {
   const label = seg?.label || 'verse';
   const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
-  const weakScale = Number(densityCfg.extraWeakScale || 1);
+  // energyNorm (0=quietest section, 1=loudest): scale off-beat note budget with song energy
+  const energyNorm = Math.max(0, Math.min(1, Number(seg?.energyNorm ?? 0.5)));
+  const weakScale = Number(densityCfg.extraWeakScale || 1) * (0.65 + energyNorm * 0.7);
   const dragDensityBoost = Number(densityCfg.dragBoost || 0);
   if (label === 'intro') return { strongOnly: false, extraWeak: 0.14 * difficultyCfg.weakChance * weakScale, dragBias: 0.05 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.08, phraseSpan: 2 };
   if (label === 'chorus') return { strongOnly: false, extraWeak: 0.42 * difficultyCfg.weakChance * weakScale, dragBias: 0.22 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.22, phraseSpan: 3 };
@@ -522,8 +524,12 @@ function stableRand(seed) {
 function pickPhraseIntent(seg, phraseIndex, t) {
   const label = seg?.label || 'verse';
   const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
+  const gradient = seg?.gradient || 'stable';
   const roll = stableRand(Math.round(Number(t || 0) * 1000) + phraseIndex * 97 + label.length * 53);
   if (label === 'intro') return roll < 0.7 ? 'settle' : 'drift';
+  // Energy gradient drives phrase feel: rising → build/surge, falling → release/suspend
+  if (gradient === 'rising') return roll < 0.55 ? 'surge' : 'answer';
+  if (gradient === 'falling' && label !== 'chorus') return roll < 0.55 ? 'suspend' : (label === 'bridge' ? 'pivot' : 'drift');
   if (label === 'chorus') return roll < 0.34 ? 'surge' : (roll < 0.7 ? 'answer' : 'sweep');
   if (label === 'bridge') return roll < 0.45 ? 'suspend' : 'pivot';
   if (dense) return roll < 0.5 ? 'answer' : 'sweep';
@@ -586,6 +592,7 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     return fallback;
   }
 
+  const beatStrengths = Array.isArray(analysis?.beatStrengths) ? analysis.beatStrengths.map(Number) : [];
   const notes = [];
   let lane = 1;
   let phraseIndex = 0;
@@ -610,6 +617,8 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     const profile = buildPatternProfile(seg, difficultyCfg, densityCfg);
     const nearDownbeat = nearestDownbeatDistance(downbeats, t) < 0.08;
     const localRoll = stableRand(i * 131 + Math.round(t * 1000) + phraseIndex * 19);
+    // beatStr: actual audio transient strength at this beat (0=silent, 1=peak hit)
+    const beatStr = Number.isFinite(beatStrengths[i]) ? Math.max(0, Math.min(1, beatStrengths[i])) : 0.5;
 
     if (mod8 === 0 || i === 0) {
       phraseIntent = pickPhraseIntent(seg, phraseIndex, t);
@@ -623,6 +632,8 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     else if (!profile.strongOnly && dense && (mod4 === 2 || mod8 === 6)) spawn = true;
     else if (!profile.strongOnly && !sparse && isPickup && gapPrev < 0.9) spawn = localRoll < profile.extraWeak;
     else if (!profile.strongOnly && !sparse && mod8 === 7) spawn = localRoll < (profile.extraWeak * 0.55);
+    // High transient beat that passes min-gap: let the audio itself trigger a note
+    else if (!profile.strongOnly && !sparse && beatStr > 0.75 && t - lastTime > difficultyCfg.minGap * 1.2) spawn = true;
 
     if (!spawn) continue;
     if (t - lastTime < difficultyCfg.minGap) continue;
@@ -648,7 +659,8 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     lane = Math.max(0, Math.min(3, lane + laneStep));
     if (Math.abs(lane - phraseAnchor) <= 1) phraseLocalBudget -= 1;
 
-    const strength = nearDownbeat ? 1.05 : (isStrong ? 1.0 : (dense ? 0.78 : 0.68));
+    const baseStrength = nearDownbeat ? 1.05 : (isStrong ? 1.0 : (dense ? 0.78 : 0.68));
+    const strength = Number(Math.max(0.5, Math.min(1.1, beatStr > 0 ? 0.5 + beatStr * 0.6 : baseStrength)).toFixed(2));
     notes.push({
       time: t,
       proposalType: type,
