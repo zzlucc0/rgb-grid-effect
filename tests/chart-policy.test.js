@@ -128,6 +128,35 @@ describe('chart policy quotas', () => {
     expect(snapshots.finalized.strain.maxStrain).toBeGreaterThanOrEqual(0);
   });
 
+  it('enforces preserve-gap ranges and window strain caps during arrangement', () => {
+    const policy = loadPolicy();
+    const notes = [
+      { time: 0.1, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 0, segmentLabel: 'verse', strength: 1.5, accentWeight: 1.4 },
+      { time: 0.18, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 1, segmentLabel: 'verse', strength: 1.4, accentWeight: 1.3 },
+      { time: 0.26, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 2, segmentLabel: 'verse', strength: 1.3, accentWeight: 1.2 },
+      { time: 0.9, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 0, segmentLabel: 'verse', strength: 1.2, accentWeight: 1.1 }
+    ];
+    const barPlan = { bars: [{
+      barIndex: 0,
+      startTime: 0,
+      endTime: 1.2,
+      segmentLabel: 'verse',
+      energyLevel: 'light',
+      densityBudget: 6,
+      sustainBudget: 0,
+      simultaneousCap: 1,
+      mechanicFamily: 'single-tap-accent',
+      repetitionPenalty: 0,
+      maxNoteCount: 4,
+      maxWindowStrain: 2.0,
+      mustPreserveGapRanges: [[0.85, 1.05]]
+    }] };
+    const arranged = policy.arrangeBars(notes, barPlan, { windowMs: 500 });
+    expect(arranged.arrangedNotes.every(n => !(n.time >= 0.85 && n.time <= 1.05))).toBe(true);
+    const strain = policy.windowStrainStats(arranged.arrangedNotes, { windowMs: 500 });
+    expect(strain.maxStrain).toBeLessThanOrEqual(2.0);
+  });
+
   it('keeps tap ratio under control and preserves latter-half specials', () => {
     const policy = loadPolicy();
     const notes = Array.from({ length: 60 }, (_, i) => ({

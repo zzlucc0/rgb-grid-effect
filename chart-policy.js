@@ -702,6 +702,7 @@
     };
     for (const plan of bars) {
       const candidates = seq.filter(note => Number(note.time || 0) >= Number(plan.startTime || 0) && Number(note.time || 0) < Number(plan.endTime || 0));
+      const microWindows = buildMicroWindows(plan, options);
       let ranked = candidates.map((note, idx) => scoreCandidate(note, candidates, idx, plan, arrangedNotes))
         .sort((a, b) => b.score - a.score || Number(a.note.time || 0) - Number(b.note.time || 0));
 
@@ -725,11 +726,13 @@
       let remainingSustain = Number(plan.sustainBudget || 0);
       const selected = [];
       for (const item of ranked) {
+        if (selected.length >= Number(plan.maxNoteCount || Infinity)) continue;
         const note = { ...item.note };
         const proposal = legacyToModern(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType, note).mechanic;
         const isSustain = isSustainedType(proposal);
         const tooClose = selected.some(other => Math.abs(Number(other.time || 0) - Number(note.time || 0)) < 0.22);
         if (tooClose) continue;
+        if (noteInGapRange(note, plan.mustPreserveGapRanges || [])) continue;
         if (plan.mechanicFamily === 'rest' && selected.length >= 1) continue;
         if (plan.mechanicFamily === 'single-tap-accent' && selected.length >= 2) continue;
         if (plan.mechanicFamily === 'alternating-taps' && proposal !== 'tap') continue;
@@ -739,6 +742,12 @@
         if (plan.mechanicFamily === 'burst-then-rest' && selected.length >= Math.max(2, Number(plan.simultaneousCap || 2) + 1)) continue;
         if (isSustain && remainingSustain <= 0) continue;
         if (remainingBudget - item.cost < -0.05) continue;
+
+        const window = microWindows.find(w => Number(note.time || 0) >= w.start && Number(note.time || 0) < w.end) || microWindows[microWindows.length - 1];
+        const candidateWindowNotes = [...(window?.notes || []), note];
+        const projectedStrain = calculateWindowStrainForNotes(candidateWindowNotes, options);
+        if (window && projectedStrain > Number(window.maxStrain || plan.maxWindowStrain || Infinity)) continue;
+
         remainingBudget -= item.cost;
         if (isSustain) remainingSustain -= 1;
         note.arranged = true;
@@ -754,6 +763,7 @@
         if (plan.mechanicFamily === 'drag-sweep' && selected.length > 0 && proposal === 'tap') note.keepReason = 'drag-followup';
         if (plan.mechanicFamily === 'burst-then-rest') note.keepReason = selected.length === 0 ? 'burst-lead' : 'burst-fill';
         selected.push(note);
+        if (window) window.notes.push(note);
       }
       selected.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
       arrangedNotes.push(...selected);
@@ -764,6 +774,50 @@
   function materializeBarPlan(arranged, options = {}) {
     const notes = Array.isArray(arranged?.arrangedNotes) ? arranged.arrangedNotes : [];
     return [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => normalizeNoteSchema({ ...note }));
+  }
+
+  function buildMicroWindows(bar, options = {}) {
+    const startTime = Number(bar?.startTime || 0);
+    const endTime = Math.max(startTime, Number(bar?.endTime || startTime));
+    const windowSec = Math.max(0.2, Number(options.windowMs || 500) / 1000);
+    const windows = [];
+    for (let start = startTime; start < endTime - 0.0001; start += windowSec) {
+      windows.push({
+        start: Number(start.toFixed(3)),
+        end: Number(Math.min(endTime, start + windowSec).toFixed(3)),
+        maxStrain: Number(bar?.maxWindowStrain || 4),
+        notes: []
+      });
+    }
+    if (!windows.length) {
+      windows.push({ start: startTime, end: endTime, maxStrain: Number(bar?.maxWindowStrain || 4), notes: [] });
+    }
+    return windows;
+  }
+
+  function noteInGapRange(note, gapRanges = []) {
+    const t = Number(note?.time || 0);
+    return (gapRanges || []).some(range => t >= Number(range?.[0] || 0) && t <= Number(range?.[1] || 0));
+  }
+
+  function calculateWindowStrainForNotes(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    let strain = 0;
+    for (let i = 0; i < seq.length; i += 1) {
+      const note = seq[i];
+      strain += estimateNoteCost(note, {});
+      if (i > 0) {
+        const prev = seq[i - 1];
+        const dt = Number(note.time || 0) - Number(prev.time || 0);
+        if (dt < 0.12) strain += 1.1;
+        else if (dt < 0.18) strain += 0.6;
+        else if (dt < 0.25) strain += 0.3;
+        const prevChannel = prev.inputChannel || prev.proposalInputChannel || 'shared';
+        const channel = note.inputChannel || note.proposalInputChannel || 'shared';
+        if (prevChannel !== channel && prevChannel !== 'shared' && channel !== 'shared') strain += 0.6;
+      }
+    }
+    return Number(strain.toFixed(2));
   }
 
   function windowStrainStats(notes, options = {}) {
@@ -851,7 +905,7 @@
     return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, windowStrainStats, summarizeStage, pipelineSnapshots };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, buildMicroWindows, noteInGapRange, calculateWindowStrainForNotes, windowStrainStats, summarizeStage, pipelineSnapshots };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
