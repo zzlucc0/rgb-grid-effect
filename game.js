@@ -670,7 +670,20 @@ class RhythmGame {
                 }));
             }
             if (window.ChartPolicy?.finalizePlayableChartPipeline) {
-                this.chartData.notes = window.ChartPolicy.finalizePlayableChartPipeline(this.chartData.notes, { circleSize: this.circleSize, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.45, minLatterSpecialRatio: 0.4 });
+                const analysisMeta = (this.liveConfig && this.liveConfig.analysis) || {};
+                this.chartData.notes = window.ChartPolicy.finalizePlayableChartPipeline(this.chartData.notes, {
+                    circleSize: this.circleSize,
+                    openingSeconds: 12,
+                    sustainedCooldownSec: 1.6,
+                    holdCooldownSec: 2.6,
+                    minFirst30: 12,
+                    minPer10: 3,
+                    maxTapRatio: 0.45,
+                    minLatterSpecialRatio: 0.4,
+                    beats: Array.isArray(analysisMeta.beats) ? analysisMeta.beats : [],
+                    downbeats: Array.isArray(analysisMeta.downbeats) ? analysisMeta.downbeats : [],
+                    segments: Array.isArray(analysisMeta.segments) ? analysisMeta.segments : []
+                });
             } else {
                 this.applyMechanicQuotas(this.chartData.notes);
                 this.enforceChartPlayability(this.chartData.notes);

@@ -510,6 +510,30 @@
   function estimateBarLengthSec(notes, options = {}) {
     const beatsPerBar = Math.max(2, Number(options.beatsPerBar || 4));
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const downbeats = Array.isArray(options.downbeats) ? options.downbeats.map(Number).filter(n => Number.isFinite(n)) : [];
+    if (downbeats.length >= 2) {
+      const deltas = [];
+      for (let i = 1; i < downbeats.length; i += 1) {
+        const dt = downbeats[i] - downbeats[i - 1];
+        if (dt > 0.8 && dt < 5.5) deltas.push(dt);
+      }
+      if (deltas.length) {
+        deltas.sort((a, b) => a - b);
+        return Math.max(1.0, Math.min(6.0, deltas[Math.floor(deltas.length / 2)] || 60 / 122 * beatsPerBar));
+      }
+    }
+    const beats = Array.isArray(options.beats) ? options.beats.map(Number).filter(n => Number.isFinite(n)) : [];
+    if (beats.length >= beatsPerBar + 1) {
+      const deltas = [];
+      for (let i = beatsPerBar; i < beats.length; i += beatsPerBar) {
+        const dt = beats[i] - beats[i - beatsPerBar];
+        if (dt > 0.8 && dt < 5.5) deltas.push(dt);
+      }
+      if (deltas.length) {
+        deltas.sort((a, b) => a - b);
+        return Math.max(1.0, Math.min(6.0, deltas[Math.floor(deltas.length / 2)] || 60 / 122 * beatsPerBar));
+      }
+    }
     const deltas = [];
     for (let i = 1; i < seq.length; i += 1) {
       const dt = Number(seq[i].time || 0) - Number(seq[i - 1].time || 0);
@@ -571,8 +595,12 @@
     const barLengthSec = estimateBarLengthSec(seq, options);
     const beatsPerBar = Math.max(2, Number(options.beatsPerBar || 4));
     const openingSafeBars = Math.max(2, Number(options.openingSafeBars || 8));
+    const downbeats = Array.isArray(options.downbeats) ? options.downbeats.map(Number).filter(n => Number.isFinite(n)).sort((a, b) => a - b) : [];
     const lastTime = Number(seq[seq.length - 1]?.time || 0);
-    const barCount = Math.max(1, Math.floor(lastTime / barLengthSec) + 1);
+    const barBoundaries = downbeats.length >= 2
+      ? [...downbeats, Number((downbeats[downbeats.length - 1] + barLengthSec).toFixed(3))]
+      : null;
+    const barCount = barBoundaries ? Math.max(1, barBoundaries.length - 1) : Math.max(1, Math.floor(lastTime / barLengthSec) + 1);
     const budgets = {
       rest: 0.8,
       light: 2.4,
@@ -601,8 +629,8 @@
     const bars = [];
     let prevPlan = null;
     for (let barIndex = 0; barIndex < barCount; barIndex += 1) {
-      const startTime = Number((barIndex * barLengthSec).toFixed(3));
-      const endTime = Number((startTime + barLengthSec).toFixed(3));
+      const startTime = Number((barBoundaries ? barBoundaries[barIndex] : (barIndex * barLengthSec)).toFixed(3));
+      const endTime = Number((barBoundaries ? barBoundaries[barIndex + 1] : (startTime + barLengthSec)).toFixed(3));
       const candidates = seq.filter(note => Number(note.time || 0) >= startTime && Number(note.time || 0) < endTime);
       const segmentLabel = candidates[0]?.segmentLabel || prevPlan?.segmentLabel || 'verse';
       let energyLevel = classifyBarEnergy(candidates, prevPlan, options);
@@ -650,21 +678,39 @@
     const bars = Array.isArray(barPlan?.bars) ? barPlan.bars : [];
     const arrangedNotes = [];
     const pressureWindowSec = Math.max(0.35, Number(options.pressureWindowMs || 1000) / 1000);
+    const scoreCandidate = (note, candidates, idx, plan, selectedSoFar) => {
+      const prev = idx > 0 ? candidates[idx - 1] : null;
+      const dt = prev ? Number(note.time || 0) - Number(prev.time || 0) : 99;
+      const largeLaneJump = prev ? Math.abs(Number(note.laneHint || 0) - Number(prev.laneHint || 0)) >= 2 : false;
+      const denseSubWindow = dt < 0.42;
+      const overlapsSustainPressure = isSustainedType(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType) && selectedSoFar.some(other => isSustainedType(other?.proposalType || other?.type || other?.noteType) && Math.abs(Number(other.time || 0) - Number(note.time || 0)) < pressureWindowSec);
+      const familySwitchLoad = plan.repetitionPenalty >= 0.3 && idx === 0;
+      const cost = estimateNoteCost(note, { largeLaneJump, denseSubWindow, overlapsSustainPressure, familySwitchLoad });
+      const strength = Number(note?.strength || note?.accentWeight || 1);
+      const downbeatBias = Number(note?.downbeatBias || 0);
+      const segBias = ['chorus', 'bridge'].includes(String(note?.segmentLabel || '')) ? 0.15 : 0;
+      return { note, cost, score: strength + downbeatBias + segBias - cost * 0.18 - (denseSubWindow ? 0.12 : 0) };
+    };
     for (const plan of bars) {
       const candidates = seq.filter(note => Number(note.time || 0) >= Number(plan.startTime || 0) && Number(note.time || 0) < Number(plan.endTime || 0));
-      const ranked = candidates.map((note, idx) => {
-        const prev = idx > 0 ? candidates[idx - 1] : null;
-        const dt = prev ? Number(note.time || 0) - Number(prev.time || 0) : 99;
-        const largeLaneJump = prev ? Math.abs(Number(note.laneHint || 0) - Number(prev.laneHint || 0)) >= 2 : false;
-        const denseSubWindow = dt < 0.42;
-        const overlapsSustainPressure = isSustainedType(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType) && arrangedNotes.some(other => isSustainedType(other?.proposalType || other?.type || other?.noteType) && Math.abs(Number(other.time || 0) - Number(note.time || 0)) < pressureWindowSec);
-        const familySwitchLoad = plan.repetitionPenalty >= 0.3 && idx === 0;
-        const cost = estimateNoteCost(note, { largeLaneJump, denseSubWindow, overlapsSustainPressure, familySwitchLoad });
-        const strength = Number(note?.strength || note?.accentWeight || 1);
-        const downbeatBias = Number(note?.downbeatBias || 0);
-        const segBias = ['chorus', 'bridge'].includes(String(note?.segmentLabel || '')) ? 0.15 : 0;
-        return { note, cost, score: strength + downbeatBias + segBias - cost * 0.18 - (denseSubWindow ? 0.12 : 0) };
-      }).sort((a, b) => b.score - a.score || Number(a.note.time || 0) - Number(b.note.time || 0));
+      let ranked = candidates.map((note, idx) => scoreCandidate(note, candidates, idx, plan, arrangedNotes))
+        .sort((a, b) => b.score - a.score || Number(a.note.time || 0) - Number(b.note.time || 0));
+
+      if (plan.mechanicFamily === 'alternating-taps' || plan.mechanicFamily === 'cross-lane-call-response') {
+        ranked = ranked.filter(item => legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic === 'tap' || item.note.segmentLabel === 'chorus');
+      } else if (plan.mechanicFamily === 'hold-anchor') {
+        const holdFirst = ranked.find(item => legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic === 'hold');
+        const rest = ranked.filter(item => item !== holdFirst && legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic !== 'drag');
+        ranked = holdFirst ? [holdFirst, ...rest] : rest;
+      } else if (plan.mechanicFamily === 'drag-sweep') {
+        const dragFirst = ranked.find(item => legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic === 'drag');
+        const rest = ranked.filter(item => item !== dragFirst && legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic !== 'hold');
+        ranked = dragFirst ? [dragFirst, ...rest] : rest;
+      } else if (plan.mechanicFamily === 'burst-then-rest') {
+        ranked = ranked.filter(item => Number(item.note?.time || 0) <= Number(plan.startTime || 0) + (Number(plan.endTime || 0) - Number(plan.startTime || 0)) * 0.55);
+      } else if (plan.mechanicFamily === 'sync-accent') {
+        ranked = ranked.filter(item => Number(item.note?.downbeatBias || 0) > 0 || Number(item.note?.strength || item.note?.accentWeight || 0) >= 1);
+      }
 
       let remainingBudget = Number(plan.densityBudget || 0);
       let remainingSustain = Number(plan.sustainBudget || 0);
@@ -677,8 +723,11 @@
         if (tooClose) continue;
         if (plan.mechanicFamily === 'rest' && selected.length >= 1) continue;
         if (plan.mechanicFamily === 'single-tap-accent' && selected.length >= 2) continue;
+        if (plan.mechanicFamily === 'alternating-taps' && proposal !== 'tap') continue;
+        if (plan.mechanicFamily === 'cross-lane-call-response' && proposal !== 'tap' && proposal !== 'hold') continue;
         if (plan.mechanicFamily === 'hold-anchor' && proposal === 'drag') continue;
         if (plan.mechanicFamily === 'drag-sweep' && proposal === 'hold') continue;
+        if (plan.mechanicFamily === 'burst-then-rest' && selected.length >= Math.max(2, Number(plan.simultaneousCap || 2) + 1)) continue;
         if (isSustain && remainingSustain <= 0) continue;
         if (remainingBudget - item.cost < -0.05) continue;
         remainingBudget -= item.cost;
@@ -688,6 +737,13 @@
         note.arrangedBarEnergy = plan.energyLevel;
         note.arrangedCost = Number(item.cost.toFixed(2));
         note.keepReason = selected.length === 0 ? 'bar-accent' : 'budget-fit';
+        if (plan.mechanicFamily === 'cross-lane-call-response' && selected.length > 0) {
+          const prevSelected = selected[selected.length - 1];
+          if (Math.abs(Number(prevSelected.laneHint || 0) - Number(note.laneHint || 0)) < 1) note.laneHint = (Number(prevSelected.laneHint || 0) + 2) % 4;
+        }
+        if (plan.mechanicFamily === 'hold-anchor' && selected.length > 0 && proposal === 'tap') note.keepReason = 'anchor-support';
+        if (plan.mechanicFamily === 'drag-sweep' && selected.length > 0 && proposal === 'tap') note.keepReason = 'drag-followup';
+        if (plan.mechanicFamily === 'burst-then-rest') note.keepReason = selected.length === 0 ? 'burst-lead' : 'burst-fill';
         selected.push(note);
       }
       selected.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));

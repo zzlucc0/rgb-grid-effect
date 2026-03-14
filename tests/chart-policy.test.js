@@ -147,6 +147,45 @@ describe('chart policy quotas', () => {
     expect(arranged.arrangedNotes.some(note => note.keepReason === 'bar-accent')).toBe(true);
   });
 
+  it('uses downbeats when building bars instead of only time slicing', () => {
+    const policy = loadPolicy();
+    const notes = [
+      { time: 0.2, type: 'tap', noteType: 'tap', laneHint: 0, segmentLabel: 'intro', strength: 1 },
+      { time: 1.0, type: 'tap', noteType: 'tap', laneHint: 1, segmentLabel: 'intro', strength: 1 },
+      { time: 4.1, type: 'tap', noteType: 'tap', laneHint: 1, segmentLabel: 'verse', strength: 1 },
+      { time: 5.2, type: 'tap', noteType: 'tap', laneHint: 2, segmentLabel: 'verse', strength: 1 },
+      { time: 8.05, type: 'tap', noteType: 'tap', laneHint: 2, segmentLabel: 'chorus', strength: 1 }
+    ];
+    const built = policy.buildBarPlan(notes, { downbeats: [0, 4, 8], beatsPerBar: 4 });
+    expect(built.bars[0].startTime).toBe(0);
+    expect(built.bars[0].endTime).toBe(4);
+    expect(built.bars[1].startTime).toBe(4);
+    expect(built.bars[1].endTime).toBe(8);
+  });
+
+  it('lets family choice visibly shape arranged output', () => {
+    const policy = loadPolicy();
+    const notes = [
+      { time: 0.5, proposalType: 'hold', type: 'tap', noteType: 'tap', laneHint: 0, segmentLabel: 'verse', strength: 1.5, accentWeight: 1.4 },
+      { time: 0.9, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 1, segmentLabel: 'verse', strength: 1.0, accentWeight: 1.0 },
+      { time: 1.3, proposalType: 'drag', type: 'tap', noteType: 'tap', laneHint: 2, segmentLabel: 'verse', strength: 0.9, accentWeight: 0.8 },
+      { time: 4.2, proposalType: 'drag', type: 'tap', noteType: 'tap', laneHint: 0, segmentLabel: 'chorus', strength: 1.6, accentWeight: 1.4 },
+      { time: 4.5, proposalType: 'tap', type: 'tap', noteType: 'tap', laneHint: 1, segmentLabel: 'chorus', strength: 1.0, accentWeight: 1.0 },
+      { time: 4.9, proposalType: 'hold', type: 'tap', noteType: 'tap', laneHint: 2, segmentLabel: 'chorus', strength: 0.8, accentWeight: 0.8 }
+    ];
+    const barPlan = { bars: [
+      { barIndex: 0, startTime: 0, endTime: 2, segmentLabel: 'verse', energyLevel: 'medium', densityBudget: 3.6, sustainBudget: 1, simultaneousCap: 2, mechanicFamily: 'hold-anchor', repetitionPenalty: 0 },
+      { barIndex: 1, startTime: 4, endTime: 6, segmentLabel: 'chorus', energyLevel: 'medium', densityBudget: 3.6, sustainBudget: 1, simultaneousCap: 2, mechanicFamily: 'drag-sweep', repetitionPenalty: 0 }
+    ] };
+    const arranged = policy.arrangeBars(notes, barPlan, { pressureWindowMs: 1000 });
+    const firstBar = arranged.arrangedNotes.filter(n => n.time < 2);
+    const secondBar = arranged.arrangedNotes.filter(n => n.time >= 4 && n.time < 6);
+    expect(firstBar.some(n => n.arrangedFamily === 'hold-anchor')).toBe(true);
+    expect(firstBar.every(n => n.proposalType !== 'drag')).toBe(true);
+    expect(secondBar.some(n => n.arrangedFamily === 'drag-sweep')).toBe(true);
+    expect(secondBar.every(n => n.proposalType !== 'hold')).toBe(true);
+  });
+
   it('disables old keyboard checkpoint path prompts for drag notes', () => {
     const policy = loadPolicy();
     const out = policy.assignKeyboardCheckpoints([
