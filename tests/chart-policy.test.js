@@ -95,6 +95,39 @@ describe('chart policy quotas', () => {
     expect(stats.minWindowCount).toBeGreaterThanOrEqual(3);
   });
 
+  it('does not backfill density by default in finalizer', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 20 }, (_, i) => ({
+      time: 1 + i,
+      type: 'tap',
+      noteType: 'tap',
+      laneHint: i % 4,
+      segmentLabel: i < 10 ? 'verse' : 'chorus'
+    }));
+    const finalized = policy.finalizePlayableChartPipeline(notes, { maxTapRatio: 0.2, minLatterSpecialRatio: 0.9 });
+    const mix = policy.mechanicMixStats(finalized);
+    expect(mix.tapRatio).toBeGreaterThan(0.2);
+    expect(mix.latterSpecialRatio).toBeLessThan(0.9);
+  });
+
+  it('exports pipeline snapshots with per-stage strain stats', () => {
+    const policy = loadPolicy();
+    const notes = Array.from({ length: 12 }, (_, i) => ({
+      time: 0.8 + i * 0.35,
+      type: 'tap',
+      noteType: 'tap',
+      proposalType: i % 3 === 0 ? 'drag' : 'tap',
+      laneHint: i % 4,
+      segmentLabel: i < 4 ? 'intro' : i < 8 ? 'verse' : 'chorus',
+      strength: 1.1,
+      accentWeight: 1.0
+    }));
+    const snapshots = policy.pipelineSnapshots(notes, { downbeats: [0, 2, 4], windowMs: 500 });
+    expect(snapshots.candidate.noteCount).toBeGreaterThan(0);
+    expect(snapshots.arranged.noteCount).toBeGreaterThan(0);
+    expect(snapshots.finalized.strain.maxStrain).toBeGreaterThanOrEqual(0);
+  });
+
   it('keeps tap ratio under control and preserves latter-half specials', () => {
     const policy = loadPolicy();
     const notes = Array.from({ length: 60 }, (_, i) => ({
@@ -104,12 +137,12 @@ describe('chart policy quotas', () => {
       laneHint: i % 4,
       segmentLabel: i < 20 ? 'verse' : i < 40 ? 'chorus' : 'bridge'
     }));
-    const finalized = policy.finalizePlayableChartPipeline(notes, { circleSize: 36, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.58, minLatterSpecialRatio: 0.22 });
+    const finalized = policy.finalizePlayableChartPipeline(notes, { circleSize: 36, openingSeconds: 12, sustainedCooldownSec: 1.6, holdCooldownSec: 2.6, minFirst30: 12, minPer10: 3, maxTapRatio: 0.58, minLatterSpecialRatio: 0.22, allowDensityBackfill: true });
     const mix = policy.mechanicMixStats(finalized);
     expect(mix.tapRatio).toBeLessThanOrEqual(0.58);
     expect(mix.latterSpecialRatio).toBeGreaterThanOrEqual(0.22);
   });
-+
+
   it('builds bar plans with opening-safe energy caps and breathing structure', () => {
     const policy = loadPolicy();
     const notes = Array.from({ length: 24 }, (_, i) => ({

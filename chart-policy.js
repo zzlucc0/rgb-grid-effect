@@ -428,11 +428,12 @@
   }
 
   function enforceDensityFloor(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    if (options.allowDensityBackfill !== true) return seq;
     const minFirst30 = Number(options.minFirst30 || 12);
     const minPer10 = Number(options.minPer10 || 3);
     const maxTapRatio = Number(options.maxTapRatio || 0.58);
     const minLatterSpecialRatio = Number(options.minLatterSpecialRatio || 0.22);
-    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
     const stats = densityStats(seq, 10, 30);
     if (stats.first30 < minFirst30 || stats.minWindowCount < minPer10) return seq;
     if (mechanicMixStats(seq).tapRatio > maxTapRatio) {
@@ -666,6 +667,14 @@
         handTravelBudget: energyLevel === 'heavy' ? 2.0 : 1.6,
         readabilityBudget: energyLevel === 'heavy' ? 2.8 : 2.2,
         targetInputBias: mechanicFamily === 'drag-sweep' ? 'mouse' : (mechanicFamily === 'hold-anchor' ? 'mixed' : 'keyboard'),
+        maxNoteCount: energyLevel === 'rest' ? 1 : (energyLevel === 'light' ? 2 : (energyLevel === 'medium' ? 4 : 5)),
+        maxWindowStrain: energyLevel === 'rest' ? 1.2 : (energyLevel === 'light' ? 2.6 : (energyLevel === 'medium' ? 4.0 : (energyLevel === 'heavy' ? 5.0 : 5.8))),
+        restMode: energyLevel === 'rest' ? 'strong' : (energyLevel === 'light' ? 'partial' : 'none'),
+        mustPreserveGapRanges: energyLevel === 'rest'
+          ? [[Number((startTime + (endTime - startTime) * 0.25).toFixed(3)), Number((endTime - (endTime - startTime) * 0.15).toFixed(3))]]
+          : (mechanicFamily === 'burst-then-rest'
+              ? [[Number((startTime + (endTime - startTime) * 0.58).toFixed(3)), Number(endTime.toFixed(3))]]
+              : []),
         candidateCount: candidates.length
       });
       prevPlan = bars[bars.length - 1];
@@ -757,6 +766,71 @@
     return [...notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0)).map(note => normalizeNoteSchema({ ...note }));
   }
 
+  function windowStrainStats(notes, options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    const windowSec = Math.max(0.2, Number(options.windowMs || 500) / 1000);
+    const endTime = Number(seq[seq.length - 1]?.time || 0);
+    const windows = [];
+    for (let start = 0; start <= endTime + 0.001; start += windowSec) {
+      const end = start + windowSec;
+      const bucket = seq.filter(note => Number(note.time || 0) >= start && Number(note.time || 0) < end);
+      let strain = 0;
+      for (let i = 0; i < bucket.length; i += 1) {
+        const note = bucket[i];
+        strain += estimateNoteCost(note, {});
+        if (i > 0) {
+          const prev = bucket[i - 1];
+          const dt = Number(note.time || 0) - Number(prev.time || 0);
+          if (dt < 0.12) strain += 1.1;
+          else if (dt < 0.18) strain += 0.6;
+          else if (dt < 0.25) strain += 0.3;
+          const prevChannel = prev.inputChannel || prev.proposalInputChannel || 'shared';
+          const channel = note.inputChannel || note.proposalInputChannel || 'shared';
+          if (prevChannel !== channel && prevChannel !== 'shared' && channel !== 'shared') strain += 0.6;
+        }
+      }
+      windows.push({ start: Number(start.toFixed(3)), end: Number(end.toFixed(3)), noteCount: bucket.length, strain: Number(strain.toFixed(2)) });
+    }
+    return { windowSec, windows, maxStrain: Math.max(0, ...windows.map(w => w.strain)) };
+  }
+
+  function summarizeStage(notes, bars = [], options = {}) {
+    const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    return {
+      noteCount: seq.length,
+      mechanic: mechanicMixStats(seq),
+      density: densityStats(seq, 10, 30),
+      strain: windowStrainStats(seq, options),
+      bars: (bars || []).map(bar => ({
+        barIndex: bar.barIndex,
+        energyLevel: bar.energyLevel,
+        mechanicFamily: bar.mechanicFamily,
+        candidateCount: bar.candidateCount,
+        maxWindowStrain: bar.maxWindowStrain,
+        mustPreserveGapRanges: bar.mustPreserveGapRanges || []
+      }))
+    };
+  }
+
+  function pipelineSnapshots(notes, options = {}) {
+    const candidate = layerABaseChartProposal(notes || []);
+    const barPlan = buildBarPlan(candidate, options);
+    const arranged = arrangeBars(candidate, barPlan, options);
+    const materialized = materializeBarPlan(arranged, options);
+    let finalized = layerBMechanicPlanner(materialized, options);
+    finalized = layerCInputChannelPlanner(finalized, options);
+    finalized = layerDOpeningGuard(finalized, options);
+    finalized = layerEPlayabilityGuard(finalized, options);
+    finalized = layerFGeometryPrep(finalized, options);
+    finalized = layerGRuntimeAudit(finalized, options).notes;
+    return {
+      candidate: summarizeStage(candidate, [], options),
+      arranged: summarizeStage(arranged.arrangedNotes, arranged.bars, options),
+      materialized: summarizeStage(materialized, arranged.bars, options),
+      finalized: summarizeStage(finalized, arranged.bars, options)
+    };
+  }
+
   function spreadQuotaPromotions(notes) { return layerBMechanicPlanner(notes); }
 
   function auditChartShape(notes) {
@@ -777,7 +851,7 @@
     return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
-  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan };
+  const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, windowStrainStats, summarizeStage, pipelineSnapshots };
   if (typeof window !== 'undefined') window.ChartPolicy = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
