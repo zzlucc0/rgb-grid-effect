@@ -483,7 +483,8 @@ function buildOptionsKey(opts = {}) {
     segWindow: SEGMENT_WINDOW_SEC,
     segOverlap: SEGMENT_OVERLAP_SEC,
     maxCapture: MAX_CAPTURE_SEC,
-    schema: CHART_SCHEMA_VERSION
+    schema: CHART_SCHEMA_VERSION,
+    analysisV: 2
   });
   return createHash('sha1').update(raw).digest('hex').slice(0, 12);
 }
@@ -507,10 +508,14 @@ function buildPatternProfile(seg, difficultyCfg, densityCfg = getDensityConfig('
   const energyNorm = Math.max(0, Math.min(1, Number(seg?.energyNorm ?? 0.5)));
   const weakScale = Number(densityCfg.extraWeakScale || 1) * (0.65 + energyNorm * 0.7);
   const dragDensityBoost = Number(densityCfg.dragBoost || 0);
-  if (label === 'intro') return { strongOnly: false, extraWeak: 0.14 * difficultyCfg.weakChance * weakScale, dragBias: 0.05 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.08, phraseSpan: 2 };
-  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.42 * difficultyCfg.weakChance * weakScale, dragBias: 0.22 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.22, phraseSpan: 3 };
+  // sustainRatio (0=pure drum, 1=pure tonal/vocal): modulate drag bias along the harmonic axis
+  const sustainRatio = Math.max(0, Math.min(1, Number(seg?.sustainRatio ?? 0.5)));
+  const sustainDragBoost = label === 'drop' ? -0.15 : (sustainRatio - 0.5) * 0.36;
+  if (label === 'intro') return { strongOnly: false, extraWeak: 0.14 * difficultyCfg.weakChance * weakScale, dragBias: Math.max(0, 0.05 + difficultyCfg.dragBoost + dragDensityBoost + sustainDragBoost), jumpBias: 0.08, phraseSpan: 2 };
+  if (label === 'drop') return { strongOnly: false, extraWeak: 0.38 * difficultyCfg.weakChance * weakScale, dragBias: Math.max(0.02, 0.06 + difficultyCfg.dragBoost + dragDensityBoost), jumpBias: 0.28, phraseSpan: 3 };
+  if (label === 'chorus') return { strongOnly: false, extraWeak: 0.42 * difficultyCfg.weakChance * weakScale, dragBias: Math.max(0, 0.22 + difficultyCfg.dragBoost + dragDensityBoost + sustainDragBoost), jumpBias: 0.22, phraseSpan: 3 };
   if (label === 'break') return { strongOnly: true, extraWeak: 0.0, dragBias: 0.04 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: 0.04, phraseSpan: 1 };
-  return { strongOnly: false, extraWeak: (dense ? 0.28 : 0.18) * difficultyCfg.weakChance * weakScale, dragBias: 0.12 + difficultyCfg.dragBoost + dragDensityBoost, jumpBias: dense ? 0.17 : 0.12, phraseSpan: dense ? 3 : 2 };
+  return { strongOnly: false, extraWeak: (dense ? 0.28 : 0.18) * difficultyCfg.weakChance * weakScale, dragBias: Math.max(0, 0.12 + difficultyCfg.dragBoost + dragDensityBoost + sustainDragBoost), jumpBias: dense ? 0.17 : 0.12, phraseSpan: dense ? 3 : 2 };
 }
 
 function stableRand(seed) {
@@ -525,13 +530,16 @@ function pickPhraseIntent(seg, phraseIndex, t) {
   const label = seg?.label || 'verse';
   const dense = seg?.energy === 'high' || Number(seg?.density || 0) > 1.8;
   const gradient = seg?.gradient || 'stable';
+  const vocalHeavy = seg?.vocalHeavy === true;
   const roll = stableRand(Math.round(Number(t || 0) * 1000) + phraseIndex * 97 + label.length * 53);
   if (label === 'intro') return roll < 0.7 ? 'settle' : 'drift';
-  // Energy gradient drives phrase feel: rising → build/surge, falling → release/suspend
-  if (gradient === 'rising') return roll < 0.55 ? 'surge' : 'answer';
-  if (gradient === 'falling' && label !== 'chorus') return roll < 0.55 ? 'suspend' : (label === 'bridge' ? 'pivot' : 'drift');
-  if (label === 'chorus') return roll < 0.34 ? 'surge' : (roll < 0.7 ? 'answer' : 'sweep');
+  if (label === 'drop') return roll < 0.5 ? 'surge' : 'sweep'; // pure drum drop: aggressive outward taps
+  // Energy gradient + vocal character take priority over static segment label
+  if (gradient === 'rising') return vocalHeavy ? 'sweep' : (roll < 0.55 ? 'surge' : 'answer');
+  if (gradient === 'falling' && label !== 'chorus') return vocalHeavy ? 'suspend' : (label === 'bridge' ? 'pivot' : 'drift');
+  if (label === 'chorus') return vocalHeavy ? (roll < 0.5 ? 'sweep' : 'answer') : (roll < 0.34 ? 'surge' : (roll < 0.7 ? 'answer' : 'sweep'));
   if (label === 'bridge') return roll < 0.45 ? 'suspend' : 'pivot';
+  if (vocalHeavy) return roll < 0.5 ? 'answer' : 'suspend';
   if (dense) return roll < 0.5 ? 'answer' : 'sweep';
   return roll < 0.5 ? 'drift' : 'pivot';
 }
@@ -544,6 +552,31 @@ function nearestDownbeatDistance(downbeats, t) {
 }
 function pickSegmentForTime(segments, t) {
   return (segments || []).find(seg => t >= Number(seg.start || 0) && t < Number(seg.end || 0)) || null;
+}
+
+// classifyBeatSignal: pure audio-signal classifier — no caller state, safe to call anywhere
+// Returns { noteType: 'tap'|'drag', confidence: 0–1 }
+// confidence >= 0.70  → overrides phrase-system logic
+// confidence 0.48–0.69 → nudges drag probability; phrase system still applies
+// confidence < 0.48  → ambiguous, phrase system decides
+function classifyBeatSignal(percStr, harmStr, seg, beatIntervalSec, bpm) {
+  const bi = Number(beatIntervalSec || 0.5);
+  const bpmN = Number(bpm || 120);
+  // Fast tempo: drag is physically unplayable at high speed
+  if (bpmN > 155 || bi < 0.35) return { noteType: 'tap', confidence: 0.90 };
+  // Strong percussive transient clearly dominates — this is a drum hit
+  if (percStr > 0.70 && percStr > harmStr * 1.40) return { noteType: 'tap', confidence: 0.82 };
+  // Sustained tonal/vocal beat: harmonic dominant + adequate gap for drag
+  const sustainRatio = Math.max(0, Math.min(1, Number(seg?.sustainRatio ?? 0.5)));
+  if (harmStr > 0.55 && harmStr > percStr * 1.20 && sustainRatio > 0.50 && bi > 0.38) {
+    return { noteType: 'drag', confidence: 0.78 };
+  }
+  // Moderate harmonic lean — influence drag probability without overriding
+  if (harmStr > 0.40 && harmStr > percStr * 1.05 && bi > 0.42) {
+    return { noteType: 'drag', confidence: 0.48 };
+  }
+  // Ambiguous — let phrase system decide
+  return { noteType: 'tap', confidence: 0.28 };
 }
 
 function injectSpinProposals(notes, durationSec = 0) {
@@ -593,6 +626,9 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
   }
 
   const beatStrengths = Array.isArray(analysis?.beatStrengths) ? analysis.beatStrengths.map(Number) : [];
+  const percussiveStrengths = Array.isArray(analysis?.percussiveStrengths) ? analysis.percussiveStrengths.map(Number) : [];
+  const harmonicStrengths = Array.isArray(analysis?.harmonicStrengths) ? analysis.harmonicStrengths.map(Number) : [];
+  const vocalOnsets = Array.isArray(analysis?.vocalOnsets) ? analysis.vocalOnsets : [];
   const notes = [];
   let lane = 1;
   let phraseIndex = 0;
@@ -619,6 +655,10 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     const localRoll = stableRand(i * 131 + Math.round(t * 1000) + phraseIndex * 19);
     // beatStr: actual audio transient strength at this beat (0=silent, 1=peak hit)
     const beatStr = Number.isFinite(beatStrengths[i]) ? Math.max(0, Math.min(1, beatStrengths[i])) : 0.5;
+    const percStr = Number.isFinite(percussiveStrengths[i]) ? percussiveStrengths[i] : 0.5;
+    const harmStr = Number.isFinite(harmonicStrengths[i]) ? harmonicStrengths[i] : 0.5;
+    const beatInterval = i > 0 ? (beats[i] - beats[i - 1]) : (60 / bpm);
+    const signalClass = classifyBeatSignal(percStr, harmStr, seg, beatInterval, bpm);
 
     if (mod8 === 0 || i === 0) {
       phraseIntent = pickPhraseIntent(seg, phraseIndex, t);
@@ -632,7 +672,7 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     else if (!profile.strongOnly && dense && (mod4 === 2 || mod8 === 6)) spawn = true;
     else if (!profile.strongOnly && !sparse && isPickup && gapPrev < 0.9) spawn = localRoll < profile.extraWeak;
     else if (!profile.strongOnly && !sparse && mod8 === 7) spawn = localRoll < (profile.extraWeak * 0.55);
-    // High transient beat that passes min-gap: let the audio itself trigger a note
+    // High transient beat (audio-driven): let the audio itself trigger a note
     else if (!profile.strongOnly && !sparse && beatStr > 0.75 && t - lastTime > difficultyCfg.minGap * 1.2) spawn = true;
 
     if (!spawn) continue;
@@ -642,10 +682,15 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     const segDrag = Number(seg.dragRatio || 0.16) + difficultyCfg.dragBoost + Number(densityCfg.dragBoost || 0);
     const dragWindow = gapNext > 0.35 && gapNext < 1.5;
     const introGuard = t < 4.8;
-    if (!introGuard && dragWindow) {
+    // Audio-signal classification: high confidence overrides phrase logic
+    if (!introGuard && signalClass.confidence >= 0.70 && (signalClass.noteType !== 'drag' || dragWindow)) {
+      type = signalClass.noteType;
+    } else if (!introGuard && dragWindow) {
       if (phraseIntent === 'sweep' && localRoll < Math.min(0.66, profile.dragBias + segDrag + 0.1)) type = 'drag';
       else if (phraseIntent === 'answer' && isStrong && localRoll < Math.min(0.52, profile.dragBias + segDrag)) type = 'drag';
       else if (phraseIntent === 'suspend' && isStrong && lastType !== 'pulseHold' && localRoll < 0.34) type = 'drag';
+      // Moderate harmonic lean nudges drag probability without fully overriding
+      else if (signalClass.noteType === 'drag' && signalClass.confidence >= 0.48 && localRoll < Math.min(0.68, profile.dragBias + segDrag + 0.18)) type = 'drag';
     }
     if (lastType === type && type !== 'tap' && localRoll < 0.58) type = 'tap';
 
@@ -679,6 +724,40 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     if (mod8 === 7) phraseIndex += 1;
   }
 
+  // Vocal onset injection: off-beat harmonic phrase starts not covered by the beat tracker
+  const _vocalMaxInject = Math.max(4, Math.floor(notes.length * 0.20));
+  const _vocalMinGap = difficultyCfg.minGap * 1.3;
+  let _vocalCount = 0;
+  for (const _vt of vocalOnsets) {
+    if (_vocalCount >= _vocalMaxInject) break;
+    const _t = Number(_vt);
+    if (_t < 2.0) continue;
+    if (notes.some(n => Math.abs(Number(n.time) - _t) < _vocalMinGap)) continue;
+    const _vseg = pickSegmentForTime(segments, _t) || { label: 'verse', energy: 'mid', sustainRatio: 0.5, energyNorm: 0.5 };
+    if (_vseg.label === 'intro' || _vseg.label === 'drop') continue;
+    const _prevNote = notes.filter(n => n.time < _t).slice(-1)[0];
+    const _vGap = _prevNote ? (_t - Number(_prevNote.time)) : 1.0;
+    const _vSustain = Number(_vseg.sustainRatio ?? 0.5);
+    const _vProposal = (_vSustain > 0.50 && _vGap > 0.38) ? 'drag' : 'tap';
+    const _vRoll = stableRand(Math.round(_t * 1000) + 7331);
+    const _vStrength = Number(Math.max(0.5, Math.min(1.0, 0.55 + Number(_vseg.energyNorm ?? 0.5) * 0.4)).toFixed(2));
+    notes.push({
+      time: Number(_t.toFixed(3)),
+      proposalType: _vProposal,
+      type: 'tap',
+      laneHint: Math.round(_vRoll * 3),
+      phrase: phraseIndex,
+      phraseIntent: 'drift',
+      phraseAnchor: 2,
+      strength: _vStrength,
+      segmentLabel: _vseg.label,
+      energy: _vseg.energy,
+      vocalInjected: true
+    });
+    _vocalCount++;
+  }
+  if (_vocalCount > 0) notes.sort((a, b) => Number(a.time) - Number(b.time));
+
   // ensure variety: if no drag generated, inject on suitable strong beats in non-intro segments
   if (!notes.some(n => n.proposalType === 'drag')) {
     for (let i = 0; i < notes.length; i++) {
@@ -699,7 +778,7 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
   );
   return {
     version: CHART_SCHEMA_VERSION,
-    algorithm: "librosa-phrase-chart-v5",
+    algorithm: "librosa-phrase-chart-v6",
     difficulty,
     approachRateMs,
     notes: capped.length >= 16 ? capped : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes,
