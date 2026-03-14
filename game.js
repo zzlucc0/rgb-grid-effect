@@ -361,6 +361,8 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
+        const _arm = Number(chart?.approachRateMs || 0);
+        if (_arm >= 800 && _arm <= 2000) { this.approachRate = _arm; this.spawnLeadTimeMs = _arm; this.visualApproachDurationMs = Math.round(_arm * 0.84); }
         if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { spawnLeadTimeMs: this.spawnLeadTimeMs, goodRangeMs: this.goodRange });
         this.liveMode = false;
         this.liveConfig = null;
@@ -373,6 +375,8 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
+        const _arm = Number(chart?.approachRateMs || 0);
+        if (_arm >= 800 && _arm <= 2000) { this.approachRate = _arm; this.spawnLeadTimeMs = _arm; this.visualApproachDurationMs = Math.round(_arm * 0.84); }
         if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { spawnLeadTimeMs: this.spawnLeadTimeMs, goodRangeMs: this.goodRange });
         this.liveMode = true;
         this.liveConfig = liveConfig || null;
@@ -385,6 +389,10 @@ class RhythmGame {
         this.chartMode = true;
         this.chartData = chart || null;
         this.nextChartIndex = 0;
+        const _arm = Number(chart?.approachRateMs || 0);
+        if (_arm >= 800 && _arm <= 2000) { this.approachRate = _arm; this.spawnLeadTimeMs = _arm; this.visualApproachDurationMs = Math.round(_arm * 0.84); }
+        const _fullDur = Number(liveConfig?.analysis?.fullDuration || liveConfig?.analysis?.duration || 0);
+        if (_fullDur > 0 && this.chartData) this.chartData.fullDuration = _fullDur;
         if (this.chartRuntime?.load) this.chartRuntime.load(this.chartData || null, { spawnLeadTimeMs: this.spawnLeadTimeMs, goodRangeMs: this.goodRange });
         this.liveMode = true;
         this.liveConfig = liveConfig || null;

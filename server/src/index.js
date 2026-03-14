@@ -576,6 +576,9 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
   const downbeats = Array.isArray(analysis?.downbeats) ? analysis.downbeats : [];
   const difficultyCfg = getDifficultyConfig(difficulty);
   const densityCfg = getDensityConfig(chartDensity);
+  // BPM-adaptive approach window: slow songs (90 bpm) → ~1600 ms, normal (120) → 1250 ms, fast (160+) → ~950 ms
+  const bpm = Math.max(60, Math.min(220, Number(analysis?.bpm || 120)));
+  const approachRateMs = Math.round(Math.max(950, Math.min(1600, (60000 / bpm) * 2.5)));
   if (beats.length < 16) {
     const fallback = simpleChart(Number(analysis?.duration || 45), "librosa-fallback");
     fallback.chartDensity = sanitizeDensity(chartDensity);
@@ -686,7 +689,7 @@ function chartFromAnalysis(analysis, difficulty = "normal", chartDensity = 'norm
     version: CHART_SCHEMA_VERSION,
     algorithm: "librosa-phrase-chart-v5",
     difficulty,
-    approachRateMs: 1250,
+    approachRateMs,
     notes: capped.length >= 16 ? capped : simpleChart(Number(analysis?.duration || 45), "librosa-fallback").notes,
     chartDensity: sanitizeDensity(chartDensity)
   };
@@ -794,11 +797,12 @@ function mergeChartNotes(charts, difficulty = 'normal', durationSec = 0, chartDe
   const densityCfg = getDensityConfig(chartDensity);
   const keepCount = Math.max(24, Math.floor(deduped.length * difficultyCfg.maxNotesScale * Number(densityCfg.noteScale || 1)));
   const finalNotes = ensureTailCoverage(downsampleNotesSpread(deduped, keepCount), durationSec, difficulty, chartDensity);
+  const mergedApproachRateMs = (charts || []).map(c => Number(c?.approachRateMs || 0)).find(v => v >= 950 && v <= 1600) || 1250;
   return {
     version: CHART_SCHEMA_VERSION,
     algorithm: 'hybrid-segment-chart-v4',
     difficulty,
-    approachRateMs: 1250,
+    approachRateMs: mergedApproachRateMs,
     notes: finalNotes.length >= 16 ? finalNotes : simpleChart(Number(durationSec || 45), 'hybrid-fallback').notes,
     chartDensity: sanitizeDensity(chartDensity)
   };
@@ -1475,6 +1479,47 @@ app.post("/api/job/:id/cancel", (req, res) => {
   if (!job) return res.status(404).json({ error: "job not found" });
   const result = cancelJob(job);
   res.json({ ok: result.ok, jobId: job.id, killed: result.killed || 0, status: job.status, step: job.step, error: job.error });
+});
+
+app.get("/api/debug/analysis-report/:id", (req, res) => {
+  const job = loadJob(req.params.id);
+  if (!job) return res.status(404).json({ error: "job not found" });
+  const analysis = job.result?.analysis;
+  const chart = job.result?.chart;
+  if (!analysis || !chart) return res.status(404).json({ error: "no result yet", jobStatus: job.status || "unknown", jobStep: job.step || null });
+  const notes = chart.notes || [];
+  const intervals = notes.slice(1).map((n, i) => Number(n.time) - Number(notes[i].time)).filter(v => v > 0);
+  intervals.sort((a, b) => a - b);
+  const medianInterval = intervals.length ? intervals[Math.floor(intervals.length / 2)] : 0;
+  const bpmForApproach = Math.max(60, Math.min(220, Number(analysis.bpm || 120)));
+  const segments = (analysis.segments || []).map(s => ({
+    label: s.label, start: s.start, end: s.end, energy: s.energy,
+    noteCount: notes.filter(n => Number(n.time) >= Number(s.start) && Number(n.time) < Number(s.end)).length
+  }));
+  res.json({
+    analysis: {
+      bpm: analysis.bpm,
+      duration: analysis.duration,
+      fullDuration: analysis.fullDuration,
+      beatCount: (analysis.beats || []).length,
+      segmentCount: (analysis.segments || []).length
+    },
+    chart: {
+      noteCount: notes.length,
+      approachRateMs: chart.approachRateMs,
+      firstNote: notes[0]?.time,
+      lastNote: notes[notes.length - 1]?.time,
+      difficulty: chart.difficulty,
+      chartDensity: chart.chartDensity
+    },
+    diagnostics: {
+      beatIntervalSec: Number((60 / bpmForApproach).toFixed(3)),
+      computedApproachRateMs: Math.round(Math.max(950, Math.min(1600, (60000 / bpmForApproach) * 2.5))),
+      medianNoteIntervalSec: Number(medianInterval.toFixed(3)),
+      notesPerSec: Number((notes.length / Math.max(1, analysis.duration || 1)).toFixed(2))
+    },
+    segments
+  });
 });
 
 
