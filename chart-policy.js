@@ -82,6 +82,41 @@
       const seg = note.segmentLabel || 'verse';
       const proposal = note.proposalMechanic || 'tap';
       const p = openingPressureProfile(t, options);
+
+      // If bar arranger already chose a family, respect it — only allow same or lighter mechanic
+      const family = note.arrangedFamily || '';
+      if (family) {
+        let mechanic = proposal;
+        if (family === 'rest' || family === 'single-tap-accent' || family === 'alternating-taps') mechanic = 'tap';
+        else if (family === 'hold-anchor') mechanic = proposal === 'hold' ? 'hold' : 'tap';
+        else if (family === 'drag-sweep') mechanic = proposal === 'drag' ? 'drag' : (proposal === 'spin' ? 'tap' : 'tap');
+        else if (family === 'burst-then-rest') mechanic = proposal === 'drag' ? 'tap' : proposal;
+        else if (family === 'sync-accent') mechanic = proposal === 'spin' ? 'spin' : (proposal === 'drag' ? 'drag' : 'tap');
+        else mechanic = proposal;
+
+        if (p.inCalmWindow && mechanic === 'drag') mechanic = 'tap';
+        if (mechanic === 'spin') { spinCount += 1; if (spinCount > 2) mechanic = 'drag'; }
+        if (mechanic === 'drag') {
+          const minGap = p.beforeHeavyStart ? 1.8 : 1.35;
+          if (t - lastDragTime < minGap) mechanic = 'tap';
+          else lastDragTime = t;
+        }
+        note.mechanic = mechanic;
+        note.type = mechanic;
+        note.noteType = mechanic;
+        if (mechanic === 'drag') {
+          note.pathVariant = note.pathVariant || note.pathTemplate || (seg === 'chorus' ? 'starTrace' : (seg === 'bridge' ? 'diamondLoop' : 'arc'));
+          note.pathTemplate = note.pathVariant;
+        } else if (mechanic === 'spin') {
+          note.pathVariant = null; note.pathTemplate = null;
+          note.inputChannel = 'mouse'; note.exclusivity = 'solo-mouse';
+        } else {
+          stripComplexPath(note);
+        }
+        continue;
+      }
+
+      // Legacy path: no arranged family — full mechanic planning
       let mechanic = 'tap';
       if (proposal === 'spin' && spinCount < 2 && !p.inOpening) {
         mechanic = 'spin';
@@ -569,6 +604,23 @@
     const mediumThreshold = Number(options.barMediumThreshold || 2.8);
     const totalStrength = candidates.reduce((sum, note) => sum + Number(note?.strength || note?.accentWeight || 1), 0);
     if (!candidates.length || totalStrength < 0.85) return 'rest';
+
+    // Use segment energy directly if available from analysis
+    const segments = Array.isArray(options.segments) ? options.segments : [];
+    if (segments.length && candidates.length) {
+      const midTime = Number(candidates[Math.floor(candidates.length / 2)]?.time || 0);
+      const seg = segments.find(s => midTime >= Number(s.start || 0) && midTime < Number(s.end || 0));
+      if (seg) {
+        const label = String(seg.label || '');
+        const energy = String(seg.energy || 'mid');
+        if (label === 'break' || energy === 'low') return 'rest';
+        if (label === 'intro') return totalStrength >= mediumThreshold ? 'light' : 'rest';
+        if (label === 'outro') return 'light';
+        if ((label === 'chorus' || label === 'drop') && energy === 'high') return totalStrength >= heavyThreshold ? 'heavy' : 'medium';
+        if (energy === 'high') return 'medium';
+      }
+    }
+
     if (prevPlan && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax') && totalStrength >= heavyThreshold) return 'medium';
     if (totalStrength >= heavyThreshold) return 'heavy';
     if (totalStrength >= mediumThreshold) return 'medium';
