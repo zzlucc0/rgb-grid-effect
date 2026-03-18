@@ -92,22 +92,22 @@
         }
         #score {
             position: fixed;
-            top: 16px;
-            right: 12px;
+            top: 8px;
+            right: 10px;
             left: auto;
             z-index: 3;
-            width: min(560px, calc(100vw - 24px));
-            max-width: calc(100vw - 24px);
+            width: auto;
+            max-width: 200px;
             box-sizing: border-box;
-            padding: 16px 18px 18px;
-            border-radius: 24px;
+            padding: 8px 12px;
+            border-radius: 14px;
             border: 1px solid var(--line);
             background:
-                linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)),
-                linear-gradient(180deg, rgba(10,15,23,0.94), rgba(5,8,12,0.82));
-            box-shadow: 0 24px 80px rgba(0,0,0,.46), inset 0 0 42px rgba(255,183,120,.06);
-            backdrop-filter: blur(20px);
+                linear-gradient(180deg, rgba(10,15,23,0.88), rgba(5,8,12,0.78));
+            box-shadow: 0 8px 24px rgba(0,0,0,.36);
+            backdrop-filter: blur(14px);
             overflow: hidden;
+            pointer-events: auto;
         }
         #score::before {
             content: '';
@@ -570,36 +570,31 @@
     <canvas id="backgroundCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
     <div id="score">
-        <div class="hud-topline">
-            <div class="score-stack">
-                <small>System Score</small>
-                <div class="score-main" id="scoreValue">000000</div>
+        <div class="hud-topline" style="padding:6px 12px;gap:10px;align-items:center;">
+            <div class="score-stack" style="min-width:auto;">
+                <div class="score-main" id="scoreValue" style="font-size:32px;line-height:1;">000000</div>
             </div>
-            <div class="hud-top-actions">
-                <div class="score-aux">
-                    <small>Combo</small>
-                    <strong id="comboValue">0x</strong>
-                </div>
-                <button id="hudPauseBtn" class="hud-control-btn" aria-label="Pause game">Pause</button>
+            <button id="hudPauseBtn" class="hud-control-btn" style="min-height:32px;min-width:60px;padding:6px 10px;font-size:11px;" aria-label="Pause game">Pause</button>
+        </div>
+        <!-- Hidden during gameplay but kept for JS references -->
+        <div style="display:none;">
+            <strong id="comboValue">0x</strong>
+            <strong id="hudMode">CASUAL</strong>
+            <strong id="hudDifficulty">NORMAL</strong>
+            <strong id="hudAccuracy">--</strong>
+            <div id="runState" data-state="stable"><strong id="hudRunState">STABLE</strong></div>
+            <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
+            <div id="debugStrip" class="debug-strip hidden">
+                <span>Clock <b id="debugGameClock">0.00</b></span>
+                <span>Player <b id="debugPlayerClock">0.00</b></span>
+                <span>Chart <b id="debugChartProgress">0/0</b></span>
+                <span>Notes <b id="debugActiveNotes">0</b></span>
+                <span>Group <b id="debugGroupState">--</b></span>
+                <span>Playback <b id="debugPlaybackState">--</b></span>
+                <span>Diag <b id="debugDiagState">--</b></span>
+                <span id="debugReviewScoreWrap">Review <b id="debugReviewScore">--</b></span>
+                <span id="debugReviewStateWrap">Flags <b id="debugReviewState">--</b></span>
             </div>
-        </div>
-        <div class="score-modules">
-            <div class="hud-module emphasis"><small>Mode</small><strong id="hudMode">CASUAL</strong></div>
-            <div class="hud-module"><small>Difficulty</small><strong id="hudDifficulty">NORMAL</strong></div>
-            <div class="hud-module"><small>Accuracy</small><strong id="hudAccuracy">--</strong></div>
-            <div class="hud-module alert" id="runState" data-state="stable"><small>Run State</small><strong id="hudRunState">STABLE</strong></div>
-        </div>
-        <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
-        <div id="debugStrip" class="debug-strip hidden">
-            <span>Clock <b id="debugGameClock">0.00</b></span>
-            <span>Player <b id="debugPlayerClock">0.00</b></span>
-            <span>Chart <b id="debugChartProgress">0/0</b></span>
-            <span>Notes <b id="debugActiveNotes">0</b></span>
-            <span>Group <b id="debugGroupState">--</b></span>
-            <span>Playback <b id="debugPlaybackState">--</b></span>
-            <span>Diag <b id="debugDiagState">--</b></span>
-            <span id="debugReviewScoreWrap">Review <b id="debugReviewScore">--</b></span>
-            <span id="debugReviewStateWrap">Flags <b id="debugReviewState">--</b></span>
         </div>
     </div>
     <div id="uploadContainer">

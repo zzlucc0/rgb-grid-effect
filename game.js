@@ -2445,6 +2445,8 @@ class RhythmGame {
         const currentTime = this.resolveChartClock();
         for (const note of this.notes) {
             if (note.hit || note.completed) continue;
+            // Mouse-only notes cannot be hit by keyboard
+            if (note.inputChannel === 'mouse') continue;
             const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
             if (timingDiff > this.goodRange) continue;
 
@@ -3364,6 +3366,9 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         });
     let basePos = null;
     let chosenLane = laneIndex;
+    const active = (this.notes || []).filter(n => !n.hit && !n.completed);
+    const minNoteSpacing = this.circleSize * 3.2;
+    const hudExclusionY = 90;
     for (const shift of candidateShifts) {
         const candidateLane = Math.max(0, Math.min(laneCount - 1, laneIndex + shift));
         if (previousLane != null && Math.abs(candidateLane - previousLane) > Math.max(1, maxJumpBudget)) continue;
@@ -3378,16 +3383,16 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             previousLane,
             phraseIntent: chartNote.phraseIntent || null
         });
+        // Apply sub-lane jitter to avoid exact column alignment
+        const jitterX = ((chartIndex * 37 + phrase * 71) % 100 - 50) / 50 * (laneWidth * 0.18);
+        const jitterY = ((chartIndex * 53 + groupSlot * 89) % 100 - 50) / 50 * (this.safeArea.height * 0.06);
+        pos.x = Math.max(this.safeArea.x + this.circleSize * 1.5, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize * 1.5, pos.x + jitterX));
+        pos.y = Math.max(this.safeArea.y + this.circleSize * 1.5 + hudExclusionY, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize * 1.5, pos.y + jitterY));
         const probe = { x: pos.x, y: pos.y, type: chartNote.type || 'tap' };
-        const active = (this.notes || []).filter(n => !n.hit && !n.completed);
-        const minNoteSpacing = this.circleSize * 2.6;
         const collides = active.some(existing => {
-            // Enforce hard minimum center-to-center distance regardless of footprint logic
             if (Math.hypot(probe.x - (existing.x || 0), probe.y - (existing.y || 0)) < minNoteSpacing) return true;
-            // Also guard against new note spawning on top of an existing drag endpoint
             if (existing.endX !== undefined && Math.hypot(probe.x - (existing.endX || 0), probe.y - (existing.endY || 0)) < minNoteSpacing) return true;
-            if (!window.ChartPolicy?.makeFootprint || !window.ChartPolicy?.footprintsOverlap) return false;
-            return window.ChartPolicy.footprintsOverlap(window.ChartPolicy.makeFootprint(probe, this.circleSize), window.ChartPolicy.makeFootprint(existing, this.circleSize));
+            return false;
         });
         if (!collides) {
             basePos = pos;
@@ -3395,12 +3400,27 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             break;
         }
     }
+    // If all lanes collide, find the position with maximum distance from any active note
     if (!basePos) {
-        const fallbackLane = previousLane != null && localityBias >= 0.8
-            ? Math.max(0, Math.min(laneCount - 1, previousLane + Math.max(-1, Math.min(1, laneIndex - previousLane))))
-            : laneIndex;
-        chosenLane = fallbackLane;
-        basePos = this.resolveGroupPatternPosition({ laneIndex: fallbackLane, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse', phraseAnchor: anchorLane, previousLane, phraseIntent: chartNote.phraseIntent || null });
+        let bestDist = 0;
+        let bestPos = null;
+        let bestLane = laneIndex;
+        for (let tryLane = 0; tryLane < laneCount; tryLane++) {
+            const pos = this.resolveGroupPatternPosition({ laneIndex: tryLane, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse', phraseAnchor: anchorLane, previousLane, phraseIntent: chartNote.phraseIntent || null });
+            pos.y = Math.max(this.safeArea.y + this.circleSize * 1.5 + hudExclusionY, pos.y);
+            let nearestDist = Infinity;
+            for (const existing of active) {
+                nearestDist = Math.min(nearestDist, Math.hypot(pos.x - (existing.x || 0), pos.y - (existing.y || 0)));
+                if (existing.endX !== undefined) nearestDist = Math.min(nearestDist, Math.hypot(pos.x - (existing.endX || 0), pos.y - (existing.endY || 0)));
+            }
+            if (nearestDist > bestDist) { bestDist = nearestDist; bestPos = pos; bestLane = tryLane; }
+        }
+        if (bestPos) { basePos = bestPos; chosenLane = bestLane; }
+        else {
+            chosenLane = laneIndex;
+            basePos = this.resolveGroupPatternPosition({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel: chartNote.segmentLabel || 'verse', phraseAnchor: anchorLane, previousLane, phraseIntent: chartNote.phraseIntent || null });
+            basePos.y = Math.max(this.safeArea.y + this.circleSize * 1.5 + hudExclusionY, basePos.y);
+        }
     }
     const noteType = chartNote.type || 'tap';
     const spinCenterX = this.safeArea.x + this.safeArea.width / 2;
