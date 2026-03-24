@@ -2412,7 +2412,7 @@ class RhythmGame {
                 // Legacy chip label reference: note.keyboardHint || note.keyHint || 'SPACE'
                 if (note.keyHint && !note.hit) {
                     const kLetter = String(note.keyHint).toUpperCase();
-                    const isActiveKey = isActive;
+                    const isActiveKey = note.approachProgress > 0.6;
                     const breathAlpha = isActiveKey
                         ? 0.1 + (Math.sin(performance.now() * 0.006) * 0.5 + 0.5) * 0.9
                         : 0.5;
