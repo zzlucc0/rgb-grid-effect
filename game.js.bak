@@ -81,20 +81,36 @@ class RhythmGame {
         this.groupHistory = [];
         this.activeGroupState = null;
         this.segmentGroupPalettes = {
-            intro:  [{ core:'#0a1a2e', edge:'#28f0ff', accent:'#8b5cf6' }],
-            verse:  [
-                { core:'#0d1f35', edge:'#28f0ff', accent:'#00d4ff' },
-                { core:'#1a0d35', edge:'#8b5cf6', accent:'#c084fc' },
-                { core:'#1a0d1a', edge:'#ff3ca6', accent:'#ff6ec4' },
+            intro: [
+                { core: '#ffe4c4', edge: '#ffc47d', glow: 'rgba(255,196,125,.30)' },
+                { core: '#ffd8ef', edge: '#ff9bc8', glow: 'rgba(255,155,200,.28)' }
             ],
-            pre:    [{ core:'#1a1200', edge:'#ffe066', accent:'#ffd700' }],
+            verse: [
+                { core: '#f5d6ff', edge: '#c89cff', glow: 'rgba(200,156,255,.30)' },
+                { core: '#ffd9bf', edge: '#ffb46a', glow: 'rgba(255,180,106,.28)' },
+                { core: '#ffe7f1', edge: '#ff99bf', glow: 'rgba(255,153,191,.26)' }
+            ],
+            pre: [
+                { core: '#ffe1b8', edge: '#ffb15f', glow: 'rgba(255,177,95,.30)' },
+                { core: '#f3d9ff', edge: '#bf8cff', glow: 'rgba(191,140,255,.28)' }
+            ],
             chorus: [
-                { core:'#1a0510', edge:'#ff3ca6', accent:'#ff6ec4' },
-                { core:'#05101a', edge:'#28f0ff', accent:'#00d4ff' },
-                { core:'#0d0520', edge:'#8b5cf6', accent:'#a78bfa' },
+                { core: '#fff0cc', edge: '#ffd36e', glow: 'rgba(255,211,110,.34)' },
+                { core: '#ffd8f3', edge: '#ff8dca', glow: 'rgba(255,141,202,.32)' },
+                { core: '#e8dcff', edge: '#b48fff', glow: 'rgba(180,143,255,.32)' }
             ],
-            bridge: [{ core:'#001a1a', edge:'#00ff88', accent:'#00d470' }],
-            outro:  [{ core:'#05070d', edge:'#6b7280', accent:'#9ca3af' }],
+            bridge: [
+                { core: '#d9f0ff', edge: '#8ec5ff', glow: 'rgba(142,197,255,.28)' },
+                { core: '#efe0ff', edge: '#bc96ff', glow: 'rgba(188,150,255,.28)' }
+            ],
+            outro: [
+                { core: '#ffe0d6', edge: '#ffab92', glow: 'rgba(255,171,146,.26)' },
+                { core: '#f0dcff', edge: '#c093ff', glow: 'rgba(192,147,255,.24)' }
+            ],
+            live: [
+                { core: '#ffe7cc', edge: '#ffbd73', glow: 'rgba(255,189,115,.30)' },
+                { core: '#f2deff', edge: '#c39bff', glow: 'rgba(195,155,255,.28)' }
+            ]
         };
         
         // Spectrum analysis configuration
@@ -424,12 +440,34 @@ class RhythmGame {
     }
 
     setupCanvas() {
+        this._applyCanvasSize();
+        window.addEventListener('resize', () => {
+            this._applyCanvasSize();
+        });
+    }
+
+    _applyCanvasSize() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
-        window.addEventListener('resize', () => {
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
-        });
+        // Recalculate scale-dependent values so the game feels the same on any screen.
+        // Reference: 1440×900 (common desktop). circleSize scales with the smaller dimension.
+        const refW = 1440, refH = 900;
+        const scaleW = this.canvas.width / refW;
+        const scaleH = this.canvas.height / refH;
+        const scale = Math.min(scaleW, scaleH);
+        // circleSize: 60 at reference, clamped [32, 90]
+        this.circleSize = Math.round(Math.max(32, Math.min(90, 60 * scale)));
+        this.approachCircleSize = this.circleSize * 3;
+        this.dragNoteMinDistance = this.circleSize * 4;
+        this.dragNoteMaxDistance = this.circleSize * 6;
+        // Safe area margin scales too
+        const margin = Math.round(Math.max(40, 80 * scale));
+        this.safeArea = {
+            x: margin,
+            y: margin,
+            width: this.canvas.width - margin * 2,
+            height: this.canvas.height - margin * 2
+        };
     }
 
     setupEventListeners() {
@@ -526,7 +564,10 @@ class RhythmGame {
 
         // Add game control events
         this.canvas.addEventListener('mousedown', (e) => {
-            if (this.gameState === 'finished' && this.runResult) { this._handleResultClick(e.clientX, e.clientY); return; }
+            if (this.gameState === 'finished' && this.runResult) {
+                this._handleResultClick(e.clientX, e.clientY);
+                return;
+            }
             this.handleInput(e.clientX, e.clientY, 'start');
         });
         this.canvas.addEventListener('mousemove', (e) => this.handleInput(e.clientX, e.clientY, 'move'));
@@ -535,7 +576,10 @@ class RhythmGame {
         this.canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
-            if (this.gameState === 'finished' && this.runResult) { this._handleResultClick(touch.clientX, touch.clientY); return; }
+            if (this.gameState === 'finished' && this.runResult) {
+                this._handleResultClick(touch.clientX, touch.clientY);
+                return;
+            }
             this.handleInput(touch.clientX, touch.clientY, 'start');
         });
         this.canvas.addEventListener('touchmove', (e) => {
@@ -557,23 +601,20 @@ class RhythmGame {
     async enterRunStartSequence() {
         try {
             await this.prepareRun();
-            // Start playback loading in parallel with countdown (so countdown = buffering time)
-            let playbackPromise = null;
-            if (this.liveMode) {
-                this.startPlaybackBackend();
-                playbackPromise = this.startPlaybackAndWaitUntilPlaying();
-            }
             await this.runCountdown();
-            if (this.liveMode && playbackPromise) {
+            if (this.liveMode) {
                 this.setRunPhase('awaiting-playback');
-                await playbackPromise;
+                this.setStatusMessage('loading', 'Countdown complete · waiting for playback to begin...');
+                await this.startPlaybackAndWaitUntilPlaying();
             }
             const dataArray = this.beginRun();
             if (!this.liveMode) this.startPlaybackBackend();
             this.armGameLoop(dataArray);
         } catch (err) {
             console.error('enterRunStartSequence failed:', err);
-            if (this.liveMode || this.gameState === 'awaiting-playback') this.handlePlaybackStartFailure(err);
+            if (this.liveMode || this.gameState === 'awaiting-playback') {
+                this.handlePlaybackStartFailure(err);
+            }
             throw err;
         }
     }
@@ -610,6 +651,10 @@ class RhythmGame {
         this.runInvalid = false;
         this.tutorialSeenCounts = {};
         this.judgementStats = { perfect: 0, good: 0, miss: 0 };
+        this.maxCombo = 0;
+        this.runResult = null;
+        this.resultAnimStart = null;
+        this.resultButtons = [];
         this.globalNoteSeq = 0;
         this.livePlaybackStarted = false;
         this.livePlaybackState = 'idle';
@@ -825,18 +870,12 @@ class RhythmGame {
     }
 
     async resumeRunSequence() {
+        const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
+        this.pauseAccumulated += pausedFor;
         const overlayText = document.getElementById('pauseOverlayText');
-        const overlaySubtext = document.getElementById('pauseOverlaySubtext');
-        if (overlaySubtext) overlaySubtext.textContent = '';
-        for (const n of [3, 2, 1]) {
-            if (overlayText) overlayText.textContent = String(n);
-            await new Promise(r => setTimeout(r, 700));
-            if (!this.isPausedPhase()) return;
-        }
-        if (overlayText) overlayText.textContent = 'GO!';
-        if (!this.liveMode) {
-            const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
-            this.pauseAccumulated += pausedFor;
+        for (const n of [3,2,1]) {
+            if (overlayText) overlayText.textContent = 'Resuming in ' + n;
+            await new Promise(r => setTimeout(r, 600));
         }
         this.setRunPhase('playing');
         this.pauseReason = 'none';
@@ -1018,41 +1057,55 @@ class RhythmGame {
 
             const renderCountdown = () => {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                const panelW = Math.min(560, this.canvas.width * 0.72);
-                const panelH = 270;
-                const x = this.canvas.width / 2 - panelW / 2;
-                const y = this.canvas.height / 2 - panelH / 2;
+                // Scale everything relative to canvas size so layout stays proportional
+                const scale = Math.min(1.4, Math.max(0.55, Math.min(this.canvas.width / 900, this.canvas.height / 600)));
+                const panelW = Math.min(560, this.canvas.width * 0.78) * scale / Math.min(scale, 1);
+                // Panel is taller to give the number its own zone
+                const panelH = Math.round(340 * scale);
+                const cx = this.canvas.width / 2;
+                const cy = this.canvas.height / 2;
+                const x = cx - panelW / 2;
+                const y = cy - panelH / 2;
 
-                this.ctx.fillStyle = 'rgba(5,8,12,.78)';
-                this.ctx.strokeStyle = 'rgba(255,255,255,.1)';
+                this.ctx.fillStyle = 'rgba(5,8,12,.82)';
+                this.ctx.strokeStyle = 'rgba(255,255,255,.10)';
                 this.ctx.lineWidth = 1;
                 this.ctx.beginPath();
                 this.ctx.roundRect(x, y, panelW, panelH, 24);
                 this.ctx.fill();
                 this.ctx.stroke();
 
+                // Header divider
+                const headerH = Math.round(46 * scale);
                 this.ctx.strokeStyle = 'rgba(84,241,255,.22)';
                 this.ctx.beginPath();
-                this.ctx.moveTo(x + 24, y + 42);
-                this.ctx.lineTo(x + panelW - 24, y + 42);
+                this.ctx.moveTo(x + 24, y + headerH);
+                this.ctx.lineTo(x + panelW - 24, y + headerH);
                 this.ctx.stroke();
 
+                // "SYSTEM ARMING" header
                 this.ctx.fillStyle = 'rgba(255,184,77,.92)';
-                this.ctx.font = '700 14px Rajdhani';
+                this.ctx.font = `700 ${Math.round(13 * scale)}px Rajdhani`;
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText('SYSTEM ARMING', this.canvas.width / 2, y + 28);
+                this.ctx.fillText('SYSTEM ARMING', cx, y + Math.round(30 * scale));
 
+                // Countdown number — sits in its own vertical zone (top 60% of panel)
+                const numZoneY = y + headerH + (panelH - headerH) * 0.48;
                 this.ctx.fillStyle = '#fff';
-                this.ctx.font = '900 110px Archivo';
-                this.ctx.fillText(remaining, this.canvas.width / 2, this.canvas.height / 2 + 12);
+                this.ctx.font = `900 ${Math.round(100 * scale)}px Archivo`;
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(remaining, cx, numZoneY);
+                this.ctx.textBaseline = 'alphabetic';
 
+                // Stats — bottom 40% of panel
+                const statsY = y + headerH + (panelH - headerH) * 0.68;
                 this.ctx.fillStyle = 'rgba(228,241,248,.88)';
-                this.ctx.font = '700 18px Rajdhani';
-                this.ctx.fillText(`VOCAL SEGMENTS  ${totalVocalSections}`, this.canvas.width / 2, y + 174);
-                this.ctx.fillText(`AVG GROUP LOAD  ${avgButtonsPerGroup}`, this.canvas.width / 2, y + 202);
-                this.ctx.fillStyle = 'rgba(228,241,248,.58)';
-                this.ctx.font = '600 14px Rajdhani';
-                this.ctx.fillText('Synchronizing track and gameplay shell...', this.canvas.width / 2, y + 232);
+                this.ctx.font = `700 ${Math.round(16 * scale)}px Rajdhani`;
+                this.ctx.fillText(`VOCAL SEGMENTS  ${totalVocalSections}`, cx, statsY);
+                this.ctx.fillText(`AVG GROUP LOAD  ${avgButtonsPerGroup}`, cx, statsY + Math.round(26 * scale));
+                this.ctx.fillStyle = 'rgba(228,241,248,.52)';
+                this.ctx.font = `500 ${Math.round(12 * scale)}px Rajdhani`;
+                this.ctx.fillText('Synchronizing track and gameplay shell...', cx, statsY + Math.round(52 * scale));
             };
 
             renderCountdown();
@@ -1260,21 +1313,32 @@ class RhythmGame {
         this.isPlaying = false;
         this.pauseReason = 'none';
         this.pausePlaybackMedia();
-        if (this.liveMonitorTimer) { clearInterval(this.liveMonitorTimer); this.liveMonitorTimer = null; }
+        if (this.liveMonitorTimer) {
+            clearInterval(this.liveMonitorTimer);
+            this.liveMonitorTimer = null;
+        }
+        // Build result snapshot before state changes
         const totalNotes = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress().spawnedCount : this.spawnedChartNotes;
         const { perfect, good, miss } = this.judgementStats;
         const total = perfect + good + miss;
         const accuracy = total > 0 ? ((perfect + good * 0.6) / total) * 100 : 0;
         const rank = accuracy >= 95 ? 'S' : accuracy >= 85 ? 'A' : accuracy >= 70 ? 'B' : accuracy >= 55 ? 'C' : 'F';
         this.runResult = {
-            score: Math.max(0, Math.floor(this.score || 0)), accuracy, rank,
-            perfect, good, miss,
+            score: Math.max(0, Math.floor(this.score || 0)),
+            accuracy,
+            rank,
+            perfect,
+            good,
+            miss,
             maxCombo: Math.max(this.maxCombo || 0, this.combo || 0),
-            totalNotes: totalNotes || 0, reason, failed: false
+            totalNotes: totalNotes || 0,
+            reason,
+            failed: false
         };
         this.setRunPhase('finished');
         if (this.runOrchestrator?.finish) this.runOrchestrator.finish({ reason });
         this.setStatusMessage('success', `Run finished · ${reason}`, `spawned ${totalNotes || 0} notes`);
+        // Launch result screen animation
         this.startResultScreen();
     }
 
@@ -1993,6 +2057,39 @@ class RhythmGame {
                 return true;
             }
 
+            // rapidTap: check if tap window expired
+            if (note.noteType === 'rapidTap' && !note.completed && !note.hit) {
+                const elapsed = currentTime - note.hitTime;
+                if (elapsed > (note.tapWindow || 1.2)) {
+                    // Window expired
+                    const ratio = (note.tapsCompleted || 0) / Math.max(1, note.tapCount || 5);
+                    if (ratio >= 0.8) {
+                        note.completed = true;
+                        note.hit = true;
+                        note.score = 'perfect';
+                        this.score += 1800 * (1 + this.combo * 0.1);
+                        this.combo++;
+                        this.recordJudgement('perfect');
+                        this.createHitEffect(note.x, note.y, 'perfect');
+                    } else if (ratio >= 0.5) {
+                        note.completed = true;
+                        note.hit = true;
+                        note.score = 'good';
+                        this.score += 900 * (1 + this.combo * 0.1);
+                        this.combo++;
+                        this.recordJudgement('good');
+                        this.createHitEffect(note.x, note.y, 'good');
+                    } else {
+                        note.completed = true;
+                        note.hit = true;
+                        note.score = 'miss';
+                        this.combo = 0;
+                        this.recordJudgement('miss');
+                    }
+                    return true;
+                }
+            }
+
             if (note.noteType === 'hold' && note.held && !note.completed) {
                 note.holdProgress = Math.max(0, Math.min(1, (currentTime - (note.holdStartTime || currentTime)) / Math.max(0.2, note.holdDuration || 0.9)));
                 if (note.holdProgress >= 1) {
@@ -2172,6 +2269,34 @@ class RhythmGame {
                 this.ctx.stroke();
             }
 
+            // rapidTap rendering: circle with "×N" counter and shrinking ring
+            if (note.noteType === 'rapidTap' && !note.hit) {
+                const tapCount = note.tapCount || 5;
+                const tapsLeft = tapCount - (note.tapsCompleted || 0);
+                const elapsed = Math.max(0, (this.resolveChartClock() - note.hitTime));
+                const windowProgress = Math.min(1, elapsed / Math.max(0.3, note.tapWindow || 1.2));
+                // Outer countdown ring
+                const ringRadius = this.circleSize * (1.3 + (1 - windowProgress) * 0.4);
+                this.ctx.beginPath();
+                this.ctx.arc(note.x, note.y, ringRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - windowProgress));
+                this.ctx.strokeStyle = palette.edge;
+                this.ctx.lineWidth = 4;
+                this.ctx.stroke();
+                // Inner pulsing ring per tap
+                const tapPulse = 1 + Math.sin(performance.now() / 80) * 0.12;
+                this.ctx.beginPath();
+                this.ctx.arc(note.x, note.y, this.circleSize * 0.65 * tapPulse, 0, Math.PI * 2);
+                this.ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                // Counter text
+                this.ctx.fillStyle = '#f8fcff';
+                this.ctx.font = '900 26px "Trebuchet MS", "Arial Black", sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(`×${tapsLeft}`, note.x, note.y);
+            }
+
             if (note.isSpin) {
                 const radius = this.circleSize * 1.85;
                 this.ctx.beginPath();
@@ -2244,13 +2369,19 @@ class RhythmGame {
                 this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace'
                     ? palette.glow.replace('.38', '.18').replace('.36', '.18').replace('.34', '.18')
                     : palette.glow.replace('.38', '.10').replace('.36', '.10').replace('.34', '.10');
-                if (note.extraPath?.points?.length) {
-                    this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
-                    for (let i = 1; i < note.extraPath.points.length; i++) this.ctx.lineTo(note.extraPath.points[i].x, note.extraPath.points[i].y);
-                } else {
-                    this.ctx.moveTo(note.x, note.y);
-                    this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
-                }
+                const _drawDragPath = () => {
+                    if (note.extraPath?.points?.length) {
+                        this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
+                        for (let i = 1; i < note.extraPath.points.length; i++) this.ctx.lineTo(note.extraPath.points[i].x, note.extraPath.points[i].y);
+                    } else if (Number.isFinite(note.controlX) && Number.isFinite(note.controlY) && Number.isFinite(note.endX)) {
+                        this.ctx.moveTo(note.x, note.y);
+                        this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
+                    } else if (Number.isFinite(note.endX)) {
+                        this.ctx.moveTo(note.x, note.y);
+                        this.ctx.lineTo(note.endX, note.endY);
+                    }
+                };
+                _drawDragPath();
                 this.ctx.stroke();
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
@@ -2258,30 +2389,30 @@ class RhythmGame {
                 this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '#ffe6b7' : palette.edge;
                 this.ctx.shadowBlur = 16;
                 this.ctx.shadowColor = palette.edge;
-                if (note.extraPath?.points?.length) {
-                    this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
-                    for (let i = 1; i < note.extraPath.points.length; i++) this.ctx.lineTo(note.extraPath.points[i].x, note.extraPath.points[i].y);
-                } else {
-                    this.ctx.moveTo(note.x, note.y);
-                    this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
-                }
+                _drawDragPath();
                 this.ctx.stroke();
                 this.ctx.shadowBlur = 0;
                 
                 // If currently dragging, draw progress track
                 if (note.held) {
-                    // Calculate current point position on the curve
-                    const t = note.progress;
-                    const currentX = Math.pow(1-t, 2) * note.x + 
-                                   2 * (1-t) * t * note.controlX + 
-                                   Math.pow(t, 2) * note.endX;
-                    const currentY = Math.pow(1-t, 2) * note.y + 
-                                   2 * (1-t) * t * note.controlY + 
-                                   Math.pow(t, 2) * note.endY;
-                    
                     // Draw completed track
                     const fullPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
                     const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
+
+                    // Resolve current position from sampled path (handles both arc and polygon)
+                    let currentX, currentY;
+                    if (fullPath.length > 0) {
+                        const pt = fullPath[progressIndex] || fullPath[fullPath.length - 1];
+                        currentX = pt.x;
+                        currentY = pt.y;
+                    } else {
+                        // Arc fallback (only when no path points exist)
+                        const t = note.progress;
+                        const cx = Number.isFinite(note.controlX) ? note.controlX : (note.x + note.endX) / 2;
+                        const cy = Number.isFinite(note.controlY) ? note.controlY : (note.y + note.endY) / 2;
+                        currentX = Math.pow(1-t, 2) * note.x + 2*(1-t)*t*cx + Math.pow(t, 2)*(note.endX || note.x);
+                        currentY = Math.pow(1-t, 2) * note.y + 2*(1-t)*t*cy + Math.pow(t, 2)*(note.endY || note.y);
+                    }
                     
                     // Draw partial path up to current progress
                     this.ctx.beginPath();
@@ -2411,25 +2542,20 @@ class RhythmGame {
                     this.ctx.fillStyle = '#f3fcff';
                     this.ctx.fillText(marker, note.x, note.y);
                 }
-                // ── Center key letter (replaces chip for key notes) ──────────
-                // Legacy chip label reference: note.keyboardHint || note.keyHint || 'SPACE'
-                if (note.keyHint && !note.hit) {
-                    const kLetter = String(note.keyHint).toUpperCase();
-                    const isActiveKey = isActive;
-                    const breathAlpha = isActiveKey
-                        ? 0.1 + (Math.sin(performance.now() * 0.006) * 0.5 + 0.5) * 0.9
-                        : 0.5;
-                    ctx.save();
-                    ctx.globalAlpha = breathAlpha;
-                    ctx.fillStyle = '#ffe066';
-                    ctx.font = '700 22px "Press Start 2P", monospace';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.shadowBlur = isActiveKey ? 16 : 4;
-                    ctx.shadowColor = '#ffe066';
-                    ctx.fillText(kLetter, note.x, note.y);
-                    ctx.shadowBlur = 0;
-                    ctx.restore();
+                if (note.keyboardCheckpoint || note.keyHint) {
+                    const chipW = this.circleSize * 1.15;
+                    const chipH = this.circleSize * 0.42;
+                    const chipY = note.y - this.circleSize * 1.18;
+                    this.ctx.beginPath();
+                    this.ctx.roundRect(note.x - chipW / 2, chipY - chipH / 2, chipW, chipH, 8);
+                    this.ctx.fillStyle = 'rgba(14,18,30,0.84)';
+                    this.ctx.fill();
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeStyle = '#ffffff';
+                    this.ctx.stroke();
+                    this.ctx.font = '900 12px "Arial Black", sans-serif';
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillText(note.keyboardHint || note.keyHint || 'SPACE', note.x, chipY + 0.5);
                 }
             }
 
@@ -2467,6 +2593,28 @@ class RhythmGame {
             if (note.hit || note.completed) continue;
             // Mouse-only notes cannot be hit by keyboard
             if (note.inputChannel === 'mouse') continue;
+
+            // rapidTap: any key press counts as a tap
+            if (note.noteType === 'rapidTap') {
+                const elapsed = currentTime - note.hitTime;
+                if (elapsed >= 0 && elapsed <= (note.tapWindow || 1.2)) {
+                    note.tapsCompleted = (note.tapsCompleted || 0) + 1;
+                    this.createHitEffect(note.x, note.y, note.tapsCompleted >= (note.tapCount || 5) ? 'perfect' : 'good');
+                    if (note.tapsCompleted >= (note.tapCount || 5)) {
+                        const speedRatio = 1 - (elapsed / Math.max(0.3, note.tapWindow || 1.2));
+                        note.completed = true;
+                        note.hit = true;
+                        note.score = speedRatio > 0.4 ? 'perfect' : 'good';
+                        this.score += (note.score === 'perfect' ? 2000 : 1200) * (1 + this.combo * 0.1);
+                        this.combo++;
+                        this.recordJudgement(note.score);
+                        this.tutorialSeenCounts['rapidTap'] = (this.tutorialSeenCounts['rapidTap'] || 0) + 1;
+                        this.pushSignatureBurst(note.x, note.y, 'gate');
+                    }
+                    return;
+                }
+            }
+
             const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
             if (timingDiff > this.goodRange) continue;
 
@@ -2551,9 +2699,36 @@ class RhythmGame {
                             closestPoint = point;
                         }
                     });
-                    const tolerance = note.extraPath?.points?.length ? this.circleSize * 1.4 : this.circleSize * 0.95;
+                    // Wider base tolerance for polygon paths
+                    let tolerance = note.extraPath?.points?.length ? this.circleSize * 2.2 : this.circleSize * 0.95;
+                    // Corner bonus: if closest point is near a vertex (angle changes sharply), boost tolerance
+                    if (closestPoint && note.extraPath?.points?.length > 2) {
+                        const rawPts = note.extraPath.points;
+                        const totalLen = curvePoints.length;
+                        const vertexTs = [];
+                        // Identify vertex t-values (sharp turns)
+                        for (let vi = 1; vi < rawPts.length - 1; vi++) {
+                            const vt = vi / (rawPts.length - 1);
+                            vertexTs.push(vt);
+                        }
+                        const nearVertex = vertexTs.some(vt => Math.abs(closestPoint.t - vt) < 0.08);
+                        if (nearVertex) tolerance *= 1.5;
+                    }
                     if (closestPoint && minDist <= tolerance) {
-                        note.progress = Math.max(note.progress || 0, closestPoint.t);
+                        // Allow forward progress; also allow small skips for polygon corners
+                        const currentProgress = note.progress || 0;
+                        if (closestPoint.t >= currentProgress) {
+                            note.progress = closestPoint.t;
+                        } else if (closestPoint.t >= currentProgress - 0.08) {
+                            // Small backward tolerance: don't penalize minor jitter
+                            // Keep current progress
+                        }
+                    } else if (closestPoint && minDist <= tolerance * 2.0) {
+                        // Within extended range: allow small forward jumps to skip past corners
+                        const currentProgress = note.progress || 0;
+                        if (closestPoint.t > currentProgress + 0.02 && closestPoint.t <= currentProgress + 0.15) {
+                            note.progress = closestPoint.t;
+                        }
                     }
                 } else if (type === 'end') {
                     if (note.keyboardCheckpoint && !note.keyboardHit) {
@@ -2567,8 +2742,8 @@ class RhythmGame {
                         this.updateHUD();
                         return;
                     }
-                    const finishThreshold = note.extraPath?.points?.length ? 0.84 : 0.9;
-                    const goodThreshold = note.extraPath?.points?.length ? 0.64 : 0.7;
+                    const finishThreshold = note.extraPath?.points?.length ? 0.82 : 0.9;
+                    const goodThreshold = note.extraPath?.points?.length ? 0.60 : 0.7;
                     if (note.progress > finishThreshold) {
                         note.completed = true;
                         note.score = 'perfect';
@@ -2648,6 +2823,28 @@ class RhythmGame {
                 if (distance > this.circleSize) return;
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
 
+                // rapidTap: each click in range counts as one tap
+                if (note.noteType === 'rapidTap') {
+                    const elapsed = currentTime - note.hitTime;
+                    if (elapsed >= 0 && elapsed <= (note.tapWindow || 1.2)) {
+                        note.tapsCompleted = (note.tapsCompleted || 0) + 1;
+                        this.createHitEffect(note.x, note.y, note.tapsCompleted >= (note.tapCount || 5) ? 'perfect' : 'good');
+                        if (note.tapsCompleted >= (note.tapCount || 5)) {
+                            // Speed bonus: faster = better score
+                            const speedRatio = 1 - (elapsed / Math.max(0.3, note.tapWindow || 1.2));
+                            note.completed = true;
+                            note.hit = true;
+                            note.score = speedRatio > 0.4 ? 'perfect' : 'good';
+                            this.score += (note.score === 'perfect' ? 2000 : 1200) * (1 + this.combo * 0.1);
+                            this.combo++;
+                            this.recordJudgement(note.score);
+                            this.tutorialSeenCounts['rapidTap'] = (this.tutorialSeenCounts['rapidTap'] || 0) + 1;
+                            this.pushSignatureBurst(note.x, note.y, 'gate');
+                        }
+                    }
+                    return;
+                }
+
                 if (note.isSpin) {
                     if (note.inputChannel !== 'mouse') return;
                     note.held = true;
@@ -2706,8 +2903,10 @@ class RhythmGame {
                     return;
                 }
 
-                // Keyboard-exclusive taps must not be triggered by mouse click
+                // Keyboard-exclusive taps must not be triggered by mouse click.
+                // Any note with a keyHint (shows a letter) is keyboard-only.
                 if (note.inputChannel === 'keyboard') return;
+                if (note.keyHint && note.inputChannel !== 'mouse') return;
                     
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';
@@ -2873,7 +3072,8 @@ RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
         tap: { core: '#ffe7cc', edge: '#ffb86b', glow: 'rgba(255,184,107,.34)' },
         drag: { core: '#e5dcff', edge: '#b892ff', glow: 'rgba(184,146,255,.34)' },
         hold: { core: '#d9fff3', edge: '#5ee6b8', glow: 'rgba(94,230,184,.36)' },
-        spin: { core: '#dff4ff', edge: '#7fc9ff', glow: 'rgba(127,201,255,.34)' }
+        spin: { core: '#dff4ff', edge: '#7fc9ff', glow: 'rgba(127,201,255,.34)' },
+        rapidTap: { core: '#fff0d4', edge: '#ffcc44', glow: 'rgba(255,204,68,.40)' }
     };
     const typeKey = note?.noteType || (note?.isDrag ? 'drag' : 'tap');
     const mechanic = mechanicPalettes[typeKey];
@@ -3295,6 +3495,34 @@ RhythmGame.prototype.pickSpawnPosition = function () {
     return best ? { x: best.x, y: best.y } : null;
 };
 
+// Geometry helpers for collision detection
+RhythmGame.prototype._pointToSegmentDist = function (px, py, ax, ay, bx, by) {
+    const abx = bx - ax, aby = by - ay;
+    const apx = px - ax, apy = py - ay;
+    const ab2 = abx * abx + aby * aby || 1;
+    const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
+    return Math.hypot(px - (ax + abx * t), py - (ay + aby * t));
+};
+
+RhythmGame.prototype._segmentToSegmentDist = function (ax, ay, bx, by, cx, cy, dx, dy) {
+    // Approximate: sample a few points on each segment and find minimum distance
+    let minDist = Infinity;
+    const steps = 5;
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const px = ax + (bx - ax) * t;
+        const py = ay + (by - ay) * t;
+        minDist = Math.min(minDist, this._pointToSegmentDist(px, py, cx, cy, dx, dy));
+    }
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const px = cx + (dx - cx) * t;
+        const py = cy + (dy - cy) * t;
+        minDist = Math.min(minDist, this._pointToSegmentDist(px, py, ax, ay, bx, by));
+    }
+    return minDist;
+};
+
 RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     const pos = this.pickSpawnPosition();
     if (!pos) return null;
@@ -3342,15 +3570,19 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         const midY = (note.y + note.endY) / 2;
         note.controlX = midX - dy / L * (L * 0.24);
         note.controlY = midY + dx / L * (L * 0.24);
-        if (window.PathTemplates && note.pathTemplate) {
-            if (note.pathTemplate === 'orbit') {
+        if (window.PathTemplates) {
+            const tmpl = note.pathTemplate || 'orbit';
+            if (tmpl === 'orbit' || tmpl === 'arc') {
                 const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
-                note.controlX = orbit.controlX;
-                note.controlY = orbit.controlY;
-            } else if (note.pathTemplate === 'diamondLoop') {
-                note.extraPath = window.PathTemplates.sampleDiamondLoop(note.x, note.y, note.endX, note.endY);
-            } else if (note.pathTemplate === 'starTrace') {
-                note.extraPath = window.PathTemplates.sampleStarTrace(note.x, note.y, note.endX, note.endY);
+                note.controlX = orbit.controlX; note.controlY = orbit.controlY;
+            } else {
+                const shape = window.PathTemplates.buildShapeFromTemplate(tmpl, note.x, note.y, note.endX, note.endY, {
+                    minR: this.circleSize * 1.8, maxR: Math.min(this.safeArea.width, this.safeArea.height) * 0.38
+                });
+                if (shape && shape.points && shape.points.length > 1) {
+                    note.extraPath = shape;
+                    note.endX = shape.endX; note.endY = shape.endY;
+                }
             }
         }
     }
@@ -3410,8 +3642,23 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         pos.y = Math.max(this.safeArea.y + this.circleSize * 1.5 + hudExclusionY, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize * 1.5, pos.y + jitterY));
         const probe = { x: pos.x, y: pos.y, type: chartNote.type || 'tap' };
         const collides = active.some(existing => {
+            // Center-to-center distance
             if (Math.hypot(probe.x - (existing.x || 0), probe.y - (existing.y || 0)) < minNoteSpacing) return true;
+            // Check against endpoint
             if (existing.endX !== undefined && Math.hypot(probe.x - (existing.endX || 0), probe.y - (existing.endY || 0)) < minNoteSpacing) return true;
+            // Check against start→end line segment
+            if (existing.endX !== undefined) {
+                const segDist = this._pointToSegmentDist(probe.x, probe.y, existing.x, existing.y, existing.endX, existing.endY);
+                if (segDist < minNoteSpacing * 0.7) return true;
+            }
+            // Check against extraPath polyline segments
+            if (existing.extraPath?.points?.length > 1) {
+                const pts = existing.extraPath.points;
+                for (let pi = 0; pi < pts.length - 1; pi++) {
+                    const segDist = this._pointToSegmentDist(probe.x, probe.y, pts[pi].x, pts[pi].y, pts[pi+1].x, pts[pi+1].y);
+                    if (segDist < minNoteSpacing * 0.65) return true;
+                }
+            }
             return false;
         });
         if (!collides) {
@@ -3432,6 +3679,15 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             for (const existing of active) {
                 nearestDist = Math.min(nearestDist, Math.hypot(pos.x - (existing.x || 0), pos.y - (existing.y || 0)));
                 if (existing.endX !== undefined) nearestDist = Math.min(nearestDist, Math.hypot(pos.x - (existing.endX || 0), pos.y - (existing.endY || 0)));
+                if (existing.endX !== undefined) {
+                    nearestDist = Math.min(nearestDist, this._pointToSegmentDist(pos.x, pos.y, existing.x, existing.y, existing.endX, existing.endY));
+                }
+                if (existing.extraPath?.points?.length > 1) {
+                    const pts = existing.extraPath.points;
+                    for (let pi = 0; pi < pts.length - 1; pi++) {
+                        nearestDist = Math.min(nearestDist, this._pointToSegmentDist(pos.x, pos.y, pts[pi].x, pts[pi].y, pts[pi+1].x, pts[pi+1].y));
+                    }
+                }
             }
             if (nearestDist > bestDist) { bestDist = nearestDist; bestPos = pos; bestLane = tryLane; }
         }
@@ -3487,47 +3743,153 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         spinDuration: noteType === 'spin' ? Math.max(1.2, Number(chartNote.duration || 2.2)) : 0,
         spinAccum: 0,
         spinLastAngle: null,
-        spinStartedAt: null
+        spinStartedAt: null,
+        // rapidTap fields
+        tapCount: noteType === 'rapidTap' ? Math.max(3, Number(chartNote.tapCount || 5)) : 0,
+        tapsCompleted: 0,
+        tapWindow: noteType === 'rapidTap' ? Math.max(0.6, Number(chartNote.tapWindow || 1.2)) : 0
     };
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex);
     this.applyGroupMechanics([note], { pattern: basePos.pattern, groupIndex: phrase, segmentLabel: note.segmentLabel || 'verse' });
 
     if (note.isDrag) {
-        const templateBias = note.pathTemplate === 'starTrace' ? 2 : (note.pathTemplate === 'diamondLoop' ? 1 : 0);
-        const dragLanes = [chosenLane + templateBias, chosenLane - templateBias, chosenLane + 1, chosenLane - 1, chosenLane];
+        // Pick hint end position (direction seed only — shape builder determines actual endX/endY)
+        const dragLanes = [chosenLane + 1, chosenLane - 1, chosenLane + 2, chosenLane - 2, chosenLane];
         let endLane = chosenLane;
         for (const candidate of dragLanes) {
-            if (candidate >= 0 && candidate < laneCount && Math.abs(candidate - chosenLane) <= 2 && candidate !== laneIndex) {
-                endLane = candidate;
-                break;
+            if (candidate >= 0 && candidate < laneCount && candidate !== laneIndex) { endLane = candidate; break; }
+        }
+        const hintTravel = note.openingCalmWindow ? 1.1 : 1.4;
+        const hintEndX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
+        const hintEndY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * hintTravel)));
+
+        const tmpl = (note.pathTemplate && note.pathTemplate !== 'arc') ? note.pathTemplate : 'orbit';
+        if (window.PathTemplates && tmpl !== 'orbit') {
+            const shape = window.PathTemplates.buildShapeFromTemplate(tmpl, note.x, note.y, hintEndX, hintEndY, {
+                minR: this.circleSize * 1.8,
+                maxR: Math.min(this.safeArea.width, this.safeArea.height) * 0.38
+            });
+            if (shape && shape.points && shape.points.length > 1) {
+                note.extraPath = shape;
+                // Use the shape's own end point as the actual endpoint
+                note.endX = shape.endX;
+                note.endY = shape.endY;
+                // Clamp all path points + endpoint to safe area
+                const clampX = (v) => Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, v));
+                const clampY = (v) => Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, v));
+                for (const pt of shape.points) { pt.x = clampX(pt.x); pt.y = clampY(pt.y); }
+                note.endX = clampX(note.endX);
+                note.endY = clampY(note.endY);
+            } else {
+                // Shape generation failed — fall back to orbit
+                note.endX = hintEndX; note.endY = hintEndY;
+                const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
+                note.controlX = orbit.controlX; note.controlY = orbit.controlY;
+            }
+        } else {
+            note.endX = hintEndX; note.endY = hintEndY;
+            if (window.PathTemplates) {
+                const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
+                note.controlX = orbit.controlX; note.controlY = orbit.controlY;
+            } else {
+                const dx = note.endX - note.x, dy = note.endY - note.y;
+                const L = Math.sqrt(dx*dx + dy*dy) || 1;
+                const curve = Math.min(this.circleSize * 1.6, L * 0.24);
+                note.controlX = (note.x + note.endX)/2 - dy/L*curve;
+                note.controlY = (note.y + note.endY)/2 + dx/L*curve;
             }
         }
-        const localTravel = note.openingCalmWindow ? 1.1 : (note.pathTemplate === 'starTrace' ? 1.9 : (note.pathTemplate === 'diamondLoop' ? 1.55 : 1.35));
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
-        const active = (this.notes || []).filter(n => !n.hit && !n.completed);
-        const endMinDist = this.circleSize * 2.6;
-        for (const existing of active) {
-            const tooCloseToStart = Math.hypot((existing.x || 0) - note.endX, (existing.y || 0) - note.endY) < endMinDist;
-            const tooCloseToEnd = existing.endX !== undefined &&
-                Math.hypot((existing.endX || 0) - note.endX, (existing.endY || 0) - note.endY) < endMinDist;
-            if (tooCloseToStart || tooCloseToEnd) {
-                const nudgeDir = (chartIndex % 2 === 0) ? 1 : -1;
-                note.endY = Math.max(this.safeArea.y + this.circleSize,
-                    Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.endY + nudgeDir * this.circleSize * 1.8));
-                note.endX = Math.max(this.safeArea.x + this.circleSize,
-                    Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.endX + nudgeDir * this.circleSize * 0.6));
+
+        // Post-path collision check: new path vs existing notes + paths
+        // Helper to regenerate extraPath from current endX/endY
+        const _regenPath = () => {
+            if (!window.PathTemplates) return;
+            const tmpl = note.pathTemplate || 'orbit';
+            if (tmpl === 'orbit' || tmpl === 'arc') {
+                const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
+                note.controlX = orbit.controlX; note.controlY = orbit.controlY;
+                delete note.extraPath;
+                return;
             }
+            const shape = window.PathTemplates.buildShapeFromTemplate(tmpl, note.x, note.y, note.endX, note.endY, {
+                minR: this.circleSize * 1.8, maxR: Math.min(this.safeArea.width, this.safeArea.height) * 0.38
+            });
+            if (shape && shape.points && shape.points.length > 1) {
+                note.extraPath = shape;
+                const clampX = (v) => Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, v));
+                const clampY = (v) => Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, v));
+                for (const pt of shape.points) { pt.x = clampX(pt.x); pt.y = clampY(pt.y); }
+            }
+        };
+
+        // Check if note's extraPath/arc collides with an existing note
+        const _pathCollidesWithNote = (ex) => {
+            const exR = this.circleSize * 2.2; // clearance around existing circles
+            if (note.extraPath?.points?.length > 1) {
+                const pts = note.extraPath.points;
+                for (let a = 0; a < pts.length - 1; a++) {
+                    // segment vs existing circle
+                    if (this._pointToSegmentDist(ex.x, ex.y, pts[a].x, pts[a].y, pts[a+1].x, pts[a+1].y) < exR) return true;
+                    // segment vs existing extraPath
+                    if (ex.extraPath?.points?.length > 1) {
+                        const exPts = ex.extraPath.points;
+                        for (let b = 0; b < exPts.length - 1; b++) {
+                            if (this._segmentToSegmentDist(pts[a].x, pts[a].y, pts[a+1].x, pts[a+1].y, exPts[b].x, exPts[b].y, exPts[b+1].x, exPts[b+1].y) < this.circleSize * 1.6) return true;
+                        }
+                    }
+                    // segment vs existing arc endpoint
+                    if (Number.isFinite(ex.endX)) {
+                        if (this._pointToSegmentDist(ex.endX, ex.endY, pts[a].x, pts[a].y, pts[a+1].x, pts[a+1].y) < exR * 0.9) return true;
+                    }
+                }
+            } else if (Number.isFinite(note.endX)) {
+                // Arc note: check endpoint proximity only
+                if (Math.hypot(ex.x - note.endX, ex.y - note.endY) < exR) return true;
+                if (Number.isFinite(ex.endX) && Math.hypot(ex.endX - note.endX, ex.endY - note.endY) < exR * 0.9) return true;
+            }
+            return false;
+        };
+
+        const activeForDragCheck = (this.notes || []).filter(n => !n.hit && !n.completed);
+        for (const existing of activeForDragCheck) {
+            if (!_pathCollidesWithNote(existing)) continue;
+            // Nudge: try 4 different nudge directions and pick first non-colliding one
+            const nudgeOptions = [
+                { dy: this.circleSize * 2.2, dx: this.circleSize * 0.6 },
+                { dy: -this.circleSize * 2.2, dx: -this.circleSize * 0.6 },
+                { dy: this.circleSize * 0.6, dx: this.circleSize * 2.2 },
+                { dy: -this.circleSize * 0.6, dx: -this.circleSize * 2.2 },
+            ];
+            let resolved = false;
+            for (const nudge of nudgeOptions) {
+                const tryEndX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.endX + nudge.dx));
+                const tryEndY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.endY + nudge.dy));
+                // Temporarily apply and check
+                const prevEndX = note.endX, prevEndY = note.endY, prevExtraPath = note.extraPath;
+                note.endX = tryEndX;
+                note.endY = tryEndY;
+                _regenPath();
+                if (!_pathCollidesWithNote(existing)) { resolved = true; break; }
+                // Restore if still colliding
+                note.endX = prevEndX;
+                note.endY = prevEndY;
+                note.extraPath = prevExtraPath;
+            }
+            // If no nudge worked, just keep current position (better than infinite loop)
         }
-        const dx = note.endX - note.x;
-        const dy = note.endY - note.y;
-        const L = Math.sqrt(dx * dx + dy * dy) || 1;
-        const midX = (note.x + note.endX) / 2;
-        const midY = (note.y + note.endY) / 2;
-        const curve = Math.min(this.circleSize * 1.6, L * 0.24);
-        note.controlX = midX - dy / L * curve;
-        note.controlY = midY + dx / L * curve;
+
+        // Fallback: ensure controlX/controlY exist for arc paths without extraPath
+        if (!note.extraPath && !Number.isFinite(note.controlX)) {
+            const dx = note.endX - note.x;
+            const dy = note.endY - note.y;
+            const L = Math.sqrt(dx * dx + dy * dy) || 1;
+            const midX = (note.x + note.endX) / 2;
+            const midY = (note.y + note.endY) / 2;
+            const curve = Math.min(this.circleSize * 1.6, L * 0.24);
+            note.controlX = midX - dy / L * curve;
+            note.controlY = midY + dx / L * curve;
+        }
     }
 
     return note;
@@ -3886,11 +4248,14 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
 };
 
 RhythmGame.prototype.recordJudgement = function (score) {
-    if (!score || !['perfect', 'good', 'miss'].includes(score)) return;
+    if (!score || !this.judgementStats[score] && score !== 'miss') return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
+    // Track max combo after increment (combo is already incremented by caller before recordJudgement)
     if (score !== 'miss') this.maxCombo = Math.max(this.maxCombo || 0, this.combo || 0);
     this.updateHUD();
 };
+
+// ─── Result Screen ──────────────────────────────────────────────────────────
 
 RhythmGame.prototype.startResultScreen = function () {
     this.resultAnimStart = performance.now();
@@ -3905,87 +4270,233 @@ RhythmGame.prototype._resultLoop = function () {
 };
 
 RhythmGame.prototype._drawResultScreen = function () {
-    const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height;
-    const now = performance.now(), elapsed = now - (this.resultAnimStart || now);
-    const PHASE_BG=0,PHASE_PANEL=300,PHASE_RANK=700,PHASE_STATS=1000,PHASE_BTN=1500;
-    const easeOut = t => 1 - Math.pow(1-Math.min(1,t),3);
-    ctx.fillStyle=`rgba(4,8,16,${(easeOut(Math.min(1,(elapsed-PHASE_BG)/400))*.78).toFixed(3)})`;
-    ctx.fillRect(0,0,W,H);
-    if(elapsed<PHASE_PANEL) return;
-    const pW=Math.min(700,W*.9),pH=Math.min(500,H*.84),pX=(W-pW)/2,pY=(H-pH)/2;
-    const pT=easeOut(Math.min(1,(elapsed-PHASE_PANEL)/350)),pOY=(1-pT)*40;
-    ctx.save();ctx.globalAlpha=pT;ctx.translate(0,pOY);
-    ctx.fillStyle='rgba(5,7,13,0.94)';ctx.strokeStyle='rgba(40,240,255,0.26)';ctx.lineWidth=2;
-    ctx.beginPath();if(ctx.roundRect)ctx.roundRect(pX,pY,pW,pH,18);else ctx.rect(pX,pY,pW,pH);
-    ctx.fill();ctx.stroke();
-    ctx.strokeStyle='rgba(40,240,255,0.35)';ctx.beginPath();ctx.moveTo(pX+30,pY+60);ctx.lineTo(pX+pW-30,pY+60);ctx.stroke();
-    ctx.fillStyle='rgba(255,224,102,0.94)';ctx.font='700 13px Rajdhani';ctx.textAlign='center';
-    ctx.fillText('RUN COMPLETE',W/2,pY+34);ctx.restore();
-    if(elapsed<PHASE_RANK) return;
-    const rT=easeOut(Math.min(1,(elapsed-PHASE_RANK)/380)),rP=1+Math.sin(now/800)*.03;
-    const rC={S:'#ffe066',A:'#28f0ff',B:'#8b5cf6',C:'#6fdba8',F:'#ff3ca6'};
-    const rank=this.runResult.rank;
-    ctx.save();ctx.globalAlpha=rT;ctx.translate(0,pOY*(1-rT));
-    ctx.shadowBlur=48*rT;ctx.shadowColor=rC[rank]||'#fff';ctx.fillStyle=rC[rank]||'#fff';
-    ctx.font=`900 ${Math.round(90*rP)}px Archivo`;ctx.textAlign='center';
-    ctx.fillText(rank,W/2-pW*.24,pY+180);ctx.shadowBlur=0;
-    const sD=Math.round(this.runResult.score*Math.min(1,(elapsed-PHASE_RANK)/600));
-    ctx.fillStyle='#e0f4ff';ctx.font='700 34px "Press Start 2P",monospace';ctx.textAlign='right';
-    ctx.fillText(String(sD).padStart(6,'0'),pX+pW-36,pY+134);
-    const aD=(this.runResult.accuracy*Math.min(1,(elapsed-PHASE_RANK)/500)).toFixed(1);
-    ctx.fillStyle='rgba(224,244,255,0.72)';ctx.font='600 20px Rajdhani';
-    ctx.fillText(`ACCURACY  ${aD}%`,pX+pW-36,pY+168);ctx.restore();
-    if(elapsed<PHASE_STATS) return;
-    const sT2=easeOut(Math.min(1,(elapsed-PHASE_STATS)/350)),cy=pY+240;
-    ctx.save();ctx.globalAlpha=sT2;
-    const stats=[{l:'PERFECT',v:this.runResult.perfect,c:'#28f0ff'},{l:'GOOD',v:this.runResult.good,c:'#ffe066'},{l:'MISS',v:this.runResult.miss,c:'#ff3ca6'},{l:'MAX COMBO',v:`${this.runResult.maxCombo}x`,c:'#8b5cf6'}];
-    const cW=pW/stats.length;
-    stats.forEach((s,i)=>{
-        const cx=pX+cW*i+cW/2;
-        ctx.fillStyle=s.c;ctx.font='700 22px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillText(String(s.v),cx,cy);
-        ctx.fillStyle='rgba(224,244,255,0.55)';ctx.font='600 12px Rajdhani';ctx.fillText(s.l,cx,cy+24);
-    });
-    if(this.runInvalid){ctx.fillStyle='rgba(255,60,166,0.88)';ctx.font='700 13px Rajdhani';ctx.textAlign='center';ctx.fillText('INVALID RUN — pause/seek detected',W/2,cy+64);}
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const now = performance.now();
+    const elapsed = now - (this.resultAnimStart || now);
+
+    // Phase timings
+    const PHASE_BG    = 0;
+    const PHASE_PANEL = 300;
+    const PHASE_RANK  = 700;
+    const PHASE_STATS = 1000;
+    const PHASE_BTN   = 1500;
+
+    const easeOut = (t) => 1 - Math.pow(1 - Math.min(1, t), 3);
+
+    // Dark overlay (fades in)
+    const overlayAlpha = easeOut(Math.min(1, (elapsed - PHASE_BG) / 400)) * 0.82;
+    ctx.fillStyle = `rgba(4,8,16,${overlayAlpha.toFixed(3)})`;
+    ctx.fillRect(0, 0, W, H);
+
+    if (elapsed < PHASE_PANEL) return;
+
+    // Panel
+    const panelW = Math.min(580, W * 0.88);
+    const panelH = Math.min(480, H * 0.82);
+    const panelX = (W - panelW) / 2;
+    const panelY = (H - panelH) / 2;
+    const panelT = easeOut(Math.min(1, (elapsed - PHASE_PANEL) / 350));
+    const panelOffsetY = (1 - panelT) * 40;
+
+    ctx.save();
+    ctx.globalAlpha = panelT;
+    ctx.translate(0, panelOffsetY);
+
+    // Panel background
+    ctx.fillStyle = 'rgba(8,14,26,0.96)';
+    ctx.strokeStyle = 'rgba(84,241,255,0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(panelX, panelY, panelW, panelH, 28);
+    ctx.fill();
+    ctx.stroke();
+
+    // Top accent line
+    ctx.strokeStyle = 'rgba(84,241,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 32, panelY + 54);
+    ctx.lineTo(panelX + panelW - 32, panelY + 54);
+    ctx.stroke();
+
+    // Header
+    ctx.fillStyle = 'rgba(255,215,168,0.90)';
+    ctx.font = '700 13px Rajdhani';
+    ctx.textAlign = 'center';
+    ctx.fillText('RUN COMPLETE', W / 2, panelY + 34);
+
     ctx.restore();
-    if(elapsed<PHASE_BTN) return;
-    const bT=easeOut(Math.min(1,(elapsed-PHASE_BTN)/300)),bY=pY+pH-76,bW=pW*.36,bH=50,gap=pW*.06;
-    const bLX=pX+pW/2-bW-gap/2,bRX=pX+pW/2+gap/2;
-    this.resultButtons=[{label:'PLAY AGAIN',x:bLX,y:bY,w:bW,h:bH,action:'again'},{label:'BACK TO MENU',x:bRX,y:bY,w:bW,h:bH,action:'menu'}];
-    ctx.save();ctx.globalAlpha=bT;
-    this.resultButtons.forEach((btn,i)=>{
-        ctx.beginPath();if(ctx.roundRect)ctx.roundRect(btn.x,btn.y,btn.w,btn.h,10);else ctx.rect(btn.x,btn.y,btn.w,btn.h);
-        ctx.fillStyle=i===0?'rgba(40,240,255,0.12)':'rgba(255,255,255,0.05)';ctx.fill();
-        ctx.strokeStyle=i===0?'rgba(40,240,255,0.55)':'rgba(255,255,255,0.18)';ctx.lineWidth=1.5;ctx.stroke();
-        ctx.fillStyle=i===0?'#28f0ff':'rgba(224,244,255,0.76)';ctx.font='700 11px "Press Start 2P",monospace';
-        ctx.textAlign='center';ctx.fillText(btn.label,btn.x+btn.w/2,btn.y+btn.h/2+4);
+
+    if (elapsed < PHASE_RANK) return;
+
+    // Rank letter
+    const rankT = easeOut(Math.min(1, (elapsed - PHASE_RANK) / 380));
+    const rankPulse = 1 + Math.sin(now / 800) * 0.03;
+    const rankColors = { S: '#ffd36e', A: '#84f1ff', B: '#c89cff', C: '#6fdba8', F: '#ff6b6b' };
+    const rank = this.runResult.rank;
+    ctx.save();
+    ctx.globalAlpha = rankT;
+    ctx.translate(0, panelOffsetY * (1 - rankT));
+
+    // Rank glow
+    ctx.shadowBlur = 48 * rankT;
+    ctx.shadowColor = rankColors[rank] || '#fff';
+    ctx.fillStyle = rankColors[rank] || '#fff';
+    ctx.font = `900 ${Math.round(96 * rankPulse)}px Archivo`;
+    ctx.textAlign = 'center';
+    ctx.fillText(rank, W / 2 - panelW * 0.22, panelY + 168);
+    ctx.shadowBlur = 0;
+
+    // Score (rolls up)
+    const scoreTarget = this.runResult.score;
+    const scoreDisplay = Math.round(scoreTarget * Math.min(1, (elapsed - PHASE_RANK) / 600));
+    ctx.fillStyle = '#f3fcff';
+    ctx.font = '900 52px Archivo';
+    ctx.textAlign = 'right';
+    ctx.fillText(String(scoreDisplay).padStart(6, '0'), panelX + panelW - 40, panelY + 130);
+
+    // Accuracy
+    const accDisplay = (this.runResult.accuracy * Math.min(1, (elapsed - PHASE_RANK) / 500)).toFixed(1);
+    ctx.fillStyle = 'rgba(228,241,248,0.72)';
+    ctx.font = '600 20px Rajdhani';
+    ctx.textAlign = 'right';
+    ctx.fillText(`ACCURACY  ${accDisplay}%`, panelX + panelW - 40, panelY + 162);
+
+    ctx.restore();
+
+    if (elapsed < PHASE_STATS) return;
+
+    // Stats row
+    const statsT = easeOut(Math.min(1, (elapsed - PHASE_STATS) / 350));
+    ctx.save();
+    ctx.globalAlpha = statsT;
+
+    const cy = panelY + 220;
+    const statItems = [
+        { label: 'PERFECT', value: this.runResult.perfect, color: '#84f1ff' },
+        { label: 'GOOD',    value: this.runResult.good,    color: '#ffd36e' },
+        { label: 'MISS',    value: this.runResult.miss,    color: '#ff6b6b' },
+        { label: 'MAX COMBO', value: `${this.runResult.maxCombo}x`, color: '#c89cff' }
+    ];
+    const colW = panelW / statItems.length;
+    statItems.forEach((item, i) => {
+        const cx = panelX + colW * i + colW / 2;
+        ctx.fillStyle = item.color;
+        ctx.font = '900 28px Archivo';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(item.value), cx, cy);
+        ctx.fillStyle = 'rgba(228,241,248,0.55)';
+        ctx.font = '600 12px Rajdhani';
+        ctx.fillText(item.label, cx, cy + 22);
     });
-    ctx.fillStyle='rgba(224,244,255,0.30)';ctx.font='500 12px Rajdhani';ctx.textAlign='center';
-    ctx.fillText('ENTER · play again      ESC · menu',W/2,bY+bH+22);ctx.restore();
+
+    // Divider
+    ctx.strokeStyle = 'rgba(84,241,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 32, cy + 44);
+    ctx.lineTo(panelX + panelW - 32, cy + 44);
+    ctx.stroke();
+
+    // Invalid run warning
+    if (this.runInvalid) {
+        ctx.fillStyle = 'rgba(255,95,118,0.88)';
+        ctx.font = '700 13px Rajdhani';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚠ INVALID RUN — Seek/pause detected', W / 2, cy + 66);
+    }
+
+    ctx.restore();
+
+    if (elapsed < PHASE_BTN) return;
+
+    // Buttons
+    const btnT = easeOut(Math.min(1, (elapsed - PHASE_BTN) / 300));
+    const btnY = panelY + panelH - 68;
+    const btnW = panelW * 0.38;
+    const btnH = 48;
+    const gap = panelW * 0.06;
+    const btnLeftX = panelX + panelW / 2 - btnW - gap / 2;
+    const btnRightX = panelX + panelW / 2 + gap / 2;
+
+    // Store button hit areas for click detection
+    this.resultButtons = [
+        { label: 'PLAY AGAIN', x: btnLeftX, y: btnY, w: btnW, h: btnH, action: 'again' },
+        { label: 'BACK TO MENU', x: btnRightX, y: btnY, w: btnW, h: btnH, action: 'menu' }
+    ];
+
+    ctx.save();
+    ctx.globalAlpha = btnT;
+
+    this.resultButtons.forEach((btn, i) => {
+        const isLeft = i === 0;
+        // Hover pulse
+        const hoverPulse = 1 + Math.sin(now / 420 + i * Math.PI) * 0.018;
+        ctx.beginPath();
+        ctx.roundRect(btn.x, btn.y, btn.w * hoverPulse, btn.h, 12);
+        if (isLeft) {
+            const grad = ctx.createLinearGradient(btn.x, 0, btn.x + btn.w, 0);
+            grad.addColorStop(0, 'rgba(84,241,255,0.22)');
+            grad.addColorStop(1, 'rgba(84,241,255,0.08)');
+            ctx.fillStyle = grad;
+        } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        }
+        ctx.fill();
+        ctx.strokeStyle = isLeft ? 'rgba(84,241,255,0.55)' : 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = isLeft ? '#84f1ff' : 'rgba(228,241,248,0.72)';
+        ctx.font = `700 15px Rajdhani`;
+        ctx.textAlign = 'center';
+        ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
+    });
+
+    // Key hints
+    ctx.fillStyle = 'rgba(228,241,248,0.30)';
+    ctx.font = '500 12px Rajdhani';
+    ctx.textAlign = 'center';
+    ctx.fillText('ENTER · play again      ESC · menu', W / 2, btnY + btnH + 22);
+
+    ctx.restore();
 };
 
-RhythmGame.prototype._handleResultClick = function(x,y) {
-    for(const btn of (this.resultButtons||[])){
-        if(x>=btn.x&&x<=btn.x+btn.w&&y>=btn.y&&y<=btn.y+btn.h){
-            if(btn.action==='again') this._resultPlayAgain();
-            else if(btn.action==='menu') this._resultBackToMenu();
+RhythmGame.prototype._handleResultClick = function (x, y) {
+    for (const btn of (this.resultButtons || [])) {
+        if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
+            if (btn.action === 'again') this._resultPlayAgain();
+            else if (btn.action === 'menu') this._resultBackToMenu();
             return;
         }
     }
 };
 
-RhythmGame.prototype._resultPlayAgain = function() {
-    if(this.gameState!=='finished') return;
-    this.runResult=null;this.resultButtons=[];
-    if(this.chartData||this.liveConfig||this.audioBuffer){
-        this.setScene('countdown',{error:''});
-        this.startGame().catch(err=>{this.setStatusMessage('error','Restart failed: '+(err?.message||err));this.setScene('ready',{force:true});});
-    } else this._resultBackToMenu();
+RhythmGame.prototype._resultPlayAgain = function () {
+    if (this.gameState !== 'finished') return;
+    this.runResult = null;
+    this.resultButtons = [];
+    // Keep chart/liveConfig loaded, just restart
+    if (this.chartData || this.liveConfig || this.audioBuffer) {
+        this.setScene('countdown', { error: '' });
+        this.startGame().catch(err => {
+            this.setStatusMessage('error', 'Restart failed: ' + (err?.message || err));
+            this.setScene('ready', { force: true });
+        });
+    } else {
+        this._resultBackToMenu();
+    }
 };
 
-RhythmGame.prototype._resultBackToMenu = function() {
-    this.runResult=null;this.resultButtons=[];
-    this.setRunPhase('ready');this.setScene('ready',{force:true});
-    this.syncReadyState();this.updateHUD();
+RhythmGame.prototype._resultBackToMenu = function () {
+    this.runResult = null;
+    this.resultButtons = [];
+    this.setRunPhase('ready');
+    this.setScene('ready', { force: true });
+    this.syncReadyState();
+    this.updateHUD();
 };
 
 // Initialize the game
