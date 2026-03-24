@@ -557,23 +557,20 @@ class RhythmGame {
     async enterRunStartSequence() {
         try {
             await this.prepareRun();
-            // Start playback loading in parallel with countdown (so countdown = buffering time)
-            let playbackPromise = null;
-            if (this.liveMode) {
-                this.startPlaybackBackend();
-                playbackPromise = this.startPlaybackAndWaitUntilPlaying();
-            }
             await this.runCountdown();
-            if (this.liveMode && playbackPromise) {
+            if (this.liveMode) {
                 this.setRunPhase('awaiting-playback');
-                await playbackPromise;
+                this.setStatusMessage('loading', 'Countdown complete · waiting for playback to begin...');
+                await this.startPlaybackAndWaitUntilPlaying();
             }
             const dataArray = this.beginRun();
             if (!this.liveMode) this.startPlaybackBackend();
             this.armGameLoop(dataArray);
         } catch (err) {
             console.error('enterRunStartSequence failed:', err);
-            if (this.liveMode || this.gameState === 'awaiting-playback') this.handlePlaybackStartFailure(err);
+            if (this.liveMode || this.gameState === 'awaiting-playback') {
+                this.handlePlaybackStartFailure(err);
+            }
             throw err;
         }
     }
