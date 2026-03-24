@@ -6,480 +6,300 @@
     <title>CYBER GRID — Rhythm Stage</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;600;700&display=swap');
+
+        /* ── Variables ───────────────────────────────────────────────────── */
         :root {
-            --bg-0: #05070d; --bg-1: #0a0f1f; --bg-2: #111827;
-            --panel: rgba(5,7,13,0.92); --panel-soft: rgba(40,240,255,0.04);
-            --line: rgba(40,240,255,0.16); --line-strong: rgba(255,60,166,0.36);
-            --rose: #ff3ca6; --champagne: #ffe066; --violet: #8b5cf6;
-            --cyan: #28f0ff; --amber: #ffe066; --danger: #ff3ca6;
-            --text: #e0f4ff; --muted: rgba(224,244,255,0.64);
-        }
-        body {
-            margin:0; overflow:hidden;
-            background: #05070d;
-            font-family:'Rajdhani',sans-serif;
-            color:var(--text);
-        }
-        body::after {
-            content:''; position:fixed; inset:0; z-index:9999; pointer-events:none;
-            background:repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
-            mix-blend-mode:multiply;
-        }
-        #backgroundCanvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 0;
-            pointer-events: none;
-        }
-        #gameCanvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 1;
-        }
-        #uploadContainer {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2;
-            background: rgba(0, 0, 0, 0.85);
-            padding: 30px;
-            border-radius: 10px;
-            text-align: center;
-            box-shadow: 0 0 20px rgba(255, 143, 177, 0.24);
-            border: 1px solid rgba(255, 183, 120, 0.24);
-        }
-        #uploadContainer h2 {
-            color: #ffb56b;
-            margin-top: 0;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-        }
-        .hidden {
-            display: none !important;
-        }
-        #uploadContainer.hidden {
-            display: none;
-        }
-        #statusText {
-            margin: 15px 0;
-            min-height: 30px;
-        }
-        .success-message {
-            color: #ffb56b;
-            padding: 10px;
-            background: rgba(13, 111, 28, 0.15);
-            border-radius: 5px;
-            border: 1px solid rgba(255, 183, 120, 0.24);
-        }
-        .error-message {
-            color: #ff8ba7;
-            padding: 10px;
-            background: rgba(255, 111, 136, 0.14);
-            border-radius: 5px;
-            border: 1px solid rgba(255, 111, 136, 0.28);
-        }
-        .loading-message {
-            color: #e0e0e0;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 5px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        #score {
-            position:fixed; top:18px; right:18px;
-            width:auto; min-width:280px; max-width:340px;
-            z-index:3; text-align:right; padding:12px 16px;
-            background:rgba(5,7,13,0.92);
-            border:1px solid rgba(40,240,255,.35); border-radius:0;
-            clip-path:polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
-            box-shadow:0 0 24px rgba(40,240,255,.08), inset 0 0 18px rgba(40,240,255,.04);
-            color:var(--text); font-weight:700; letter-spacing:.04em; overflow:visible;
-            pointer-events: auto;
-        }
-        #score::before {
-            content:''; position:absolute; inset:0;
-            background:linear-gradient(130deg,rgba(40,240,255,.06),transparent 32%,transparent 68%,rgba(255,60,166,.06));
-            pointer-events:none;
-        }
-        /* Button styles moved below */
-        .file-upload {
-            position: relative;
-            display: inline-block;
-            margin: 10px;
-        }
-        .file-upload-btn {
-            display: inline-block;
-            padding: 8px 16px;
-            background: #8f3657;
-            border: 1px solid #ffb56b;
-            border-radius: 4px;
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-        }
-        .file-upload-btn:hover {
-            background: #ffb56b;
-            box-shadow: 0 3px 7px rgba(0, 0, 0, 0.5);
-        }
-        .file-upload input[type="file"] {
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0;
-            width: 100%;
-            height: 100%;
-            cursor: pointer;
-        }
-        /* Button styling */
-        button {
-            padding:10px 20px; border:1px solid rgba(40,240,255,.35);
-            background:rgba(5,7,13,.82); color:#28f0ff;
-            cursor:pointer; transition:all .2s; font-size:12px;
-            font-family:'Press Start 2P',monospace; border-radius:0; letter-spacing:.04em;
-        }
-        button:hover { background:rgba(40,240,255,.12); box-shadow:0 0 16px rgba(40,240,255,.3); }
-        button:disabled { background:rgba(5,7,13,.5); color:rgba(40,240,255,.3); cursor:not-allowed; }
-        /* Message styles are already defined above */
-        .info-message {
-            color: #ffffff;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            margin-top: 10px;
-        }
-        .note-message {
-            color: #ffb56b;
-            background: rgba(13, 111, 28, 0.1);
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(25, 163, 54, 0.2);
-            margin-top: 10px;
-        }
-    
-        #livePlayerHolder { position: fixed; left: 20px; bottom: 20px; z-index: 3; background: rgba(0,0,0,0.7); padding: 10px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; }
-        #livePlayerHolder.hidden { display:none; }
-        #liveAudio { width: 320px; }
-    
-        body {
-            background: #05070d;
-            font-family:'Rajdhani',sans-serif;
-        }
-        /* cyberpunk #score override handled above */
-        #uploadContainer {
-            background:
-                linear-gradient(180deg, rgba(255,255,255,.05), rgba(255, 230, 218, .018)),
-                linear-gradient(180deg, rgba(41,14,28,.9), rgba(23,8,16,.82));
-            border: 1px solid var(--line);
-            border-radius: 28px;
-            box-shadow: 0 30px 90px rgba(0,0,0,.46), inset 0 0 48px rgba(84,241,255,.04);
-            backdrop-filter: blur(24px);
-            min-width: 820px;
-            max-width: min(92vw, 980px);
-            padding: 26px 28px 24px;
-            overflow: hidden;
-        }
-        #uploadContainer::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background:
-                linear-gradient(transparent calc(100% - 1px), rgba(255,255,255,.04) 0),
-                linear-gradient(90deg, transparent calc(100% - 1px), rgba(255,255,255,.04) 0);
-            background-size: 30px 30px;
-            opacity: .26;
-            pointer-events: none;
-        }
-        #uploadContainer h2 {
-            color: #e9fdff;
-            letter-spacing: .14em;
-            text-transform: uppercase;
-            font-size: 30px;
-            font-family: 'Manrope', sans-serif;
-            margin-bottom: 18px;
-        }
-        #youtubeUrl, #difficultySelect, #playModeSelect, #analysisStrategySelect, #chartDensitySelect {
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 0 1px rgba(255,183,120,.10);
-            background: rgba(44, 18, 30, .84) !important;
-            color: var(--text);
-            border: 1px solid rgba(255,255,255,.12) !important;
-            border-radius: 14px !important;
-            min-height: 46px;
-            font: 600 14px 'Rajdhani', sans-serif;
-            letter-spacing: .05em;
-        }
-        #youtubeUrl::placeholder {
-            color: rgba(228,241,248,.46);
-        }
-        /* cyberpunk button override handled above */
-        .note-message, .info-message, .loading-message, .success-message, .error-message {
-            border-radius: 14px;
-        }
-        .shell-grid {
-            position: relative;
-            z-index: 1;
-            display: grid;
-            grid-template-columns: minmax(280px, 1.05fr) minmax(360px, 1.4fr);
-            gap: 18px;
-            align-items: stretch;
-        }
-        .intro-panel, .control-panel {
-            position: relative;
-            border-radius: 22px;
-            border: 1px solid rgba(255,255,255,.08);
-            background: linear-gradient(180deg, rgba(255, 244, 237, .04), rgba(255, 230, 218, .018));
-            padding: 18px;
-        }
-        .intro-panel::after, .control-panel::after {
-            content: '';
-            position: absolute;
-            left: 18px;
-            right: 18px;
-            top: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,183,120,.42), transparent);
-        }
-        .eyebrow {
-            font: 700 12px 'Rajdhani', sans-serif;
-            letter-spacing: .2em;
-            text-transform: uppercase;
-            color: var(--amber);
-            margin-bottom: 10px;
-        }
-        .intro-copy {
-            color: var(--muted);
-            font-size: 14px;
-            line-height: 1.65;
-            max-width: 34ch;
-        }
-        .chip-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
-        .chip {
-            padding: 8px 12px;
-            border-radius: 999px;
-            background: rgba(255,255,255,.05);
-            border: 1px solid rgba(255,255,255,.08);
-            font: 700 11px 'Rajdhani', sans-serif;
-            letter-spacing: .12em;
-            text-transform: uppercase;
-            color: rgba(244,253,255,.8);
-        }
-        .control-grid {
-            display: grid;
-            gap: 12px;
-        }
-        .control-row {
-            display:flex;
-            gap:10px;
-            align-items:center;
-            justify-content:center;
-            flex-wrap:wrap;
-        }
-        .control-row.actions { margin-top: 4px; }
-        .control-row .wide { flex: 1 1 320px; }
-        .control-row > * { min-width: 0; }
-        .status-panel {
-            margin-top: 14px;
-            padding: 14px;
-            border-radius: 18px;
-            border: 1px solid rgba(255,255,255,.08);
-            background: rgba(0,0,0,.24);
-        }
-        .tip-strip {
-            display:grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 10px;
-            margin-top: 14px;
-        }
-        .tip-card {
-            padding: 12px 13px;
-            border-radius: 16px;
-            border: 1px solid rgba(255,255,255,.07);
-            background: rgba(255, 244, 237, .04);
-        }
-        .tip-card b {
-            display:block;
-            margin-bottom:6px;
-            font: 700 12px 'Rajdhani', sans-serif;
-            letter-spacing: .13em;
-            text-transform: uppercase;
-            color: var(--text);
-        }
-        .tip-card span {
-            color: var(--muted);
-            font-size: 12px;
-            line-height: 1.55;
-        }
-        #pauseOverlay {
-            position:fixed; inset:0; z-index:4;
-            display:flex; align-items:center; justify-content:center;
-            flex-direction:column; gap:12px; font-size:22px;
-            background:
-                radial-gradient(circle at 50% 45%, rgba(40,240,255,.07), transparent 18%),
-                linear-gradient(180deg, rgba(5,7,13,.62), rgba(5,7,13,.74));
-            backdrop-filter:blur(8px) saturate(1.05);
-            -webkit-backdrop-filter:blur(8px) saturate(1.05);
-        }
-        #pauseOverlayText {
-            font:700 24px 'Press Start 2P',monospace;
-            letter-spacing:.08em; text-transform:uppercase; color:#28f0ff;
-            text-shadow:0 0 32px rgba(40,240,255,.35), 0 0 8px rgba(0,0,0,.55);
-            background:rgba(5,7,13,.28); padding:10px 14px;
-            border:1px solid rgba(40,240,255,.18);
-        }
-        #pauseOverlaySubtext {
-            padding:12px 16px; border-radius:0;
-            background:rgba(5,7,13,.32); border:1px solid rgba(40,240,255,.14);
-            font:600 14px 'Rajdhani',sans-serif;
-        }
-        #overlayResumeBtn {
-            margin-top: 6px;
-            min-width: 190px;
-        }
-        .hud-topline {
-            position: relative;
-            z-index: 1;
-            display:flex;
-            justify-content:space-between;
-            align-items:flex-start;
-            gap: 16px;
-        }
-        .score-stack small,
-        .hud-module small,
-        .score-aux small {
-            display:block; font:700 10px 'Press Start 2P',monospace;
-            letter-spacing:.12em; text-transform:uppercase;
-            color:rgba(40,240,255,.54); margin-bottom:6px;
-        }
-        .score-main {
-            font:700 28px 'Press Start 2P',monospace;
-            line-height:1.1; color:#28f0ff;
-            text-shadow:0 0 16px rgba(40,240,255,.35);
-        }
-        .hud-top-actions {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-        .score-aux {
-            min-width: 98px;
-            text-align: right;
-        }
-        .score-aux strong { display:block; font:700 20px 'Press Start 2P',monospace; color:#ffe066; line-height:1; }
-        .hud-control-btn { margin-top:0; min-height:40px; min-width:88px; padding:10px 14px; font-size:10px; border-radius:0; font-family:'Press Start 2P',monospace; }
-        .score-modules {
-            position: relative;
-            z-index: 1;
-            display:grid;
-            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-            gap: 10px;
-            margin-top: 14px;
-        }
-        .hud-module { padding:11px 12px 12px; border-radius:0; background:rgba(40,240,255,.03); border:1px solid rgba(40,240,255,.12); }
-        .hud-module strong { display:block; font:700 14px 'Press Start 2P',monospace; letter-spacing:.04em; color:var(--text); }
-        .hud-module.emphasis strong { color:#ffe066; }
-        .hud-module.alert strong { color:#ff3ca6; }
-        #runState[data-state="invalid"] strong { color: var(--danger); }
-        .score-meter {
-            position: relative;
-            z-index: 1;
-            margin-top: 14px;
-            height: 8px;
-            border-radius: 999px;
-            background: rgba(255,255,255,.06);
-            overflow: hidden;
-        }
-        .debug-strip { position:relative; z-index:1; margin-top:12px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; font:700 9px 'Press Start 2P',monospace; letter-spacing:.04em; text-transform:uppercase; color:rgba(40,240,255,.62); }
-        .debug-strip span {
-            padding: 8px 10px;
-            border-radius: 12px;
-            background: rgba(255,255,255,.04);
-            border: 1px solid rgba(255,255,255,.06);
-        }
-        .debug-strip b {
-            color: #f6fdff;
-            font-weight: 700;
-        }
-        .debug-strip span.warn {
-            border-color: rgba(255, 111, 136, 0.42);
-            background: rgba(255, 111, 136, 0.12);
-        }
-        .debug-strip span.good {
-            border-color: rgba(255, 213, 131, 0.34);
-            background: rgba(255, 213, 131, 0.08);
-        }
-        .score-meter-fill {
-            width: 38%;
-            height: 100%;
-            background: linear-gradient(90deg, var(--cyan), var(--amber));
-            box-shadow: 0 0 24px rgba(255,183,120,.34);
-        }
-        @media (max-width: 1200px) {
-            #score {
-                width: min(480px, calc(100vw - 24px));
-                max-width: calc(100vw - 24px);
-            }
-        }
-        @media (max-width: 940px) {
-            #uploadContainer { min-width: 0; width: min(94vw, 760px); }
-            .shell-grid { grid-template-columns: 1fr; }
-            .tip-strip { grid-template-columns: 1fr; }
-            #score {
-                left: 12px;
-                right: 12px;
-                top: 12px;
-                width: auto;
-                max-width: calc(100vw - 24px);
-                min-width: 0;
-                padding: 14px;
-            }
-            .score-main { font-size: 22px; }
-            .score-modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .debug-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-        @media (max-width: 640px) {
-            .hud-topline {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .hud-top-actions {
-                justify-content: space-between;
-                align-items: center;
-            }
-            .score-aux {
-                text-align: left;
-            }
-            .score-modules,
-            .debug-strip {
-                grid-template-columns: 1fr;
-            }
-            .score-main {
-                font-size: 18px;
-            }
-            .hud-control-btn {
-                width: 100%;
-            }
+            --cyan:   #28f0ff;
+            --pink:   #ff3ca6;
+            --yellow: #ffe066;
+            --purple: #8b5cf6;
+            --bg:     #05070d;
+            --panel:  rgba(8,14,26,0.92);
+            --border: rgba(40,240,255,0.22);
+            --text:   #e0f4ff;
+            --muted:  rgba(224,244,255,0.5);
         }
 
+        /* ── Reset ───────────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            overflow: hidden;
+            background: var(--bg);
+            font-family: 'Rajdhani', sans-serif;
+            color: var(--text);
+            font-size: 15px;
+        }
+
+        /* Scanlines */
+        body::after {
+            content: ''; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+            background: repeating-linear-gradient(0deg, transparent 0, transparent 3px, rgba(0,0,0,.05) 3px, rgba(0,0,0,.05) 4px);
+        }
+
+        /* ── Canvas layers ────────────────────────────────────────────────── */
+        #backgroundCanvas { position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none; }
+        #gameCanvas        { position: fixed; top: 0; left: 0; z-index: 1; }
+        .hidden { display: none !important; }
+
+        /* ── Loading overlay ─────────────────────────────────────────────── */
+        #loadingOverlay {
+            position: fixed; inset: 0; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+            background: linear-gradient(180deg, #05070d, #0a0f1f 55%, #05070d);
+            pointer-events: none; opacity: 0; transition: opacity .4s;
+        }
+        #loadingOverlay.visible { opacity: 1; pointer-events: auto; }
+        #waitCanvas { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+        .wait-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 0 24px; text-align: center; }
+        .wait-logo { font: 700 9px 'Press Start 2P', monospace; letter-spacing: .2em; text-transform: uppercase; color: rgba(40,240,255,.5); }
+        .wait-title { font: 700 22px 'Press Start 2P', monospace; color: var(--cyan); text-shadow: 0 0 40px rgba(40,240,255,.5); line-height: 1.4; }
+        .wait-sub { font: 600 13px 'Rajdhani', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,60,166,.7); }
+        .wait-bar-wrap { width: 240px; height: 2px; background: rgba(255,255,255,.08); }
+        .wait-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--cyan), var(--pink)); box-shadow: 0 0 12px var(--cyan); transition: width .3s ease; }
+        .wait-status { font: 500 12px 'Rajdhani', sans-serif; color: rgba(224,244,255,.45); min-height: 18px; }
+        .wait-hint { font: 600 10px 'Rajdhani', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(40,240,255,.25); }
+        .wait-ripple { position: absolute; border-radius: 0; width: 0; height: 0; pointer-events: none; border: 1px solid rgba(40,240,255,.6); transform: translate(-50%,-50%); animation: rippleOut .7s ease-out forwards; }
+        @keyframes rippleOut { to { width: 160px; height: 160px; opacity: 0; } }
+
+        /* ── HUD (in-game score panel) ───────────────────────────────────── */
+        #score {
+            position: fixed; top: 16px; right: 16px; z-index: 3;
+            padding: 10px 14px;
+            background: rgba(5,7,13,.9);
+            border: 1px solid var(--border);
+            clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+            min-width: 220px; max-width: 300px;
+            font-weight: 700; letter-spacing: .04em;
+            overflow: visible;
+        }
+        .hud-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .score-stack { min-width: 0; }
+        .score-stack small { display: block; font: 700 8px 'Press Start 2P', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgba(40,240,255,.5); margin-bottom: 4px; }
+        .score-main { font: 700 24px 'Press Start 2P', monospace; color: var(--cyan); text-shadow: 0 0 14px rgba(40,240,255,.4); }
+        .hud-top-actions { display: flex; gap: 6px; align-items: center; }
+        .score-aux { text-align: right; }
+        .score-aux small { display: block; font: 700 8px 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgba(40,240,255,.5); margin-bottom: 4px; }
+        .score-aux strong { display: block; font: 700 16px 'Press Start 2P', monospace; color: var(--yellow); }
+        .score-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin-top: 8px; }
+        .score-meter { height: 2px; background: rgba(255,255,255,.06); margin-top: 8px; }
+        .score-meter-fill { height: 100%; width: 38%; background: linear-gradient(90deg, var(--cyan), var(--yellow)); }
+        .hud-module { padding: 8px 10px; background: rgba(40,240,255,.03); border: 1px solid rgba(40,240,255,.1); }
+        .hud-module small { display: block; font: 700 8px 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgba(40,240,255,.45); margin-bottom: 3px; }
+        .hud-module strong { display: block; font: 700 12px 'Press Start 2P', monospace; color: var(--text); }
+        .hud-module.emphasis strong { color: var(--yellow); }
+        .hud-module.alert strong { color: var(--pink); }
+        #runState[data-state="invalid"] strong { color: var(--pink); }
+        .debug-strip { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 4px; margin-top: 6px; font: 700 8px 'Press Start 2P', monospace; color: rgba(40,240,255,.5); }
+        .debug-strip span { padding: 5px 6px; background: rgba(40,240,255,.03); border: 1px solid rgba(40,240,255,.07); }
+        .debug-strip b { color: var(--text); }
+        .debug-strip span.warn { border-color: rgba(255,60,166,.4); background: rgba(255,60,166,.08); }
+
+        /* ── Buttons ─────────────────────────────────────────────────────── */
+        button {
+            padding: 9px 18px;
+            background: rgba(5,7,13,.85);
+            border: 1px solid rgba(40,240,255,.35);
+            color: var(--cyan);
+            cursor: pointer; transition: all .18s;
+            font: 700 9px 'Press Start 2P', monospace;
+            letter-spacing: .04em; border-radius: 0;
+        }
+        button:hover:not(:disabled) { background: rgba(40,240,255,.1); box-shadow: 0 0 14px rgba(40,240,255,.25); }
+        button:disabled { opacity: .3; cursor: not-allowed; }
+        button.primary { border-color: var(--cyan); color: var(--cyan); }
+        button.accent  { border-color: var(--yellow); color: var(--yellow); }
+        button.danger  { border-color: var(--pink); color: var(--pink); }
+        .hud-control-btn { min-height: 34px; min-width: 70px; padding: 6px 10px; font-size: 8px; }
+
+        /* ── Setup screen (#uploadContainer) ─────────────────────────────── */
+        #uploadContainer {
+            position: fixed; inset: 0; z-index: 2;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+
+        .cyber-setup {
+            width: 100%; max-width: 760px;
+            background: rgba(6,10,20,.92);
+            border: 1px solid rgba(40,240,255,.2);
+            clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+            padding: 28px 32px 24px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+
+        /* Title bar */
+        .setup-title {
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid rgba(40,240,255,.12);
+            padding-bottom: 14px;
+        }
+        .setup-title-text {
+            font: 700 14px 'Press Start 2P', monospace;
+            color: var(--cyan);
+            text-shadow: 0 0 24px rgba(40,240,255,.4);
+            letter-spacing: .06em;
+        }
+        .setup-title-tag {
+            font: 700 8px 'Press Start 2P', monospace;
+            color: rgba(40,240,255,.4);
+            letter-spacing: .1em;
+            margin-left: auto;
+        }
+
+        /* Input row */
+        .setup-inputs {
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .input-row {
+            display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap;
+        }
+        .input-row.main { gap: 8px; }
+
+        input[type="url"], select {
+            background: rgba(4,8,16,.9);
+            border: 1px solid rgba(40,240,255,.2);
+            color: var(--text);
+            font: 600 13px 'Rajdhani', sans-serif;
+            padding: 9px 12px;
+            border-radius: 0;
+            outline: none;
+            transition: border-color .18s;
+            min-height: 40px;
+        }
+        input[type="url"] { flex: 1; min-width: 200px; }
+        input[type="url"]::placeholder { color: rgba(224,244,255,.3); }
+        input[type="url"]:focus, select:focus { border-color: rgba(40,240,255,.5); }
+        select { cursor: pointer; }
+        select option { background: #05070d; }
+
+        /* File upload */
+        .file-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 9px 16px; min-height: 40px;
+            background: rgba(5,7,13,.85);
+            border: 1px solid rgba(40,240,255,.35);
+            color: var(--cyan);
+            font: 700 8px 'Press Start 2P', monospace;
+            letter-spacing: .04em; cursor: pointer; white-space: nowrap;
+            transition: all .18s; position: relative;
+        }
+        .file-btn:hover { background: rgba(40,240,255,.08); }
+        .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
+        /* Action buttons row */
+        .action-row {
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .action-row button { flex: 1; min-width: 120px; }
+
+        /* Status panel */
+        #statusText {
+            padding: 10px 14px;
+            background: rgba(4,8,16,.6);
+            border: 1px solid rgba(40,240,255,.1);
+            font: 600 13px 'Rajdhani', sans-serif;
+            min-height: 44px;
+        }
+        .success-message { color: var(--cyan); }
+        .error-message   { color: var(--pink); }
+        .loading-message { color: var(--yellow); }
+        .note-message    { color: rgba(224,244,255,.55); }
+
+        /* Ready summary */
+        #readySummary {
+            display: none; /* shown by JS */
+            padding: 8px 14px;
+            border: 1px solid rgba(40,240,255,.1);
+            background: rgba(4,8,16,.5);
+            font: 600 12px 'Rajdhani', sans-serif;
+            color: var(--muted);
+            letter-spacing: .04em;
+        }
+
+        /* ── Pause overlay ────────────────────────────────────────────────── */
+        #pauseOverlay {
+            position: fixed; inset: 0; z-index: 4;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 14px;
+            background:
+                radial-gradient(circle at 50% 45%, rgba(40,240,255,.06), transparent 20%),
+                linear-gradient(180deg, rgba(5,7,13,.65), rgba(5,7,13,.75));
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        #pauseOverlayText {
+            font: 700 28px 'Press Start 2P', monospace;
+            color: var(--cyan);
+            text-shadow: 0 0 40px rgba(40,240,255,.4), 0 0 8px rgba(0,0,0,.8);
+            padding: 12px 20px;
+            border: 1px solid rgba(40,240,255,.2);
+            background: rgba(5,7,13,.35);
+            letter-spacing: .08em;
+        }
+        #pauseOverlaySubtext {
+            font: 600 13px 'Rajdhani', sans-serif;
+            color: rgba(224,244,255,.6);
+            padding: 10px 18px;
+            border: 1px solid rgba(40,240,255,.1);
+            background: rgba(5,7,13,.3);
+        }
+        #overlayResumeBtn { margin-top: 4px; min-width: 160px; }
+
+        /* ── Live player holder ───────────────────────────────────────────── */
+        #livePlayerHolder {
+            position: fixed; left: 16px; bottom: 16px; z-index: 3;
+            background: rgba(5,7,13,.88);
+            padding: 10px;
+            border: 1px solid rgba(40,240,255,.14);
+        }
+        #liveAudio { width: 280px; }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        @media (max-width: 860px) {
+            .cyber-setup { padding: 20px 18px 18px; }
+            .setup-title-text { font-size: 10px; }
+        }
+        @media (max-width: 600px) {
+            .cyber-setup { clip-path: none; }
+            .input-row { flex-direction: column; }
+            .action-row button { min-width: 100px; }
+            #score { min-width: 0; width: calc(100vw - 32px); }
+            .score-main { font-size: 18px; }
+        }
     </style>
 </head>
 <body>
     <canvas id="backgroundCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
-    <div id="score">
-        <div class="hud-topline" style="padding:6px 12px;gap:10px;align-items:center;">
-            <div class="score-stack" style="min-width:auto;">
-                <div class="score-main" id="scoreValue" style="font-size:32px;line-height:1;">000000</div>
-            </div>
-            <button id="hudPauseBtn" class="hud-control-btn" style="min-height:32px;min-width:60px;padding:6px 10px;font-size:11px;" aria-label="Pause game">Pause</button>
+
+    <!-- ── Loading overlay ── -->
+    <div id="loadingOverlay">
+        <canvas id="waitCanvas"></canvas>
+        <div class="wait-inner">
+            <div class="wait-logo">CYBER GRID · Rhythm Engine</div>
+            <div class="wait-title">ANALYZING</div>
+            <div class="wait-sub">Detecting BPM &amp; chart structure</div>
+            <div class="wait-bar-wrap"><div class="wait-bar-fill" id="waitBarFill"></div></div>
+            <div class="wait-status" id="waitStatusText"></div>
+            <div class="wait-hint">Processing audio — please wait</div>
         </div>
-        <!-- Hidden during gameplay but kept for JS references -->
+    </div>
+
+    <!-- ── In-game HUD ── -->
+    <div id="score">
+        <div class="hud-topline">
+            <div class="score-stack">
+                <div class="score-main" id="scoreValue">000000</div>
+            </div>
+            <div class="hud-top-actions">
+                <div class="score-aux">
+                    <strong id="comboValue" style="display:none">0x</strong>
+                </div>
+                <button id="hudPauseBtn" class="hud-control-btn" aria-label="Pause">II</button>
+            </div>
+        </div>
         <div style="display:none;">
-            <strong id="comboValue">0x</strong>
             <strong id="hudMode">CASUAL</strong>
             <strong id="hudDifficulty">NORMAL</strong>
             <strong id="hudAccuracy">--</strong>
@@ -498,77 +318,77 @@
             </div>
         </div>
     </div>
+
+    <!-- ── Setup screen ── -->
     <div id="uploadContainer">
-        <h2>Velvet Grid — Rhythm Stage</h2>
-        <div class="shell-grid">
-            <section class="intro-panel">
-                <div class="eyebrow">velvet night / stage control</div>
-                <div class="intro-copy">把准备区改成更像演出后台：不是冷硬工业面板，而是有温度、有灯光、有开场仪式感的舞台控制台。</div>
-                <div class="chip-row">
-                    <span class="chip">Backstage Playback</span>
-                    <span class="chip">Geometry Drags</span>
-                    <span class="chip">Dual Input Flow</span>
+        <div class="cyber-setup">
+            <!-- Title bar -->
+            <div class="setup-title">
+                <div class="setup-title-text">CYBER GRID</div>
+                <div class="setup-title-tag">RHYTHM STAGE v2</div>
+            </div>
+
+            <!-- Inputs -->
+            <div class="setup-inputs">
+                <!-- File upload -->
+                <div class="input-row">
+                    <label class="file-btn">
+                        ▲ LOCAL AUDIO
+                        <input type="file" id="audioUpload" accept="audio/*">
+                    </label>
                 </div>
-                <div class="tip-strip">
-                    <div class="tip-card"><b>Stage Source</b><span>粘贴可播放链接后，系统会像调灯控一样准备整首节奏。</span></div>
-                    <div class="tip-card"><b>Run Discipline</b><span>严格模式保留竞技感，casual 模式更适合试谱和看舞台表现。</span></div>
-                    <div class="tip-card"><b>Visual Mood</b><span>这版换成丝绒夜场气质，主色更柔和，按键和 HUD 都更像演出票面。</span></div>
-                    <div class="tip-card"><b>New Notes</b><span>现在只保留 tap / hold / drag / spin 四类输入；drag 会以几何路径变体呈现，不再单独显示 ribbon / flick / cut / gate。</span></div>
-                    <div class="tip-card"><b>Signature Layer</b><span>chorus / bridge 会更明显地浮出 diamondLoop / starTrace 几何 drag，spin 会在整首里稳定出现两次。</span></div>
+
+                <!-- URL + quick selects -->
+                <div class="input-row main">
+                    <input id="youtubeUrl" type="url" placeholder="Paste YouTube / Bilibili URL">
+                    <select id="difficultySelect">
+                        <option value="easy">EASY</option>
+                        <option value="normal" selected>NORMAL</option>
+                        <option value="hard">HARD</option>
+                    </select>
+                    <select id="playModeSelect">
+                        <option value="casual" selected>CASUAL</option>
+                        <option value="strict">STRICT</option>
+                    </select>
                 </div>
-            </section>
-            <section class="control-panel">
-                <div class="control-grid">
-                    <div class="control-row">
-                        <div class="file-upload wide">
-                            <span class="file-upload-btn">Choose Local Audio File</span>
-                            <input type="file" id="audioUpload" accept="audio/*">
-                        </div>
-                    </div>
-                    <div class="control-row">
-                        <input class="wide" id="youtubeUrl" type="url" placeholder="Paste YouTube URL (<= 6 min)">
-                        <select id="difficultySelect">
-                            <option value="easy">Easy</option>
-                            <option value="normal" selected>Normal</option>
-                            <option value="hard">Hard</option>
-                        </select>
-                        <select id="playModeSelect">
-                            <option value="casual" selected>Casual</option>
-                            <option value="strict">Strict</option>
-                        </select>
-                        <select id="analysisStrategySelect">
-                            <option value="auto" selected>Auto Strategy</option>
-                            <option value="full">Force Full-song</option>
-                            <option value="segmented">Force Segmented</option>
-                        </select>
-                        <select id="chartDensitySelect">
-                            <option value="relaxed">Relaxed Density</option>
-                            <option value="normal" selected>Normal Density</option>
-                            <option value="dense">Dense Density</option>
-                        </select>
-                    </div>
-                    <div class="control-row actions">
-                        <button id="analyzeYoutube">Prepare Link Mode</button>
-                        <button id="startGame" disabled>Start Game</button>
-                        <button id="cancelAnalyze" disabled>Cancel Analysis</button>
-                        <button id="pauseGameBtn" disabled>Pause</button>
-                        <button id="resumeGameBtn" disabled style="display:none;">Resume</button>
-                    </div>
-                    <div id="statusText" class="status-panel"></div>
-                    <div class="note-message" style="margin-top: 6px; font-size: 13px; opacity: 0.88;">
-                        Tip: Paste a playable link and treat this screen like a stage setup desk — calmer, warmer, less neon-harsh.
-                    </div>
+
+                <!-- Advanced selects -->
+                <div class="input-row">
+                    <select id="analysisStrategySelect">
+                        <option value="auto" selected>AUTO STRATEGY</option>
+                        <option value="full">FORCE FULL</option>
+                        <option value="segmented">FORCE SEGMENTED</option>
+                    </select>
+                    <select id="chartDensitySelect">
+                        <option value="relaxed">RELAXED DENSITY</option>
+                        <option value="normal" selected>NORMAL DENSITY</option>
+                        <option value="dense">DENSE DENSITY</option>
+                    </select>
                 </div>
-            </section>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="action-row">
+                <button id="analyzeYoutube" class="primary">▶ ANALYZE LINK</button>
+                <button id="startGame" class="accent" disabled>▶ START GAME</button>
+                <button id="cancelAnalyze" class="danger" disabled>✕ CANCEL</button>
+                <button id="pauseGameBtn" disabled>⏸ PAUSE</button>
+                <button id="resumeGameBtn" disabled style="display:none;">▶ RESUME</button>
+            </div>
+
+            <!-- Status -->
+            <div id="statusText"></div>
         </div>
     </div>
 
+    <!-- ── Pause overlay ── -->
     <div id="pauseOverlay" class="hidden">
-        <div id="pauseOverlayText">Paused</div>
-        <div id="pauseOverlaySubtext" style="font-size:14px;opacity:0.8;max-width:420px;text-align:center;">Resume will trigger a short countdown.</div>
-        <button id="overlayResumeBtn">Resume Run</button>
+        <div id="pauseOverlayText">PAUSED</div>
+        <div id="pauseOverlaySubtext">Resume will count down 3 · 2 · 1</div>
+        <button id="overlayResumeBtn" class="primary">▶ RESUME</button>
     </div>
 
+    <!-- ── Live player ── -->
     <div id="livePlayerHolder" class="hidden">
         <div id="ytPlayer"></div>
         <audio id="liveAudio" playsinline crossorigin="anonymous"></audio>
@@ -588,20 +408,14 @@
                     bytes[6] = (bytes[6] & 15) | 64;
                     bytes[8] = (bytes[8] & 63) | 128;
                     var hex = Array.from(bytes, function (b) { return b.toString(16).padStart(2, '0'); });
-                    return [
-                        hex.slice(0, 4).join(''),
-                        hex.slice(4, 6).join(''),
-                        hex.slice(6, 8).join(''),
-                        hex.slice(8, 10).join(''),
-                        hex.slice(10, 16).join('')
-                    ].join('-');
+                    return [hex.slice(0,4).join(''), hex.slice(4,6).join(''), hex.slice(6,8).join(''), hex.slice(8,10).join(''), hex.slice(10,16).join('')].join('-');
                 };
             }
         })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="rgb-effect.js?v=20260309a"></script>
+    <script src="rgb-effect.js?v=20260324a"></script>
     <script src="default-songs.js?v=20260307a"></script>
     <script src="music-api.js?v=20260307a"></script>
     <script src="clock-controller.js?v=20260312a"></script>
@@ -612,7 +426,7 @@
     <script src="chart-policy.js?v=20260313h"></script>
     <script src="chart-reviewer.js?v=20260313c"></script>
     <script src="path-templates.js?v=20260313c"></script>
-    <script src="game.js?v=20260313l"></script>
-    <script src="youtube-client.js?v=20260311d"></script>
+    <script src="game.js?v=20260324a"></script>
+    <script src="youtube-client.js?v=20260324a"></script>
 </body>
 </html>
