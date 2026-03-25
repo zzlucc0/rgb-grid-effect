@@ -74,7 +74,13 @@ class RhythmGame {
         this.tutorialSeenCounts = {};
         this.visualBursts = [];
         this.signatureBursts = [];
+        this.juiceShake = { x: 0, y: 0, mag: 0 };
+        this.perfectStreak = 0;
+        this.juiceParticles = [];
         this.feedbackBanners = [];
+        this.juiceShake = { x: 0, y: 0, mag: 0 };
+        this.perfectStreak = 0;
+        this.juiceParticles = [];
         this.countdownFlash = null;
         this.groupHistory = [];
         this.activeGroupState = null;
@@ -855,7 +861,19 @@ class RhythmGame {
         }
         return new Promise(resolve => {
             // Show analyzing prompt
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            // Decay shake
+        if (this.juiceShake && this.juiceShake.mag > 0.5) {
+            this.juiceShake.mag *= 0.72;
+            this.juiceShake.x = (Math.random() * 2 - 1) * this.juiceShake.mag;
+            this.juiceShake.y = (Math.random() * 2 - 1) * this.juiceShake.mag;
+        } else if (this.juiceShake) {
+            this.juiceShake = { x: 0, y: 0, mag: 0 };
+        }
+        this.ctx.save();
+        if (this.juiceShake && this.juiceShake.mag > 0.5) {
+            this.ctx.translate(this.juiceShake.x, this.juiceShake.y);
+        }
+        this.ctx.clearRect(-(Math.abs(this.juiceShake?.x || 0) + 8), -(Math.abs(this.juiceShake?.y || 0) + 8), this.canvas.width + 16, this.canvas.height + 16);
             this.ctx.fillStyle = '#fff';
             this.ctx.font = '36px Arial';
             this.ctx.textAlign = 'center';
@@ -2454,7 +2472,7 @@ class RhythmGame {
             const bodyY = Math.round(note.y - bodySize * 0.68);
             const bodyW = Math.round(bodySize * 1.36);
             const bodyH = Math.round(bodySize * 1.36);
-            const pw = Math.max(3, Math.round(bodyW / 10));
+            const pw = Math.max(2, Math.round(bodyW / 14));
             this.ctx.save();
             this.ctx.imageSmoothingEnabled = false;
             // fill
@@ -2509,7 +2527,7 @@ class RhythmGame {
                 const tutorialLimit = note.noteType === 'tap' ? 2 : 3;
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
-                const marker = note.noteType === 'tap' ? note.noteNumber.toString() : '';
+                const marker = ''; // no number labels on notes
                 if (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit ? `${tutorialLabel} + ${note.keyboardHint || 'SPACE'}` : tutorialLabel;
                     const labelW = Math.max(note.noteType === 'hold' && note.inputChannel === 'keyboard' ? this.circleSize * 2.45 : this.circleSize * 1.8, displayLabel.length * (note.noteType === 'hold' && note.inputChannel === 'keyboard' ? 14 : 12));
@@ -2581,6 +2599,11 @@ class RhythmGame {
 
         // Draw song progress bar
         this.drawSongProgress();
+
+        this.ctx.restore(); // end shake transform
+
+        // Juice particles
+        this.drawJuiceParticles();
 
         // Draw float judge popups at note positions
         this.drawFloatJudges();
@@ -2924,6 +2947,33 @@ class RhythmGame {
     }
 
     createHitEffect = (x, y, scoreType = 'perfect') => {
+        // Juice
+        const isPerfect = scoreType === 'perfect';
+        const shakeAmt = isPerfect ? 5.5 : 2.5;
+        if (!this.juiceShake) this.juiceShake = { x: 0, y: 0, mag: 0 };
+        this.juiceShake.mag = Math.max(this.juiceShake.mag, shakeAmt);
+        if (isPerfect) {
+            this.perfectStreak = (this.perfectStreak || 0) + 1;
+            const streakBonus = Math.min(this.perfectStreak, 10);
+            for (let i = 0; i < 8 + streakBonus * 2; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 2.5 + Math.random() * 4.5 + streakBonus * 0.4;
+                const life = 300 + Math.random() * 220;
+                const col = Math.random() < 0.5 ? '#59efff' : (Math.random() < 0.5 ? '#ffffff' : '#ff79ae');
+                (this.juiceParticles = this.juiceParticles || []).push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life, lifeMax: life, size: 3 + Math.random() * 3, color: col, at: performance.now() });
+            }
+        } else if (scoreType !== 'miss') {
+            this.perfectStreak = 0;
+            for (let i = 0; i < 4; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 1.5 + Math.random() * 2.5;
+                (this.juiceParticles = this.juiceParticles || []).push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 240, lifeMax: 240, size: 2 + Math.random() * 2, color: '#ff9bb4', at: performance.now() });
+            }
+        } else {
+            this.perfectStreak = 0;
+        }
+        const flashSize = isPerfect ? this.circleSize * 2.2 : this.circleSize * 1.4;
+
         const particles = [];
         const particleCount = scoreType === 'perfect' ? 28 : scoreType === 'good' ? 18 : 12;
         const particleSpeed = scoreType === 'perfect' ? 8.6 : scoreType === 'good' ? 5.6 : 4.2;
@@ -3049,6 +3099,30 @@ RhythmGame.prototype.getNotePalette = function (note) {
     if (note.score === 'miss') return { core: '#ff899f', edge: '#ff5f76', glow: 'rgba(255,95,118,.35)' };
     const base = note.groupPalette || this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex || note.phrase || 0);
     return this.decoratePaletteForNote(base, note);
+};
+
+RhythmGame.prototype.drawJuiceParticles = function () {
+    if (!this.juiceParticles || !this.juiceParticles.length) return;
+    const now = performance.now();
+    this.juiceParticles = this.juiceParticles.filter(pt => now - pt.at < pt.lifeMax);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    for (const pt of this.juiceParticles) {
+        const elapsed = (now - pt.at) / 1000;
+        const t = (now - pt.at) / pt.lifeMax;
+        const alpha = Math.max(0, 1 - t * 1.4);
+        pt.x += pt.vx * 0.85;
+        pt.y += pt.vy * 0.85 + elapsed * 6;
+        pt.vx *= 0.88;
+        pt.vy *= 0.88;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = pt.color;
+        const s = Math.max(1, pt.size * (1 - t * 0.5));
+        ctx.fillRect(Math.round(pt.x - s / 2), Math.round(pt.y - s / 2), Math.round(s), Math.round(s));
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
 };
 
 RhythmGame.prototype.drawFloatJudges = function () {
