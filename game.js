@@ -13,10 +13,6 @@ class RhythmGame {
         this.readyMode = null;
         this.score = 0;
         this.combo = 0;
-        this.maxCombo = 0;
-        this.runResult = null;
-        this.resultAnimStart = null;
-        this.resultButtons = [];
         this.isPlaying = false;
         this.audioBuffer = null;
         this.startTime = 0;
@@ -81,20 +77,36 @@ class RhythmGame {
         this.groupHistory = [];
         this.activeGroupState = null;
         this.segmentGroupPalettes = {
-            intro:  [{ core:'#0a1a2e', edge:'#28f0ff', accent:'#8b5cf6' }],
-            verse:  [
-                { core:'#0d1f35', edge:'#28f0ff', accent:'#00d4ff' },
-                { core:'#1a0d35', edge:'#8b5cf6', accent:'#c084fc' },
-                { core:'#1a0d1a', edge:'#ff3ca6', accent:'#ff6ec4' },
+            intro: [
+                { core: '#ffe4c4', edge: '#ffc47d', glow: 'rgba(255,196,125,.30)' },
+                { core: '#ffd8ef', edge: '#ff9bc8', glow: 'rgba(255,155,200,.28)' }
             ],
-            pre:    [{ core:'#1a1200', edge:'#ffe066', accent:'#ffd700' }],
+            verse: [
+                { core: '#f5d6ff', edge: '#c89cff', glow: 'rgba(200,156,255,.30)' },
+                { core: '#ffd9bf', edge: '#ffb46a', glow: 'rgba(255,180,106,.28)' },
+                { core: '#ffe7f1', edge: '#ff99bf', glow: 'rgba(255,153,191,.26)' }
+            ],
+            pre: [
+                { core: '#ffe1b8', edge: '#ffb15f', glow: 'rgba(255,177,95,.30)' },
+                { core: '#f3d9ff', edge: '#bf8cff', glow: 'rgba(191,140,255,.28)' }
+            ],
             chorus: [
-                { core:'#1a0510', edge:'#ff3ca6', accent:'#ff6ec4' },
-                { core:'#05101a', edge:'#28f0ff', accent:'#00d4ff' },
-                { core:'#0d0520', edge:'#8b5cf6', accent:'#a78bfa' },
+                { core: '#fff0cc', edge: '#ffd36e', glow: 'rgba(255,211,110,.34)' },
+                { core: '#ffd8f3', edge: '#ff8dca', glow: 'rgba(255,141,202,.32)' },
+                { core: '#e8dcff', edge: '#b48fff', glow: 'rgba(180,143,255,.32)' }
             ],
-            bridge: [{ core:'#001a1a', edge:'#00ff88', accent:'#00d470' }],
-            outro:  [{ core:'#05070d', edge:'#6b7280', accent:'#9ca3af' }],
+            bridge: [
+                { core: '#d9f0ff', edge: '#8ec5ff', glow: 'rgba(142,197,255,.28)' },
+                { core: '#efe0ff', edge: '#bc96ff', glow: 'rgba(188,150,255,.28)' }
+            ],
+            outro: [
+                { core: '#ffe0d6', edge: '#ffab92', glow: 'rgba(255,171,146,.26)' },
+                { core: '#f0dcff', edge: '#c093ff', glow: 'rgba(192,147,255,.24)' }
+            ],
+            live: [
+                { core: '#ffe7cc', edge: '#ffbd73', glow: 'rgba(255,189,115,.30)' },
+                { core: '#f2deff', edge: '#c39bff', glow: 'rgba(195,155,255,.28)' }
+            ]
         };
         
         // Spectrum analysis configuration
@@ -258,12 +270,7 @@ class RhythmGame {
         else if (phase === 'paused-user' || phase === 'paused-system') this.setScene('playing');
         else if (phase === 'ready') this.setScene('ready');
         else if (phase === 'idle') this.setScene('input');
-        else if (phase === 'finished') {
-            // Hide setup panel so result screen canvas draws cleanly over the background
-            const uploadContainer = document.getElementById('uploadContainer');
-            if (uploadContainer) uploadContainer.classList.add('hidden');
-            this.updateHUD();
-        }
+        else if (phase === 'finished') this.setScene('ready', { force: true });
         else if (phase === 'failed') this.setScene('ready', { force: true });
         else this.updateHUD();
     }
@@ -338,8 +345,15 @@ class RhythmGame {
     }
 
     loadOfflineAudioBuffer(audioBuffer) {
-        // Local file upload removed — online link mode only
-        console.warn('loadOfflineAudioBuffer: local upload disabled');
+        this.audioBuffer = audioBuffer || null;
+        this.chartMode = false;
+        this.chartData = null;
+        this.nextChartIndex = 0;
+        if (this.chartRuntime?.reset) this.chartRuntime.reset(null);
+        this.liveMode = false;
+        this.liveConfig = null;
+        this.setScene('ready', { error: '' });
+        this.setupLoadedState('offline');
     }
 
     loadOfflineChartRuntime(chart, audioBuffer = null) {
@@ -440,6 +454,32 @@ class RhythmGame {
         const difficultySelect = document.getElementById('difficultySelect');
         const playModeSelect = document.getElementById('playModeSelect');
 
+        // File upload functionality
+        audioUpload.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                try {
+                    // Update the file upload button text to show the selected file name
+                    const fileUploadBtn = document.querySelector('.file-upload-btn');
+                    if (fileUploadBtn) {
+                        fileUploadBtn.textContent = file.name.length > 20 ? 
+                            file.name.substring(0, 17) + '...' : 
+                            file.name;
+                    }
+                    
+                    this.setStatusMessage('loading', 'Loading...');
+                    const arrayBuffer = await file.arrayBuffer();
+                    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                    this.loadOfflineAudioBuffer(audioBuffer);
+                    this.setStatusMessage('success', 'File loaded successfully!');
+                } catch (error) {
+                    console.error('Error loading audio file:', error);
+                    this.clearLoadedState('Failed to load audio file');
+                    this.setStatusMessage('error', 'Failed to load audio file, please try another file');
+                }
+            }
+        });
+
         // Start game button
         startButton.addEventListener('click', async () => {
             console.log('Start button clicked', this.audioBuffer);
@@ -479,14 +519,8 @@ class RhythmGame {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
-                if (this.gameState === 'finished' && this.runResult) { this._resultBackToMenu(); return; }
                 if (this.isRunningPhase()) this.pauseGame('user');
                 else if (this.isPausedPhase()) this.resumeGame();
-                return;
-            }
-            if ((e.key === 'Enter' || e.key === 'Return') && this.gameState === 'finished' && this.runResult) {
-                e.preventDefault();
-                this._resultPlayAgain();
                 return;
             }
             const key = String(e.key || '').toLowerCase();
@@ -497,17 +531,13 @@ class RhythmGame {
         });
 
         // Add game control events
-        this.canvas.addEventListener('mousedown', (e) => {
-            if (this.gameState === 'finished' && this.runResult) { this._handleResultClick(e.clientX, e.clientY); return; }
-            this.handleInput(e.clientX, e.clientY, 'start');
-        });
+        this.canvas.addEventListener('mousedown', (e) => this.handleInput(e.clientX, e.clientY, 'start'));
         this.canvas.addEventListener('mousemove', (e) => this.handleInput(e.clientX, e.clientY, 'move'));
         this.canvas.addEventListener('mouseup', (e) => this.handleInput(e.clientX, e.clientY, 'end'));
         
         this.canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
-            if (this.gameState === 'finished' && this.runResult) { this._handleResultClick(touch.clientX, touch.clientY); return; }
             this.handleInput(touch.clientX, touch.clientY, 'start');
         });
         this.canvas.addEventListener('touchmove', (e) => {
@@ -529,15 +559,12 @@ class RhythmGame {
     async enterRunStartSequence() {
         try {
             await this.prepareRun();
-            // 1. Sync first — start playback buffering and wait until ready
+            await this.runCountdown();
             if (this.liveMode) {
                 this.setRunPhase('awaiting-playback');
-                this.setStatusMessage('loading', 'Syncing playback…');
+                this.setStatusMessage('loading', 'Countdown complete · waiting for playback to begin...');
                 await this.startPlaybackAndWaitUntilPlaying();
             }
-            // 2. Countdown runs after sync completes: 3 2 1 START
-            await this.runCountdown();
-            // 3. Begin run immediately after countdown
             const dataArray = this.beginRun();
             if (!this.liveMode) this.startPlaybackBackend();
             this.armGameLoop(dataArray);
@@ -566,7 +593,6 @@ class RhythmGame {
 
         this.score = 0;
         this.combo = 0;
-        this.maxCombo = 0;
         this.notes = [];
         this.beatCount = 0;
         if (this.runOrchestrator?.arm) this.runOrchestrator.arm();
@@ -605,9 +631,8 @@ class RhythmGame {
         this.updateHUD();
 
         if (!this.chartMode && !this.liveMode) {
-            // Local file mode removed — skip offline pre-analysis
-            this.vocalSections = [];
-            this.analyzedSections = [];
+            this.setStatusMessage('loading', 'Analyzing beats (preAnalyzeSong)...');
+            await this.preAnalyzeSong();
         } else {
             this.analyzedSections = [];
             this.vocalSections = [];
@@ -714,8 +739,13 @@ class RhythmGame {
 
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
         if (!this.liveMode) {
-            // Local file mode removed — this path should not be reached in online-only mode
-            console.warn('beginRun: non-live, non-chart mode is unsupported');
+            const source = this.audioContext.createBufferSource();
+            source.buffer = this.audioBuffer;
+            source.connect(this.analyser);
+            this.analyser.connect(this.audioContext.destination);
+            this.analyser.fftSize = 2048;
+            dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+            source.start();
         }
         return dataArray;
     }
@@ -794,18 +824,12 @@ class RhythmGame {
     }
 
     async resumeRunSequence() {
+        const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
+        this.pauseAccumulated += pausedFor;
         const overlayText = document.getElementById('pauseOverlayText');
-        const overlaySubtext = document.getElementById('pauseOverlaySubtext');
-        if (overlaySubtext) overlaySubtext.textContent = '';
-        for (const n of [3, 2, 1]) {
-            if (overlayText) overlayText.textContent = String(n);
-            await new Promise(r => setTimeout(r, 700));
-            if (!this.isPausedPhase()) return;
-        }
-        if (overlayText) overlayText.textContent = 'GO!';
-        if (!this.liveMode) {
-            const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
-            this.pauseAccumulated += pausedFor;
+        for (const n of [3,2,1]) {
+            if (overlayText) overlayText.textContent = 'Resuming in ' + n;
+            await new Promise(r => setTimeout(r, 600));
         }
         this.setRunPhase('playing');
         this.pauseReason = 'none';
@@ -818,8 +842,106 @@ class RhythmGame {
     
     // Pre-analyze the song, identify vocal parts and plan button generation
     async preAnalyzeSong() {
-        this.vocalSections = [];
-        this.analyzedSections = [];
+        if (!this.audioBuffer || !this.audioBuffer.duration) {
+            this.vocalSections = [];
+            this.analyzedSections = [];
+            return;
+        }
+        return new Promise(resolve => {
+            // Show analyzing prompt
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.font = '36px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('Analyzing song...', this.canvas.width / 2, this.canvas.height / 2 - 40);
+            
+            // Create offline audio context for analysis
+            const offlineCtx = new OfflineAudioContext({
+                numberOfChannels: 2,
+                length: 44100 * this.audioBuffer.duration,
+                sampleRate: 44100,
+            });
+            
+            // Create audio source
+            const source = offlineCtx.createBufferSource();
+            source.buffer = this.audioBuffer;
+            
+            // Create analyzer
+            const analyser = offlineCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            source.connect(analyser);
+            analyser.connect(offlineCtx.destination);
+            
+            // Define analysis interval (seconds)
+            const interval = 0.1; // Analyze every 0.1 second
+            const duration = this.audioBuffer.duration;
+            const sections = [];
+            
+            // Preparation before starting analysis
+            source.start();
+            
+            // Set callback for analysis at each time point
+            for (let time = 0; time < duration; time += interval) {
+                const analyzeTime = time;
+                offlineCtx.suspend(analyzeTime).then(() => {
+                    // Get frequency data
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // Calculate vocal energy
+                    let vocalEnergy = 0;
+                    const sampleRate = offlineCtx.sampleRate;
+                    const vocalMinBin = Math.floor(this.vocalFreqRange.min * analyser.fftSize / sampleRate);
+                    const vocalMaxBin = Math.floor(this.vocalFreqRange.max * analyser.fftSize / sampleRate);
+                    
+                    // Ensure index is within valid range
+                    const minBin = Math.max(0, Math.min(vocalMinBin, dataArray.length - 1));
+                    const maxBin = Math.max(0, Math.min(vocalMaxBin, dataArray.length - 1));
+                    
+                    // Calculate energy in the vocal frequency range
+                    for (let i = minBin; i <= maxBin; i++) {
+                        vocalEnergy += dataArray[i];
+                    }
+                    vocalEnergy /= (maxBin - minBin + 1);
+                    
+                    // Calculate low frequency energy for beat detection
+                    let beatEnergy = 0;
+                    for (let i = 0; i < 32; i++) {
+                        beatEnergy += dataArray[i];
+                    }
+                    beatEnergy /= 32;
+                    
+                    // Store analysis results
+                    sections.push({
+                        time: analyzeTime,
+                        vocalEnergy: vocalEnergy,
+                        beatEnergy: beatEnergy,
+                        hasVocal: vocalEnergy > 100, // Simple threshold detection
+                        hasBeat: beatEnergy > 100    // Simple threshold detection
+                    });
+                    
+                    // Continue analysis
+                    offlineCtx.resume();
+                });
+            }
+            
+            // Processing after rendering is complete
+            offlineCtx.startRendering().then(() => {
+                // Sort by time
+                sections.sort((a, b) => a.time - b.time);
+                
+                // Save analysis results
+                this.analyzedSections = sections;
+                
+                // Process analysis results, identify vocal sections and beats
+                this.processAnalyzedData();
+                
+                console.log('Song analysis complete, vocal sections:', this.vocalSections.length);
+                resolve();
+            });
+        });
     }
     
     // Process pre-analyzed data
@@ -954,7 +1076,7 @@ class RhythmGame {
 
     syncReadyState() {
         const startButton = document.getElementById('startGame');
-        const hasOffline = false; // local file upload disabled
+        const hasOffline = Boolean(this.audioBuffer && this.readyMode === 'offline');
         const hasLive = Boolean(this.readyMode && (this.liveMode || this.chartMode || this.liveConfig || this.chartData));
         const ready = hasOffline || hasLive;
         const busyStarting = this.gameState === 'starting' || this.gameState === 'awaiting-playback' || Boolean(this.pendingPlaybackStart?.promise);
@@ -1131,22 +1253,14 @@ class RhythmGame {
         this.isPlaying = false;
         this.pauseReason = 'none';
         this.pausePlaybackMedia();
-        if (this.liveMonitorTimer) { clearInterval(this.liveMonitorTimer); this.liveMonitorTimer = null; }
-        const totalNotes = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress().spawnedCount : this.spawnedChartNotes;
-        const { perfect, good, miss } = this.judgementStats;
-        const total = perfect + good + miss;
-        const accuracy = total > 0 ? ((perfect + good * 0.6) / total) * 100 : 0;
-        const rank = accuracy >= 95 ? 'S' : accuracy >= 85 ? 'A' : accuracy >= 70 ? 'B' : accuracy >= 55 ? 'C' : 'F';
-        this.runResult = {
-            score: Math.max(0, Math.floor(this.score || 0)), accuracy, rank,
-            perfect, good, miss,
-            maxCombo: Math.max(this.maxCombo || 0, this.combo || 0),
-            totalNotes: totalNotes || 0, reason, failed: false
-        };
+        if (this.liveMonitorTimer) {
+            clearInterval(this.liveMonitorTimer);
+            this.liveMonitorTimer = null;
+        }
         this.setRunPhase('finished');
         if (this.runOrchestrator?.finish) this.runOrchestrator.finish({ reason });
+        const totalNotes = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress().spawnedCount : this.spawnedChartNotes;
         this.setStatusMessage('success', `Run finished · ${reason}`, `spawned ${totalNotes || 0} notes`);
-        this.startResultScreen();
     }
 
     failRun(error) {
@@ -2282,25 +2396,20 @@ class RhythmGame {
                     this.ctx.fillStyle = '#f3fcff';
                     this.ctx.fillText(marker, note.x, note.y);
                 }
-                // ── Center key letter (replaces chip for key notes) ──────────
-                // Legacy chip label reference: note.keyboardHint || note.keyHint || 'SPACE'
-                if (note.keyHint && !note.hit) {
-                    const kLetter = String(note.keyHint).toUpperCase();
-                    const isActiveKey = note.approachProgress > 0.6;
-                    const breathAlpha = isActiveKey
-                        ? 0.1 + (Math.sin(performance.now() * 0.006) * 0.5 + 0.5) * 0.9
-                        : 0.5;
-                    this.ctx.save();
-                    this.ctx.globalAlpha = breathAlpha;
-                    this.ctx.fillStyle = '#ffe066';
-                    this.ctx.font = '700 22px "Press Start 2P", monospace';
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.shadowBlur = isActiveKey ? 16 : 4;
-                    this.ctx.shadowColor = '#ffe066';
-                    this.ctx.fillText(kLetter, note.x, note.y);
-                    this.ctx.shadowBlur = 0;
-                    this.ctx.restore();
+                if (note.keyboardCheckpoint || note.keyHint) {
+                    const chipW = this.circleSize * 1.15;
+                    const chipH = this.circleSize * 0.42;
+                    const chipY = note.y - this.circleSize * 1.18;
+                    this.ctx.beginPath();
+                    this.ctx.roundRect(note.x - chipW / 2, chipY - chipH / 2, chipW, chipH, 8);
+                    this.ctx.fillStyle = 'rgba(14,18,30,0.84)';
+                    this.ctx.fill();
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeStyle = '#ffffff';
+                    this.ctx.stroke();
+                    this.ctx.font = '900 12px "Arial Black", sans-serif';
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillText(note.keyboardHint || note.keyHint || 'SPACE', note.x, chipY + 0.5);
                 }
             }
 
@@ -2577,9 +2686,8 @@ class RhythmGame {
                     return;
                 }
 
-                // Keyboard-exclusive taps must not be triggered by mouse/touch
-                // Any note with a keyHint is keyboard-only — mouse clicks rejected
-                if (note.inputChannel === 'keyboard' || note.keyHint) return;
+                // Keyboard-exclusive taps must not be triggered by mouse click
+                if (note.inputChannel === 'keyboard') return;
                     
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';
@@ -3227,26 +3335,6 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         }
     }
 
-    // Brute-force separation: push live note away from any overlapping neighbor
-    const _liveActive = this._activeLiveNotes();
-    const _liveR = this.circleSize * 2.4;
-    for (let _iter = 0; _iter < 8; _iter++) {
-        let _moved = false;
-        for (const neighbor of _liveActive) {
-            const _dx = (note.x || 0) - (neighbor.x || 0);
-            const _dy = (note.y || 0) - (neighbor.y || 0);
-            const _dist = Math.hypot(_dx, _dy);
-            if (_dist < _liveR && _dist > 0.1) {
-                const _push = (_liveR - _dist) / 2;
-                const _nx = _dx / _dist, _ny = _dy / _dist;
-                note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, (note.x || 0) + _nx * _push));
-                note.y = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, (note.y || 0) + _ny * _push));
-                _moved = true;
-            }
-        }
-        if (!_moved) break;
-    }
-
     this.liveEngine.lastSpawnX = note.x;
     this.liveEngine.lastSpawnY = note.y;
     this.liveEngine.phrase.left -= 1;
@@ -3278,13 +3366,8 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         });
     let basePos = null;
     let chosenLane = laneIndex;
-    // Only check notes that could be visible at the same time
-    const visibleWindow = (this.spawnLeadTimeMs / 1000) * 1.2; // slightly wider than approach window
-    const active = (this.notes || []).filter(n =>
-        !n.hit && !n.completed &&
-        Math.abs((n.hitTime || 0) - (chartNote.time || 0)) < visibleWindow
-    );
-    const minNoteSpacing = this.circleSize * 2.8;
+    const active = (this.notes || []).filter(n => !n.hit && !n.completed);
+    const minNoteSpacing = this.circleSize * 3.2;
     const hudExclusionY = 90;
     for (const shift of candidateShifts) {
         const candidateLane = Math.max(0, Math.min(laneCount - 1, laneIndex + shift));
@@ -3425,25 +3508,6 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         const curve = Math.min(this.circleSize * 1.6, L * 0.24);
         note.controlX = midX - dy / L * curve;
         note.controlY = midY + dx / L * curve;
-    }
-
-    // Brute-force separation: push note away from any overlapping time-neighbor
-    const _sepR = this.circleSize * 2.8; // Must exceed note visual radius to prevent overlap
-    for (let _iter = 0; _iter < 12; _iter++) {
-        let _moved = false;
-        for (const neighbor of active) {
-            const _dx = (note.x || 0) - (neighbor.x || 0);
-            const _dy = (note.y || 0) - (neighbor.y || 0);
-            const _dist = Math.hypot(_dx, _dy);
-            if (_dist < _sepR && _dist > 0.1) {
-                const _push = (_sepR - _dist) * 0.6; // push more aggressively
-                const _nx = _dx / _dist, _ny = _dy / _dist;
-                note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, (note.x || 0) + _nx * _push));
-                note.y = Math.max(this.safeArea.y + this.circleSize + 90, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, (note.y || 0) + _ny * _push));
-                _moved = true;
-            }
-        }
-        if (!_moved) break;
     }
 
     return note;
@@ -3802,110 +3866,8 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
 };
 
 RhythmGame.prototype.recordJudgement = function (score) {
-    if (!score || !['perfect', 'good', 'miss'].includes(score)) return;
+    if (!score || !this.judgementStats[score] && score !== 'miss') return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
-    if (score !== 'miss') this.maxCombo = Math.max(this.maxCombo || 0, this.combo || 0);
-    this.updateHUD();
-};
-
-RhythmGame.prototype.startResultScreen = function () {
-    this.resultAnimStart = performance.now();
-    this.resultButtons = [];
-    this._resultLoop();
-};
-
-RhythmGame.prototype._resultLoop = function () {
-    if (this.gameState !== 'finished' || !this.runResult) return;
-    this._drawResultScreen();
-    requestAnimationFrame(() => this._resultLoop());
-};
-
-RhythmGame.prototype._drawResultScreen = function () {
-    const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height;
-    const now = performance.now(), elapsed = now - (this.resultAnimStart || now);
-    const PHASE_BG=0,PHASE_PANEL=300,PHASE_RANK=700,PHASE_STATS=1000,PHASE_BTN=1500;
-    const easeOut = t => 1 - Math.pow(1-Math.min(1,t),3);
-    ctx.fillStyle=`rgba(4,8,16,${(easeOut(Math.min(1,(elapsed-PHASE_BG)/400))*.78).toFixed(3)})`;
-    ctx.fillRect(0,0,W,H);
-    if(elapsed<PHASE_PANEL) return;
-    const pW=Math.min(700,W*.9),pH=Math.min(500,H*.84),pX=(W-pW)/2,pY=(H-pH)/2;
-    const pT=easeOut(Math.min(1,(elapsed-PHASE_PANEL)/350)),pOY=(1-pT)*40;
-    ctx.save();ctx.globalAlpha=pT;ctx.translate(0,pOY);
-    ctx.fillStyle='rgba(5,7,13,0.94)';ctx.strokeStyle='rgba(40,240,255,0.26)';ctx.lineWidth=2;
-    ctx.beginPath();if(ctx.roundRect)ctx.roundRect(pX,pY,pW,pH,18);else ctx.rect(pX,pY,pW,pH);
-    ctx.fill();ctx.stroke();
-    ctx.strokeStyle='rgba(40,240,255,0.35)';ctx.beginPath();ctx.moveTo(pX+30,pY+60);ctx.lineTo(pX+pW-30,pY+60);ctx.stroke();
-    ctx.fillStyle='rgba(255,224,102,0.94)';ctx.font='700 13px Rajdhani';ctx.textAlign='center';
-    ctx.fillText('RUN COMPLETE',W/2,pY+34);ctx.restore();
-    if(elapsed<PHASE_RANK) return;
-    const rT=easeOut(Math.min(1,(elapsed-PHASE_RANK)/380)),rP=1+Math.sin(now/800)*.03;
-    const rC={S:'#ffe066',A:'#28f0ff',B:'#8b5cf6',C:'#6fdba8',F:'#ff3ca6'};
-    const rank=this.runResult.rank;
-    ctx.save();ctx.globalAlpha=rT;ctx.translate(0,pOY*(1-rT));
-    ctx.shadowBlur=48*rT;ctx.shadowColor=rC[rank]||'#fff';ctx.fillStyle=rC[rank]||'#fff';
-    ctx.font=`900 ${Math.round(90*rP)}px Archivo`;ctx.textAlign='center';
-    ctx.fillText(rank,W/2-pW*.24,pY+180);ctx.shadowBlur=0;
-    const sD=Math.round(this.runResult.score*Math.min(1,(elapsed-PHASE_RANK)/600));
-    ctx.fillStyle='#e0f4ff';ctx.font='700 34px "Press Start 2P",monospace';ctx.textAlign='right';
-    ctx.fillText(String(sD).padStart(6,'0'),pX+pW-36,pY+134);
-    const aD=(this.runResult.accuracy*Math.min(1,(elapsed-PHASE_RANK)/500)).toFixed(1);
-    ctx.fillStyle='rgba(224,244,255,0.72)';ctx.font='600 20px Rajdhani';
-    ctx.fillText(`ACCURACY  ${aD}%`,pX+pW-36,pY+168);ctx.restore();
-    if(elapsed<PHASE_STATS) return;
-    const sT2=easeOut(Math.min(1,(elapsed-PHASE_STATS)/350)),cy=pY+240;
-    ctx.save();ctx.globalAlpha=sT2;
-    const stats=[{l:'PERFECT',v:this.runResult.perfect,c:'#28f0ff'},{l:'GOOD',v:this.runResult.good,c:'#ffe066'},{l:'MISS',v:this.runResult.miss,c:'#ff3ca6'},{l:'MAX COMBO',v:`${this.runResult.maxCombo}x`,c:'#8b5cf6'}];
-    const cW=pW/stats.length;
-    stats.forEach((s,i)=>{
-        const cx=pX+cW*i+cW/2;
-        ctx.fillStyle=s.c;ctx.font='700 22px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillText(String(s.v),cx,cy);
-        ctx.fillStyle='rgba(224,244,255,0.55)';ctx.font='600 12px Rajdhani';ctx.fillText(s.l,cx,cy+24);
-    });
-    if(this.runInvalid){ctx.fillStyle='rgba(255,60,166,0.88)';ctx.font='700 13px Rajdhani';ctx.textAlign='center';ctx.fillText('INVALID RUN — pause/seek detected',W/2,cy+64);}
-    ctx.restore();
-    if(elapsed<PHASE_BTN) return;
-    const bT=easeOut(Math.min(1,(elapsed-PHASE_BTN)/300)),bY=pY+pH-76,bW=pW*.36,bH=50,gap=pW*.06;
-    const bLX=pX+pW/2-bW-gap/2,bRX=pX+pW/2+gap/2;
-    this.resultButtons=[{label:'PLAY AGAIN',x:bLX,y:bY,w:bW,h:bH,action:'again'},{label:'BACK TO MENU',x:bRX,y:bY,w:bW,h:bH,action:'menu'}];
-    ctx.save();ctx.globalAlpha=bT;
-    this.resultButtons.forEach((btn,i)=>{
-        ctx.beginPath();if(ctx.roundRect)ctx.roundRect(btn.x,btn.y,btn.w,btn.h,10);else ctx.rect(btn.x,btn.y,btn.w,btn.h);
-        ctx.fillStyle=i===0?'rgba(40,240,255,0.12)':'rgba(255,255,255,0.05)';ctx.fill();
-        ctx.strokeStyle=i===0?'rgba(40,240,255,0.55)':'rgba(255,255,255,0.18)';ctx.lineWidth=1.5;ctx.stroke();
-        ctx.fillStyle=i===0?'#28f0ff':'rgba(224,244,255,0.76)';ctx.font='700 11px "Press Start 2P",monospace';
-        ctx.textAlign='center';ctx.fillText(btn.label,btn.x+btn.w/2,btn.y+btn.h/2+4);
-    });
-    ctx.fillStyle='rgba(224,244,255,0.30)';ctx.font='500 12px Rajdhani';ctx.textAlign='center';
-    ctx.fillText('ENTER · play again      ESC · menu',W/2,bY+bH+22);ctx.restore();
-};
-
-RhythmGame.prototype._handleResultClick = function(x,y) {
-    for(const btn of (this.resultButtons||[])){
-        if(x>=btn.x&&x<=btn.x+btn.w&&y>=btn.y&&y<=btn.y+btn.h){
-            if(btn.action==='again') this._resultPlayAgain();
-            else if(btn.action==='menu') this._resultBackToMenu();
-            return;
-        }
-    }
-};
-
-RhythmGame.prototype._resultPlayAgain = function() {
-    if(this.gameState!=='finished') return;
-    this.runResult=null;this.resultButtons=[];
-    if(this.chartData||this.liveConfig||this.audioBuffer){
-        this.setScene('countdown',{error:''});
-        this.startGame().catch(err=>{this.setStatusMessage('error','Restart failed: '+(err?.message||err));this.setScene('ready',{force:true});});
-    } else this._resultBackToMenu();
-};
-
-RhythmGame.prototype._resultBackToMenu = function() {
-    this.runResult = null;
-    this.resultButtons = [];
-    // Clear the game canvas so result screen doesn't bleed through
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.setRunPhase('ready');
-    this.setScene('ready', { force: true });
-    this.syncReadyState();
     this.updateHUD();
 };
 
