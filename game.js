@@ -2146,7 +2146,6 @@ class RhythmGame {
                     const shell = approachSize * 1.02;
                     const rotateT = Math.max(0, Math.min(1, note.approachProgress || 0));
                     const shellRotation = (-Math.PI / 2) + (Math.PI / 2) * rotateT;
-                    const sweepBoost = 0.76 + rotateT * 0.38;
                     this.ctx.save();
                     this.ctx.translate(note.x, note.y);
                     this.ctx.rotate(shellRotation);
@@ -2165,8 +2164,34 @@ class RhythmGame {
                         this.ctx.lineTo(vec.x * shell * 0.35 + px * shell * 0.18, vec.y * shell * 0.35 + py * shell * 0.18);
                         this.ctx.stroke();
                     } else {
-                        this.ctx.strokeRect(-shell * 0.72, -shell * 0.72, shell * 1.44, shell * 1.44);
-
+                        // 8bit L-bracket corners
+                        const size = shell * 1.44;
+                        const hf = size / 2;
+                        const arm = Math.max(7, size * 0.26);
+                        const th = Math.max(3, Math.round(size / 20));
+                        const alpha = 0.32 + rotateT * 0.44;
+                        this.ctx.strokeStyle = 'none';
+                        this.ctx.shadowBlur = 0;
+                        this.ctx.fillStyle = `rgba(89,239,255,${alpha.toFixed(3)})`;
+                        // top-left
+                        this.ctx.fillRect(-hf, -hf, arm, th);
+                        this.ctx.fillRect(-hf, -hf, th, arm);
+                        // top-right
+                        this.ctx.fillRect(hf - arm, -hf, arm, th);
+                        this.ctx.fillRect(hf - th, -hf, th, arm);
+                        // bottom-left
+                        this.ctx.fillRect(-hf, hf - th, arm, th);
+                        this.ctx.fillRect(-hf, hf - arm, th, arm);
+                        // bottom-right
+                        this.ctx.fillRect(hf - arm, hf - th, arm, th);
+                        this.ctx.fillRect(hf - th, hf - arm, th, arm);
+                        // corner dots
+                        const dot = th + 2;
+                        this.ctx.fillStyle = `rgba(89,239,255,${Math.min(1, alpha + 0.3).toFixed(3)})`;
+                        this.ctx.fillRect(-hf, -hf, dot, dot);
+                        this.ctx.fillRect(hf - dot, -hf, dot, dot);
+                        this.ctx.fillRect(-hf, hf - dot, dot, dot);
+                        this.ctx.fillRect(hf - dot, hf - dot, dot, dot);
                     }
                     this.ctx.restore();
                 }
@@ -2190,24 +2215,48 @@ class RhythmGame {
             }
 
             if (note.noteType === 'hold') {
-                const holdHeight = this.circleSize * (2.4 + (1 - note.approachProgress) * 0.55);
-                const holdWidth = this.circleSize * 0.52;
-                const pulse = 1 + Math.sin(performance.now() / 140) * 0.05;
+                const hH = Math.round(this.circleSize * (2.2 + (1 - note.approachProgress) * 0.6));
+                const hW = Math.round(this.circleSize * 0.46);
+                const hx = Math.round(note.x - hW / 2);
+                const hy = Math.round(note.y - hH / 2);
+                const bw = Math.max(2, Math.round(hW / 6));
                 this.ctx.save();
-                this.ctx.strokeStyle = note.held ? palette.edge : palette.glow.replace('.42', '.28').replace('.38', '.28').replace('.36', '.28').replace('.34', '.28');
-                this.ctx.lineWidth = 4.5;
-                this.ctx.shadowBlur = 18;
-                this.ctx.shadowColor = palette.edge;
-                this.ctx.strokeRect(note.x - holdWidth / 2, note.y - holdHeight / 2, holdWidth, holdHeight * pulse);
-                this.ctx.restore();
+                this.ctx.imageSmoothingEnabled = false;
+                this.ctx.fillStyle = 'rgba(4,12,20,.94)';
+                this.ctx.fillRect(hx, hy, hW, hH);
                 if (note.held) {
-                    const fillH = holdHeight * Math.max(0.04, Math.min(1, note.holdProgress || 0));
-                    this.ctx.fillStyle = palette.glow.replace('.42', '.22').replace('.38', '.22').replace('.36', '.22').replace('.34', '.22');
-                    this.ctx.fillRect(note.x - holdWidth * 0.34, note.y + holdHeight / 2 - fillH, holdWidth * 0.68, fillH);
+                    const fillH = Math.round(hH * Math.max(0.03, Math.min(1, note.holdProgress || 0)));
+                    this.ctx.fillStyle = palette.edge;
+                    this.ctx.globalAlpha = 0.35;
+                    this.ctx.fillRect(hx + bw, hy + hH - fillH, hW - bw * 2, fillH);
+                    this.ctx.globalAlpha = 1;
                 }
-                this.ctx.strokeStyle = 'rgba(255,255,255,.16)';
-                this.ctx.lineWidth = 1.5;
-                this.ctx.strokeRect(note.x - this.circleSize * 0.9, note.y - holdHeight / 2 - this.circleSize * 0.18, this.circleSize * 1.8, holdHeight + this.circleSize * 0.36);
+                // tick marks
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.globalAlpha = 0.20;
+                for (let t = 1; t < 4; t++) {
+                    const ty = Math.round(hy + hH * t / 4);
+                    this.ctx.fillRect(hx + bw + 2, ty, hW - bw * 2 - 4, 2);
+                }
+                this.ctx.globalAlpha = 1;
+                // border
+                const bAlpha = note.held ? 0.90 : 0.55;
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.globalAlpha = bAlpha;
+                this.ctx.fillRect(hx, hy, hW, bw);
+                this.ctx.fillRect(hx, hy + hH - bw, hW, bw);
+                this.ctx.fillRect(hx, hy, bw, hH);
+                this.ctx.fillRect(hx + hW - bw, hy, bw, hH);
+                this.ctx.globalAlpha = 1;
+                // corner dots
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.globalAlpha = 0.45;
+                this.ctx.fillRect(hx, hy, bw * 2, bw * 2);
+                this.ctx.fillRect(hx + hW - bw * 2, hy, bw * 2, bw * 2);
+                this.ctx.fillRect(hx, hy + hH - bw * 2, bw * 2, bw * 2);
+                this.ctx.fillRect(hx + hW - bw * 2, hy + hH - bw * 2, bw * 2, bw * 2);
+                this.ctx.globalAlpha = 1;
+                this.ctx.restore();
             }
 
             if (note.isSpin) {
@@ -2226,34 +2275,37 @@ class RhythmGame {
 
             if (note.noteType === 'flick' || note.noteType === 'cut') {
                 const vec = note.flickVector || { x: 1, y: 0 };
-                const px = -vec.y;
-                const py = vec.x;
-                const len = this.circleSize * (note.noteType === 'cut' ? 2.0 : 1.55);
-                const startX = note.x - vec.x * len * 0.85;
-                const startY = note.y - vec.y * len * 0.85;
-                const midX = note.x + vec.x * len * 0.25;
-                const midY = note.y + vec.y * len * 0.25;
-                const tipX = note.x + vec.x * len * 0.8;
-                const tipY = note.y + vec.y * len * 0.8;
+                const u = Math.max(3, Math.round(this.circleSize * 0.17));
+                const shaftLen = Math.round(this.circleSize * (note.noteType === 'cut' ? 1.8 : 1.4));
                 this.ctx.save();
-                this.ctx.strokeStyle = palette.glow.replace('.4', '.2');
-                this.ctx.lineWidth = 8;
-                this.ctx.lineCap = 'square';
-                this.ctx.beginPath();
-                this.ctx.moveTo(startX, startY);
-                this.ctx.lineTo(midX, midY);
-                this.ctx.stroke();
-                this.ctx.strokeStyle = palette.edge;
-                this.ctx.lineWidth = note.noteType === 'cut' ? 6 : 4.5;
-                this.ctx.beginPath();
-                this.ctx.moveTo(startX, startY);
-                this.ctx.lineTo(midX, midY);
-                this.ctx.stroke();
-                this.ctx.beginPath();
-                this.ctx.moveTo(midX - px * len * 0.18, midY - py * len * 0.18);
-                this.ctx.lineTo(tipX, tipY);
-                this.ctx.lineTo(midX + px * len * 0.18, midY + py * len * 0.18);
-                this.ctx.stroke();
+                this.ctx.imageSmoothingEnabled = false;
+                this.ctx.translate(note.x, note.y);
+                this.ctx.rotate(Math.atan2(vec.y, vec.x));
+                // shaft (filled pixel rects)
+                const sx = -Math.round(shaftLen * 0.75);
+                const sy = -Math.round(u * 0.75);
+                const sw = Math.round(shaftLen * 0.68);
+                const sh = Math.round(u * 1.5);
+                this.ctx.fillStyle = 'rgba(4,12,20,.88)';
+                this.ctx.fillRect(sx, sy, sw, sh);
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.globalAlpha = 0.8;
+                this.ctx.fillRect(sx, sy, sw, 2);
+                this.ctx.fillRect(sx, sy + sh - 2, sw, 2);
+                this.ctx.fillRect(sx, sy, 2, sh);
+                // staircase arrowhead
+                const steps = 4;
+                this.ctx.globalAlpha = 0.88;
+                for (let i = 0; i < steps; i++) {
+                    const bx = Math.round(shaftLen * (0.0 + (i / steps) * 0.55));
+                    const bw2 = Math.max(2, Math.round(u * 0.55 * (steps - i)));
+                    this.ctx.fillRect(bx, -bw2, u + 1, bw2 * 2);
+                }
+                // bright tip
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.globalAlpha = 0.7;
+                this.ctx.fillRect(Math.round(shaftLen * 0.54), -Math.round(u * 0.6), Math.round(u * 0.6), Math.round(u * 1.2));
+                this.ctx.globalAlpha = 1;
                 this.ctx.restore();
             }
 
@@ -2395,44 +2447,52 @@ class RhythmGame {
                 this.ctx.stroke();
             }
             
-            // Draw simple 8-bit note body
-            const bodySize = this.circleSize * 0.94 * popScale * tighten * bodyPulse;
-            const bodyX = note.x - bodySize * 0.68;
-            const bodyY = note.y - bodySize * 0.68;
-            const bodyW = bodySize * 1.36;
-            const bodyH = bodySize * 1.36;
+            // ── 8bit pixel tap ─────────────────────────────────────────────
+            const bodySize = Math.round(this.circleSize * 0.94 * popScale * tighten * bodyPulse);
+            const bodyX = Math.round(note.x - bodySize * 0.68);
+            const bodyY = Math.round(note.y - bodySize * 0.68);
+            const bodyW = Math.round(bodySize * 1.36);
+            const bodyH = Math.round(bodySize * 1.36);
+            const pw = Math.max(3, Math.round(bodyW / 10));
             this.ctx.save();
             this.ctx.imageSmoothingEnabled = false;
-            this.ctx.shadowBlur = 18 + spawnFlash * 16 + dangerPulse * 14;
-            this.ctx.shadowColor = palette.edge;
-            this.ctx.fillStyle = 'rgba(6,16,24,.96)';
+            // fill
+            this.ctx.fillStyle = 'rgba(4,12,20,.97)';
             this.ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
-            this.ctx.shadowBlur = 0;
-            this.ctx.lineWidth = 3;
-            this.ctx.strokeStyle = palette.edge;
-            this.ctx.strokeRect(bodyX, bodyY, bodyW, bodyH);
-            this.ctx.fillStyle = palette.glow.replace('.38', '.10').replace('.42', '.10').replace('.4', '.10');
-            this.ctx.fillRect(bodyX + 6, bodyY + 6, bodyW - 12, bodyH - 12);
-            this.ctx.strokeStyle = 'rgba(255,255,255,.14)';
-            this.ctx.lineWidth = 1;
-            this.ctx.strokeRect(bodyX + 3, bodyY + 3, bodyW - 6, bodyH - 6);
+            // border (pixel-wide filled rects)
             this.ctx.fillStyle = palette.edge;
-            const px = 4;
-            this.ctx.fillRect(note.x - px / 2, bodyY + 4, px, px);
-            this.ctx.fillRect(note.x - px / 2, bodyY + bodyH - 8, px, px);
-            this.ctx.fillRect(bodyX + 4, note.y - px / 2, px, px);
-            this.ctx.fillRect(bodyX + bodyW - 8, note.y - px / 2, px, px);
-            if (spawnFlash > 0.02) {
-                this.ctx.globalAlpha = Math.min(0.38, spawnFlash * 0.6);
-                this.ctx.fillStyle = palette.edge;
-                this.ctx.fillRect(bodyX - 4, bodyY - 4, bodyW + 8, bodyH + 8);
-                this.ctx.globalAlpha = 1;
-            }
+            this.ctx.globalAlpha = 0.85 + dangerPulse * 0.15 + spawnFlash * 0.15;
+            this.ctx.fillRect(bodyX, bodyY, bodyW, pw);
+            this.ctx.fillRect(bodyX, bodyY + bodyH - pw, bodyW, pw);
+            this.ctx.fillRect(bodyX, bodyY, pw, bodyH);
+            this.ctx.fillRect(bodyX + bodyW - pw, bodyY, pw, bodyH);
+            this.ctx.globalAlpha = 1;
+            // inner glow fill
+            this.ctx.fillStyle = palette.glow.replace('.38', '.07').replace('.42', '.07').replace('.4', '.07');
+            this.ctx.fillRect(bodyX + pw * 2, bodyY + pw * 2, bodyW - pw * 4, bodyH - pw * 4);
+            // crosshair
+            this.ctx.fillStyle = palette.edge;
+            this.ctx.globalAlpha = 0.30;
+            this.ctx.fillRect(bodyX + pw * 2, note.y - 1, bodyW - pw * 4, 2);
+            this.ctx.fillRect(note.x - 1, bodyY + pw * 2, 2, bodyH - pw * 4);
+            this.ctx.globalAlpha = 1;
+            // inner corner dots
+            const ca = pw + 2;
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.globalAlpha = 0.45;
+            this.ctx.fillRect(bodyX + ca, bodyY + ca, pw, pw);
+            this.ctx.fillRect(bodyX + bodyW - ca - pw, bodyY + ca, pw, pw);
+            this.ctx.fillRect(bodyX + ca, bodyY + bodyH - ca - pw, pw, pw);
+            this.ctx.fillRect(bodyX + bodyW - ca - pw, bodyY + bodyH - ca - pw, pw, pw);
+            this.ctx.globalAlpha = 1;
+            // danger outer flash border
             if (dangerPulse > 0.02) {
-                this.ctx.globalAlpha = Math.min(0.44, dangerPulse * 0.55);
-                this.ctx.strokeStyle = '#ffffff';
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeRect(bodyX - 5, bodyY - 5, bodyW + 10, bodyH + 10);
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.globalAlpha = dangerPulse * 0.45;
+                this.ctx.fillRect(bodyX - pw, bodyY - pw, bodyW + pw * 2, pw);
+                this.ctx.fillRect(bodyX - pw, bodyY + bodyH, bodyW + pw * 2, pw);
+                this.ctx.fillRect(bodyX - pw, bodyY - pw, pw, bodyH + pw * 2);
+                this.ctx.fillRect(bodyX + bodyW, bodyY - pw, pw, bodyH + pw * 2);
                 this.ctx.globalAlpha = 1;
             }
             this.ctx.restore();
