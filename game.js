@@ -2704,8 +2704,9 @@ class RhythmGame {
                     return;
                 }
 
-                // Keyboard-exclusive taps must not be triggered by mouse click
-                if (note.inputChannel === 'keyboard') return;
+                // Keyboard-exclusive taps must not be triggered by mouse/touch
+                // Any note with a keyHint is keyboard-only — mouse clicks rejected
+                if (note.inputChannel === 'keyboard' || note.keyHint) return;
                     
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';
