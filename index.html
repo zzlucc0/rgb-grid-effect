@@ -587,16 +587,42 @@
         .loading-message { color: var(--amber); text-shadow: 0 0 10px rgba(255,201,77,.14); }
         .note-message { color: rgba(217,236,255,.62); }
 
-        #readySummary {
-            display: none;
-            padding: 10px 14px;
-            border: 1px solid rgba(90,246,255,.1);
-            background: rgba(9,12,22,.7);
-            font: 700 12px 'Rajdhani', sans-serif;
-            color: var(--muted);
-            letter-spacing: .08em;
-            text-transform: uppercase;
+        #readyPanel {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
         }
+        .ready-badge {
+            position: relative;
+            padding: 10px 10px 9px;
+            background: linear-gradient(180deg, rgba(9,12,22,.82), rgba(7,10,18,.92));
+            border: 1px solid rgba(90,246,255,.1);
+            min-height: 54px;
+            overflow: hidden;
+        }
+        .ready-badge::before {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; top: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.68), rgba(255,79,174,.48), transparent);
+            opacity: .7;
+        }
+        .ready-badge small {
+            display: block;
+            margin-bottom: 6px;
+            font: 700 7px 'Press Start 2P', monospace;
+            letter-spacing: .14em;
+            color: rgba(217,236,255,.5);
+        }
+        .ready-badge strong {
+            display: block;
+            font: 700 11px 'Press Start 2P', monospace;
+            color: var(--text);
+        }
+        #readyBadge { color: var(--amber); }
+        #notesBadge { color: var(--cyan); }
+        #densityBadge { color: #f5d6ff; }
 
         #pauseOverlay {
             position: fixed; inset: 0; z-index: 4;
@@ -667,6 +693,7 @@
             .action-row { grid-template-columns: 1fr; }
             #score { min-width: 0; width: calc(100vw - 24px); left: 12px; right: 12px; top: 12px; max-width: none; }
             .hud-rack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            #readyPanel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .score-main { font-size: 18px; }
             .score-aux { min-width: 76px; }
         }
@@ -815,6 +842,13 @@
 
             <div class="setup-statuscard">
                 <div id="statusText"></div>
+            </div>
+
+            <div id="readyPanel">
+                <div class="ready-badge"><small>MODE</small><strong id="modeBadge">-</strong></div>
+                <div class="ready-badge"><small>READY</small><strong id="readyBadge">no</strong></div>
+                <div class="ready-badge"><small>NOTES</small><strong id="notesBadge">-</strong></div>
+                <div class="ready-badge"><small>DENSITY</small><strong id="densityBadge">-</strong></div>
             </div>
         </div>
     </div>

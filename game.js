@@ -302,18 +302,18 @@ class RhythmGame {
             const paused = this.isPausedPhase();
             pauseOverlay.classList.toggle('hidden', !(paused || syncing));
             if (syncing) {
-                if (overlayText) overlayText.textContent = 'Syncing playback…';
+                if (overlayText) overlayText.textContent = 'PLAYER LINKING';
                 if (overlaySubtext) {
                     const playbackState = String(this.livePlaybackState || 'loading');
                     const hint = playbackState === 'buffering' || playbackState === 'waiting'
-                        ? 'Player is buffering. Run will begin the moment playback is live.'
+                        ? 'Signal buffering. Cabinet will arm the instant playback goes hot.'
                         : playbackState === 'ready' || playbackState === 'cued' || playbackState === 'loading'
-                            ? 'Preparing hidden player. Run will begin on the first real playback frame.'
-                            : 'Waiting for playback to begin…';
+                            ? 'Preparing hidden player. Run starts on the first real playback frame.'
+                            : 'Waiting for playback lock...';
                     overlaySubtext.textContent = hint;
                 }
             } else if (!paused) {
-                if (overlayText) overlayText.textContent = 'Paused';
+                if (overlayText) overlayText.textContent = 'PAUSED';
                 if (overlaySubtext) overlaySubtext.textContent = 'Resume will trigger a short countdown.';
             }
         }
@@ -323,7 +323,8 @@ class RhythmGame {
         const statusText = document.getElementById('statusText');
         if (!statusText) return;
         const cls = type === 'error' ? 'error-message' : (type === 'success' ? 'success-message' : (type === 'info' ? 'info-message' : 'loading-message'));
-        statusText.innerHTML = `<div class="${cls}">${text}</div>` + (metaHtml ? `<div class="note-message" style="margin-top:6px;font-size:12px;opacity:0.9;">${metaHtml}</div>` : '');
+        const kicker = type === 'error' ? 'ALERT' : (type === 'success' ? 'SYSTEM OK' : (type === 'info' ? 'INFO' : 'PROCESSING'));
+        statusText.innerHTML = `<div class="${cls}"><span style="display:inline-block;margin-right:8px;padding:2px 6px;border:1px solid rgba(255,255,255,.12);font:700 7px 'Press Start 2P', monospace;letter-spacing:.12em;vertical-align:middle;">${kicker}</span>${text}</div>` + (metaHtml ? `<div class="note-message" style="margin-top:8px;font-size:12px;opacity:0.9;">${metaHtml}</div>` : '');
     }
 
     setReadySummary(mode, ready, notes, densityLabel) {
@@ -333,10 +334,11 @@ class RhythmGame {
         const readyBadge = document.getElementById('readyBadge');
         const notesBadge = document.getElementById('notesBadge');
         const densityBadge = document.getElementById('densityBadge');
-        if (modeBadge) modeBadge.textContent = mode || '-';
-        if (readyBadge) readyBadge.textContent = ready ? 'yes' : 'no';
+        if (modeBadge) modeBadge.textContent = String(mode || '-').toUpperCase();
+        if (readyBadge) readyBadge.textContent = ready ? 'LOCKED' : 'NO';
         if (notesBadge) notesBadge.textContent = String(notes == null ? '-' : notes);
-        if (densityBadge) densityBadge.textContent = densityLabel || '-';
+        if (densityBadge) densityBadge.textContent = String(densityLabel || '-').toUpperCase();
+        panel.classList.toggle('hidden', !mode && notes == null && !densityLabel && !ready);
     }
 
     setupLoadedState(mode) {
@@ -3280,15 +3282,15 @@ RhythmGame.prototype.updatePauseUI = function () {
         overlayResumeBtn.style.display = paused ? 'inline-block' : 'none';
     }
     if (overlay) overlay.classList.toggle('hidden', !paused);
-    if (overlayText && paused) overlayText.textContent = this.pauseReason === 'system' ? 'Playback paused automatically' : 'Game paused';
+    if (overlayText && paused) overlayText.textContent = this.pauseReason === 'system' ? 'AUTO PAUSE' : 'PAUSED';
     this.updateHUD();
     if (overlaySubtext) {
         if (!paused) overlaySubtext.textContent = 'Resume will trigger a short countdown.';
-        else if (this.pauseReason === 'invalid-strict') overlaySubtext.textContent = 'Strict mode detected a forbidden pause/seek. This run is now invalid.';
-        else if (this.pauseReason === 'system-yt-paused') overlaySubtext.textContent = 'Hidden YouTube playback paused unexpectedly. Tap resume to continue after countdown.';
-        else if (this.pauseReason === 'system-stalled') overlaySubtext.textContent = 'Playback stalled for too long. Tap resume to continue after countdown.';
-        else if (this.pauseReason === 'system') overlaySubtext.textContent = 'Playback stalled or tab focus changed. Resume will continue after countdown.';
-        else overlaySubtext.textContent = this.playMode === 'strict' ? 'Strict mode pauses will invalidate the run.' : 'Resume will trigger a short countdown.';
+        else if (this.pauseReason === 'invalid-strict') overlaySubtext.textContent = 'Strict mode flagged a forbidden pause/seek. This run is now invalid.';
+        else if (this.pauseReason === 'system-yt-paused') overlaySubtext.textContent = 'Hidden playback paused unexpectedly. Resume to re-arm after countdown.';
+        else if (this.pauseReason === 'system-stalled') overlaySubtext.textContent = 'Playback stalled too long. Resume to re-arm after countdown.';
+        else if (this.pauseReason === 'system') overlaySubtext.textContent = 'Playback stalled or focus changed. Resume continues after countdown.';
+        else overlaySubtext.textContent = this.playMode === 'strict' ? 'Strict mode pauses invalidate the run.' : 'Resume will trigger a short countdown.';
     }
 };
 
