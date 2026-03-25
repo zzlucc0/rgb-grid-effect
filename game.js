@@ -2392,53 +2392,44 @@ class RhythmGame {
                 this.ctx.stroke();
             }
             
-            // Draw cartridge-style note body
-            const bodySize = this.circleSize * 0.92 * popScale * tighten * bodyPulse;
-            const bodyX = note.x - bodySize * 0.74;
-            const bodyY = note.y - bodySize * 0.64;
-            const bodyW = bodySize * 1.48;
-            const bodyH = bodySize * 1.28;
-            const sideTabW = bodyW * 0.24;
-            const sideTabH = bodyH * 0.42;
+            // Draw simple 8-bit note body
+            const bodySize = this.circleSize * 0.94 * popScale * tighten * bodyPulse;
+            const bodyX = note.x - bodySize * 0.68;
+            const bodyY = note.y - bodySize * 0.68;
+            const bodyW = bodySize * 1.36;
+            const bodyH = bodySize * 1.36;
             this.ctx.save();
-            this.ctx.shadowBlur = 24 + spawnFlash * 22 + dangerPulse * 18;
+            this.ctx.imageSmoothingEnabled = false;
+            this.ctx.shadowBlur = 18 + spawnFlash * 16 + dangerPulse * 14;
             this.ctx.shadowColor = palette.edge;
-            this.ctx.fillStyle = 'rgba(5,16,24,.94)';
+            this.ctx.fillStyle = 'rgba(6,16,24,.96)';
             this.ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
-            this.ctx.fillRect(bodyX - sideTabW * 0.72, note.y - sideTabH / 2, sideTabW, sideTabH);
-            this.ctx.fillRect(bodyX + bodyW - sideTabW * 0.28, note.y - sideTabH / 2, sideTabW, sideTabH);
             this.ctx.shadowBlur = 0;
-            this.ctx.lineWidth = 2.8;
+            this.ctx.lineWidth = 3;
             this.ctx.strokeStyle = palette.edge;
             this.ctx.strokeRect(bodyX, bodyY, bodyW, bodyH);
-            this.ctx.strokeRect(bodyX - sideTabW * 0.72, note.y - sideTabH / 2, sideTabW, sideTabH);
-            this.ctx.strokeRect(bodyX + bodyW - sideTabW * 0.28, note.y - sideTabH / 2, sideTabW, sideTabH);
-            this.ctx.lineWidth = 1.4;
-            this.ctx.strokeStyle = 'rgba(255,255,255,.22)';
-            this.ctx.strokeRect(bodyX - 3, bodyY - 3, bodyW + 6, bodyH + 6);
-            this.ctx.fillStyle = palette.glow.replace('.38', '.12').replace('.42', '.12').replace('.4', '.12');
-            this.ctx.fillRect(bodyX + bodyW * 0.12, bodyY + bodyH * 0.18, bodyW * 0.76, bodyH * 0.64);
-            this.ctx.strokeStyle = palette.edge;
-            this.ctx.lineWidth = 1.5;
-            this.ctx.strokeRect(bodyX + bodyW * 0.18, bodyY + bodyH * 0.24, bodyW * 0.64, bodyH * 0.52);
-            this.ctx.beginPath();
-            this.ctx.moveTo(bodyX + bodyW * 0.5, bodyY + bodyH * 0.18);
-            this.ctx.lineTo(bodyX + bodyW * 0.5, bodyY + bodyH * 0.82);
-            this.ctx.moveTo(bodyX + bodyW * 0.18, bodyY + bodyH * 0.5);
-            this.ctx.lineTo(bodyX + bodyW * 0.82, bodyY + bodyH * 0.5);
-            this.ctx.strokeStyle = palette.glow.replace('.38', '.18').replace('.42', '.18').replace('.4', '.18');
-            this.ctx.stroke();
+            this.ctx.fillStyle = palette.glow.replace('.38', '.10').replace('.42', '.10').replace('.4', '.10');
+            this.ctx.fillRect(bodyX + 6, bodyY + 6, bodyW - 12, bodyH - 12);
+            this.ctx.strokeStyle = 'rgba(255,255,255,.14)';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(bodyX + 3, bodyY + 3, bodyW - 6, bodyH - 6);
+            this.ctx.fillStyle = palette.edge;
+            const px = 4;
+            this.ctx.fillRect(note.x - px / 2, bodyY + 4, px, px);
+            this.ctx.fillRect(note.x - px / 2, bodyY + bodyH - 8, px, px);
+            this.ctx.fillRect(bodyX + 4, note.y - px / 2, px, px);
+            this.ctx.fillRect(bodyX + bodyW - 8, note.y - px / 2, px, px);
             if (spawnFlash > 0.02) {
-                this.ctx.globalAlpha = Math.min(0.48, spawnFlash * 0.7);
+                this.ctx.globalAlpha = Math.min(0.38, spawnFlash * 0.6);
                 this.ctx.fillStyle = palette.edge;
-                this.ctx.fillRect(bodyX - 6, bodyY - 6, bodyW + 12, bodyH + 12);
+                this.ctx.fillRect(bodyX - 4, bodyY - 4, bodyW + 8, bodyH + 8);
                 this.ctx.globalAlpha = 1;
             }
             if (dangerPulse > 0.02) {
-                this.ctx.globalAlpha = Math.min(0.55, dangerPulse * 0.65);
+                this.ctx.globalAlpha = Math.min(0.44, dangerPulse * 0.55);
                 this.ctx.strokeStyle = '#ffffff';
-                this.ctx.lineWidth = 2.2;
-                this.ctx.strokeRect(bodyX - 7, bodyY - 7, bodyW + 14, bodyH + 14);
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(bodyX - 5, bodyY - 5, bodyW + 10, bodyH + 10);
                 this.ctx.globalAlpha = 1;
             }
             this.ctx.restore();
