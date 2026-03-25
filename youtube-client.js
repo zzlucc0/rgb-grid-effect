@@ -12,7 +12,7 @@
   var IDB_NAME = 'cyber-grid-chart-cache';
   var IDB_STORE = 'charts';
   var IDB_VERSION = 1;
-  var IDB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  var IDB_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — client is the primary cache now
 
   function openIDB() {
     return new Promise(function (resolve) {

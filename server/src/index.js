@@ -17,7 +17,7 @@ const CHART_SCHEMA_VERSION = 4;
 const HLS_ENABLED = String(process.env.HLS_ENABLED || "true").toLowerCase() !== "false";
 const YTDLP_COOKIES_PATH = process.env.YTDLP_COOKIES_PATH || "";
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
-const CACHE_TTL_HOURS = Math.max(1, Number(process.env.CACHE_TTL_HOURS || 168));
+const CACHE_TTL_HOURS = Math.max(1, Number(process.env.CACHE_TTL_HOURS || 48));
 const CACHE_CLEANUP_INTERVAL_MIN = Math.max(5, Number(process.env.CACHE_CLEANUP_INTERVAL_MIN || 60));
 const LINK_PLAY_ONLY = String(process.env.LINK_PLAY_ONLY || "true").toLowerCase() !== "false";
 const FULL_ANALYSIS_MAX_SEC = Math.max(30, Number(process.env.FULL_ANALYSIS_MAX_SEC || 240));
@@ -420,6 +420,7 @@ async function processOnlineAnalyzedJob(job) {
   });
   const bpm = Number(analysis.bpm || estimateBpmFromChart(chart));
   fs.writeFileSync(analysisFile, JSON.stringify({ chart, analysis }, null, 2));
+  tryDeleteFile(wavPath); // free disk: WAV no longer needed once chart is cached
 
   job.status = 'done';
   job.step = 'analysis ready';
@@ -434,6 +435,11 @@ async function processOnlineAnalyzedJob(job) {
   saveJob(job);
 }
 
+
+
+function tryDeleteFile(fp) {
+  try { if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) {}
+}
 
 async function analyzeRhythmWithPython(wavPath, cwd = ROOT, jobId = null) {
   const { stdout } = await run("python3", [path.join(ROOT, "scripts", "analyze_rhythm.py"), wavPath], cwd, 180000, jobId);
@@ -1001,6 +1007,7 @@ async function analyzeChartWindow(url, cacheDir, meta, difficulty, chartDensity,
   };
   const result = { chart: shiftedChart, analysis: shiftedAnalysis };
   try { fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2)); } catch {}
+  tryDeleteFile(wavPath); // free disk: window WAV no longer needed
   return result;
 }
 
