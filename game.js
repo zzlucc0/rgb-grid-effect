@@ -2127,9 +2127,11 @@ class RhythmGame {
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / Math.max(0.18, visualApproachSec)));
             const palette = this.getNotePalette(note);
             const spawnPop = Math.min(1, Math.max(0, (performance.now() - ((note.spawnedAtWall || performance.now()) || performance.now())) / 220));
-            const popScale = 0.9 + 0.1 * spawnPop;
+            const spawnFlash = 1 - spawnPop;
+            const popScale = 0.82 + 0.18 * spawnPop;
             const tighten = timeUntilHit <= 0.15 ? 1 + (0.15 - Math.max(0, timeUntilHit)) * 1.1 : 1;
-            const bodyPulse = 1 + Math.sin(performance.now() / 150 + (note.noteNumber || 0)) * 0.018 * Math.max(0, note.approachProgress - 0.25);
+            const bodyPulse = 1 + Math.sin(performance.now() / 150 + (note.noteNumber || 0)) * 0.034 * Math.max(0, note.approachProgress - 0.2);
+            const dangerPulse = timeUntilHit <= 0.22 ? (0.22 - Math.max(0, timeUntilHit)) / 0.22 : 0;
 
             // Draw contracting pixel shell
             if (!note.hit) {
@@ -2139,7 +2141,12 @@ class RhythmGame {
                 );
                 if (approachSize > this.circleSize) {
                     const shell = approachSize * 1.02;
+                    const rotateT = Math.max(0, Math.min(1, note.approachProgress || 0));
+                    const shellRotation = (-Math.PI / 2) + (Math.PI / 2) * rotateT;
+                    const sweepBoost = 0.76 + rotateT * 0.38;
                     this.ctx.save();
+                    this.ctx.translate(note.x, note.y);
+                    this.ctx.rotate(shellRotation);
                     this.ctx.strokeStyle = palette.glow.replace('.45', '.24').replace('.42', '.24').replace('.4', '.24').replace('.38', '.24').replace('.36', '.22').replace('.34', '.2').replace('.26', '.18');
                     this.ctx.lineWidth = note.isDrag ? 3.2 : 2.4;
                     this.ctx.shadowBlur = 18;
@@ -2149,13 +2156,23 @@ class RhythmGame {
                         const px = -vec.y;
                         const py = vec.x;
                         this.ctx.beginPath();
-                        this.ctx.moveTo(note.x - vec.x * shell * 0.55 - px * shell * 0.18, note.y - vec.y * shell * 0.55 - py * shell * 0.18);
-                        this.ctx.lineTo(note.x + vec.x * shell * 0.35 - px * shell * 0.18, note.y + vec.y * shell * 0.35 - py * shell * 0.18);
-                        this.ctx.moveTo(note.x - vec.x * shell * 0.55 + px * shell * 0.18, note.y - vec.y * shell * 0.55 + py * shell * 0.18);
-                        this.ctx.lineTo(note.x + vec.x * shell * 0.35 + px * shell * 0.18, note.y + vec.y * shell * 0.35 + py * shell * 0.18);
+                        this.ctx.moveTo(- vec.x * shell * 0.55 - px * shell * 0.18, - vec.y * shell * 0.55 - py * shell * 0.18);
+                        this.ctx.lineTo(vec.x * shell * 0.35 - px * shell * 0.18, vec.y * shell * 0.35 - py * shell * 0.18);
+                        this.ctx.moveTo(- vec.x * shell * 0.55 + px * shell * 0.18, - vec.y * shell * 0.55 + py * shell * 0.18);
+                        this.ctx.lineTo(vec.x * shell * 0.35 + px * shell * 0.18, vec.y * shell * 0.35 + py * shell * 0.18);
                         this.ctx.stroke();
                     } else {
-                        this.ctx.strokeRect(note.x - shell * 0.72, note.y - shell * 0.72, shell * 1.44, shell * 1.44);
+                        this.ctx.strokeRect(-shell * 0.72, -shell * 0.72, shell * 1.44, shell * 1.44);
+                        this.ctx.strokeStyle = palette.edge;
+                        this.ctx.lineWidth = 1.35;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(-shell * sweepBoost, 0);
+                        this.ctx.lineTo(shell * 0.2, 0);
+                        this.ctx.stroke();
+                        this.ctx.globalAlpha = 0.72;
+                        this.ctx.fillStyle = palette.edge;
+                        this.ctx.fillRect(shell * 0.16, -3, 10, 6);
+                        this.ctx.globalAlpha = 1;
                     }
                     this.ctx.restore();
                 }
@@ -2272,10 +2289,10 @@ class RhythmGame {
                 }
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.82 : 0.55);
+                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.98 : 0.68);
                 this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace'
-                    ? palette.glow.replace('.38', '.18').replace('.36', '.18').replace('.34', '.18')
-                    : palette.glow.replace('.38', '.10').replace('.36', '.10').replace('.34', '.10');
+                    ? palette.glow.replace('.38', '.26').replace('.36', '.26').replace('.34', '.26')
+                    : palette.glow.replace('.38', '.18').replace('.36', '.18').replace('.34', '.18');
                 if (note.extraPath?.points?.length) {
                     this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
                     for (let i = 1; i < note.extraPath.points.length; i++) this.ctx.lineTo(note.extraPath.points[i].x, note.extraPath.points[i].y);
@@ -2286,9 +2303,9 @@ class RhythmGame {
                 this.ctx.stroke();
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.34 : 0.22);
+                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.42 : 0.32);
                 this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '#ffe6b7' : palette.edge;
-                this.ctx.shadowBlur = 16;
+                this.ctx.shadowBlur = 24;
                 this.ctx.shadowColor = palette.edge;
                 if (note.extraPath?.points?.length) {
                     this.ctx.moveTo(note.extraPath.points[0].x, note.extraPath.points[0].y);
@@ -2375,7 +2392,7 @@ class RhythmGame {
             const bodyH = bodySize * 1.4;
             this.ctx.save();
             this.ctx.fillStyle = 'rgba(5,16,24,.92)';
-            this.ctx.shadowBlur = 24;
+            this.ctx.shadowBlur = 24 + spawnFlash * 22 + dangerPulse * 18;
             this.ctx.shadowColor = palette.edge;
             this.ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
             this.ctx.shadowBlur = 0;
@@ -2384,9 +2401,24 @@ class RhythmGame {
             this.ctx.strokeRect(bodyX, bodyY, bodyW, bodyH);
             this.ctx.fillStyle = palette.core;
             this.ctx.fillRect(note.x - bodyW * 0.28, note.y - bodyH * 0.13, bodyW * 0.56, bodyH * 0.26);
+            this.ctx.fillStyle = 'rgba(255,255,255,.18)';
+            this.ctx.fillRect(bodyX + 3, bodyY + 3, bodyW - 6, 4);
             this.ctx.strokeStyle = 'rgba(255,255,255,.18)';
             this.ctx.lineWidth = 1.2;
             this.ctx.strokeRect(bodyX - 2, bodyY - 2, bodyW + 4, bodyH + 4);
+            if (spawnFlash > 0.02) {
+                this.ctx.globalAlpha = Math.min(0.55, spawnFlash * 0.7);
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.fillRect(bodyX - 5, bodyY - 5, bodyW + 10, bodyH + 10);
+                this.ctx.globalAlpha = 1;
+            }
+            if (dangerPulse > 0.02) {
+                this.ctx.globalAlpha = Math.min(0.65, dangerPulse * 0.7);
+                this.ctx.strokeStyle = '#ffffff';
+                this.ctx.lineWidth = 2.4;
+                this.ctx.strokeRect(bodyX - 6, bodyY - 6, bodyW + 12, bodyH + 12);
+                this.ctx.globalAlpha = 1;
+            }
             this.ctx.restore();
 
             // Show sequence number / tutorial prompt in circle and draw lines between adjacent numbers
