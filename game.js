@@ -2392,40 +2392,53 @@ class RhythmGame {
                 this.ctx.stroke();
             }
             
-            // Draw pixel note body
-            const bodySize = this.circleSize * 0.9 * popScale * tighten * bodyPulse;
-            const bodyX = note.x - bodySize * 0.7;
-            const bodyY = note.y - bodySize * 0.7;
-            const bodyW = bodySize * 1.4;
-            const bodyH = bodySize * 1.4;
+            // Draw cartridge-style note body
+            const bodySize = this.circleSize * 0.92 * popScale * tighten * bodyPulse;
+            const bodyX = note.x - bodySize * 0.74;
+            const bodyY = note.y - bodySize * 0.64;
+            const bodyW = bodySize * 1.48;
+            const bodyH = bodySize * 1.28;
+            const sideTabW = bodyW * 0.24;
+            const sideTabH = bodyH * 0.42;
             this.ctx.save();
-            this.ctx.fillStyle = 'rgba(5,16,24,.92)';
             this.ctx.shadowBlur = 24 + spawnFlash * 22 + dangerPulse * 18;
             this.ctx.shadowColor = palette.edge;
+            this.ctx.fillStyle = 'rgba(5,16,24,.94)';
             this.ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+            this.ctx.fillRect(bodyX - sideTabW * 0.72, note.y - sideTabH / 2, sideTabW, sideTabH);
+            this.ctx.fillRect(bodyX + bodyW - sideTabW * 0.28, note.y - sideTabH / 2, sideTabW, sideTabH);
             this.ctx.shadowBlur = 0;
-            this.ctx.lineWidth = 2.6;
+            this.ctx.lineWidth = 2.8;
             this.ctx.strokeStyle = palette.edge;
             this.ctx.strokeRect(bodyX, bodyY, bodyW, bodyH);
-            this.ctx.strokeStyle = palette.edge;
+            this.ctx.strokeRect(bodyX - sideTabW * 0.72, note.y - sideTabH / 2, sideTabW, sideTabH);
+            this.ctx.strokeRect(bodyX + bodyW - sideTabW * 0.28, note.y - sideTabH / 2, sideTabW, sideTabH);
             this.ctx.lineWidth = 1.4;
-            this.ctx.strokeRect(note.x - bodyW * 0.24, note.y - bodyH * 0.24, bodyW * 0.48, bodyH * 0.48);
-            this.ctx.fillStyle = palette.glow.replace('.38', '.14').replace('.42', '.14').replace('.4', '.14');
-            this.ctx.fillRect(note.x - bodyW * 0.18, note.y - bodyH * 0.18, bodyW * 0.36, bodyH * 0.36);
-            this.ctx.strokeStyle = 'rgba(255,255,255,.18)';
-            this.ctx.lineWidth = 1.2;
-            this.ctx.strokeRect(bodyX - 2, bodyY - 2, bodyW + 4, bodyH + 4);
+            this.ctx.strokeStyle = 'rgba(255,255,255,.22)';
+            this.ctx.strokeRect(bodyX - 3, bodyY - 3, bodyW + 6, bodyH + 6);
+            this.ctx.fillStyle = palette.glow.replace('.38', '.12').replace('.42', '.12').replace('.4', '.12');
+            this.ctx.fillRect(bodyX + bodyW * 0.12, bodyY + bodyH * 0.18, bodyW * 0.76, bodyH * 0.64);
+            this.ctx.strokeStyle = palette.edge;
+            this.ctx.lineWidth = 1.5;
+            this.ctx.strokeRect(bodyX + bodyW * 0.18, bodyY + bodyH * 0.24, bodyW * 0.64, bodyH * 0.52);
+            this.ctx.beginPath();
+            this.ctx.moveTo(bodyX + bodyW * 0.5, bodyY + bodyH * 0.18);
+            this.ctx.lineTo(bodyX + bodyW * 0.5, bodyY + bodyH * 0.82);
+            this.ctx.moveTo(bodyX + bodyW * 0.18, bodyY + bodyH * 0.5);
+            this.ctx.lineTo(bodyX + bodyW * 0.82, bodyY + bodyH * 0.5);
+            this.ctx.strokeStyle = palette.glow.replace('.38', '.18').replace('.42', '.18').replace('.4', '.18');
+            this.ctx.stroke();
             if (spawnFlash > 0.02) {
-                this.ctx.globalAlpha = Math.min(0.55, spawnFlash * 0.7);
+                this.ctx.globalAlpha = Math.min(0.48, spawnFlash * 0.7);
                 this.ctx.fillStyle = palette.edge;
-                this.ctx.fillRect(bodyX - 5, bodyY - 5, bodyW + 10, bodyH + 10);
+                this.ctx.fillRect(bodyX - 6, bodyY - 6, bodyW + 12, bodyH + 12);
                 this.ctx.globalAlpha = 1;
             }
             if (dangerPulse > 0.02) {
-                this.ctx.globalAlpha = Math.min(0.65, dangerPulse * 0.7);
+                this.ctx.globalAlpha = Math.min(0.55, dangerPulse * 0.65);
                 this.ctx.strokeStyle = '#ffffff';
-                this.ctx.lineWidth = 2.4;
-                this.ctx.strokeRect(bodyX - 6, bodyY - 6, bodyW + 12, bodyH + 12);
+                this.ctx.lineWidth = 2.2;
+                this.ctx.strokeRect(bodyX - 7, bodyY - 7, bodyW + 14, bodyH + 14);
                 this.ctx.globalAlpha = 1;
             }
             this.ctx.restore();
@@ -2433,22 +2446,6 @@ class RhythmGame {
             // Show sequence number / tutorial prompt in circle and draw lines between adjacent numbers
             if (!note.hit) {
                 // If there is a previous note and they have consecutive numbers, draw a connecting line
-                if (note.noteNumber > 1 && !note.isDrag) {
-                    const prevNote = this.notes.find(n => !n.hit && n.noteNumber === note.noteNumber - 1);
-                    if (prevNote) {
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(prevNote.x, prevNote.y);
-                        this.ctx.lineTo(note.x, note.y);
-                        const sameGroup = prevNote.groupKey && prevNote.groupKey === note.groupKey;
-                        this.ctx.strokeStyle = sameGroup ? 'rgba(255,215,168,0.30)' : 'rgba(84,241,255,0.14)';
-                        this.ctx.lineWidth = sameGroup ? 2.8 : 1.2;
-                        if (sameGroup && note.groupPattern === 'diamond') this.ctx.setLineDash([8, 6]);
-                        else if (sameGroup && note.groupPattern === 'ladder') this.ctx.setLineDash([2, 7]);
-                        else this.ctx.setLineDash([]);
-                        this.ctx.stroke();
-                        this.ctx.setLineDash([]);
-                    }
-                }
 
                 // Display tutorial prompt for first encounters, then compact marker
                 this.ctx.fillStyle = '#f3fcff';
