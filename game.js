@@ -2163,18 +2163,7 @@ class RhythmGame {
                         this.ctx.stroke();
                     } else {
                         this.ctx.strokeRect(-shell * 0.72, -shell * 0.72, shell * 1.44, shell * 1.44);
-                        this.ctx.strokeStyle = palette.edge;
-                        this.ctx.lineWidth = 1.35;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(-shell * 0.54, -shell * 0.54);
-                        this.ctx.lineTo(-shell * 0.22, -shell * 0.54);
-                        this.ctx.moveTo(shell * 0.54, -shell * 0.54);
-                        this.ctx.lineTo(shell * 0.22, -shell * 0.54);
-                        this.ctx.moveTo(-shell * 0.54, shell * 0.54);
-                        this.ctx.lineTo(-shell * 0.22, shell * 0.54);
-                        this.ctx.moveTo(shell * 0.54, shell * 0.54);
-                        this.ctx.lineTo(shell * 0.22, shell * 0.54);
-                        this.ctx.stroke();
+
                     }
                     this.ctx.restore();
                 }
