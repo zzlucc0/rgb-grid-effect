@@ -591,6 +591,7 @@ class RhythmGame {
 
         this.score = 0;
         this.combo = 0;
+        this.maxCombo = 0;
         this.notes = [];
         this.beatCount = 0;
         if (this.runOrchestrator?.arm) this.runOrchestrator.arm();
@@ -2416,17 +2417,17 @@ class RhythmGame {
                     const breathAlpha = isActiveKey
                         ? 0.1 + (Math.sin(performance.now() * 0.006) * 0.5 + 0.5) * 0.9
                         : 0.5;
-                    ctx.save();
-                    ctx.globalAlpha = breathAlpha;
-                    ctx.fillStyle = '#ffe066';
-                    ctx.font = '700 22px "Press Start 2P", monospace';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.shadowBlur = isActiveKey ? 16 : 4;
-                    ctx.shadowColor = '#ffe066';
-                    ctx.fillText(kLetter, note.x, note.y);
-                    ctx.shadowBlur = 0;
-                    ctx.restore();
+                    this.ctx.save();
+                    this.ctx.globalAlpha = breathAlpha;
+                    this.ctx.fillStyle = '#ffe066';
+                    this.ctx.font = '700 22px "Press Start 2P", monospace';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.shadowBlur = isActiveKey ? 16 : 4;
+                    this.ctx.shadowColor = '#ffe066';
+                    this.ctx.fillText(kLetter, note.x, note.y);
+                    this.ctx.shadowBlur = 0;
+                    this.ctx.restore();
                 }
             }
 
