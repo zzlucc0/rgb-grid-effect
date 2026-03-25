@@ -7,382 +7,824 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;600;700&display=swap');
 
-        /* ── Variables ───────────────────────────────────────────────────── */
         :root {
-            --cyan:   #28f0ff;
-            --pink:   #ff3ca6;
-            --yellow: #ffe066;
-            --purple: #8b5cf6;
-            --bg:     #05070d;
-            --panel:  rgba(8,14,26,0.92);
-            --border: rgba(40,240,255,0.22);
-            --text:   #e0f4ff;
-            --muted:  rgba(224,244,255,0.5);
+            --void: #04050a;
+            --steel: #0b1020;
+            --steel-2: #11172b;
+            --panel: rgba(8, 10, 18, 0.88);
+            --panel-2: rgba(11, 14, 26, 0.92);
+            --cyan: #5af6ff;
+            --cyan-soft: rgba(90, 246, 255, 0.28);
+            --pink: #ff4fae;
+            --pink-soft: rgba(255, 79, 174, 0.26);
+            --violet: #9c6bff;
+            --amber: #ffc94d;
+            --red: #ff5a6b;
+            --text: #d9ecff;
+            --muted: rgba(217, 236, 255, 0.58);
+            --border: rgba(90, 246, 255, 0.2);
+            --noise-a: rgba(255, 255, 255, 0.02);
+            --noise-b: rgba(0, 0, 0, 0.08);
+            --glow-cyan: 0 0 0 1px rgba(90,246,255,.18), 0 0 12px rgba(90,246,255,.18), inset 0 0 20px rgba(90,246,255,.04);
+            --glow-pink: 0 0 0 1px rgba(255,79,174,.16), 0 0 16px rgba(255,79,174,.16), inset 0 0 18px rgba(255,79,174,.05);
         }
 
-        /* ── Reset ───────────────────────────────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
+        html, body {
+            width: 100%;
+            height: 100%;
             overflow: hidden;
-            background: var(--bg);
+            background:
+                radial-gradient(circle at top, rgba(90,246,255,.06), transparent 28%),
+                radial-gradient(circle at 80% 12%, rgba(255,79,174,.08), transparent 22%),
+                linear-gradient(180deg, #06070d 0%, #080b16 36%, #05070d 100%);
             font-family: 'Rajdhani', sans-serif;
             color: var(--text);
             font-size: 15px;
         }
 
-        /* Scanlines */
+        body::before,
         body::after {
-            content: ''; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
-            background: repeating-linear-gradient(0deg, transparent 0, transparent 3px, rgba(0,0,0,.05) 3px, rgba(0,0,0,.05) 4px);
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
         }
 
-        /* ── Canvas layers ────────────────────────────────────────────────── */
-        #backgroundCanvas { position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none; }
-        #gameCanvas        { position: fixed; top: 0; left: 0; z-index: 1; }
+        body::before {
+            z-index: 9997;
+            background-image:
+                linear-gradient(0deg, transparent 0, transparent 2px, rgba(255,255,255,.02) 2px, rgba(255,255,255,.02) 3px),
+                linear-gradient(90deg, rgba(255,255,255,.016) 0, transparent 1px, transparent 100%);
+            background-size: 100% 4px, 3px 100%;
+            mix-blend-mode: screen;
+            opacity: .38;
+        }
+
+        body::after {
+            z-index: 9998;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.08)),
+                radial-gradient(circle at center, transparent 52%, rgba(0,0,0,.18) 100%);
+            opacity: .9;
+        }
+
+        .screen-noise,
+        .screen-frame,
+        .screen-vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .screen-noise {
+            z-index: 9994;
+            opacity: .22;
+            background-image:
+                radial-gradient(circle at 20% 20%, var(--noise-a) 0 1px, transparent 1px),
+                radial-gradient(circle at 80% 40%, var(--noise-b) 0 1px, transparent 1px),
+                radial-gradient(circle at 35% 75%, rgba(255,255,255,.018) 0 1px, transparent 1px),
+                radial-gradient(circle at 70% 68%, rgba(0,0,0,.12) 0 1px, transparent 1px);
+            background-size: 8px 8px, 10px 10px, 12px 12px, 14px 14px;
+            mix-blend-mode: soft-light;
+            animation: noiseDrift 8s steps(6) infinite;
+        }
+
+        .screen-frame {
+            z-index: 9993;
+            box-shadow: inset 0 0 0 2px rgba(90,246,255,.08), inset 0 0 0 8px rgba(0,0,0,.14), inset 0 0 80px rgba(0,0,0,.45);
+        }
+
+        .screen-vignette {
+            z-index: 9992;
+            background: radial-gradient(circle at center, transparent 45%, rgba(0,0,0,.12) 70%, rgba(0,0,0,.34) 100%);
+        }
+
+        #backgroundCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+        #gameCanvas { position: fixed; inset: 0; z-index: 1; }
         .hidden { display: none !important; }
 
-        /* ── Loading overlay ─────────────────────────────────────────────── */
         #loadingOverlay {
             position: fixed; inset: 0; z-index: 10;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
-            background: linear-gradient(180deg, #05070d, #0a0f1f 55%, #05070d);
-            pointer-events: none; opacity: 0; transition: opacity .4s;
+            display: flex; align-items: center; justify-content: center;
+            background:
+                linear-gradient(180deg, rgba(4,5,10,.72), rgba(5,8,16,.84)),
+                radial-gradient(circle at 50% 32%, rgba(90,246,255,.08), transparent 22%),
+                radial-gradient(circle at 50% 62%, rgba(255,79,174,.07), transparent 24%);
+            pointer-events: none; opacity: 0; transition: opacity .32s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         #loadingOverlay.visible { opacity: 1; pointer-events: auto; }
         #waitCanvas { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-        .wait-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 0 24px; text-align: center; }
-        .wait-logo { font: 700 9px 'Press Start 2P', monospace; letter-spacing: .2em; text-transform: uppercase; color: rgba(40,240,255,.5); }
-        .wait-title { font: 700 22px 'Press Start 2P', monospace; color: var(--cyan); text-shadow: 0 0 40px rgba(40,240,255,.5); line-height: 1.4; }
-        .wait-sub { font: 600 13px 'Rajdhani', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,60,166,.7); }
-        .wait-bar-wrap { width: 240px; height: 2px; background: rgba(255,255,255,.08); }
-        .wait-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--cyan), var(--pink)); box-shadow: 0 0 12px var(--cyan); transition: width .3s ease; }
-        .wait-status { font: 500 12px 'Rajdhani', sans-serif; color: rgba(224,244,255,.45); min-height: 18px; }
-        .wait-hint { font: 600 10px 'Rajdhani', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(40,240,255,.25); }
-        .wait-ripple { position: absolute; border-radius: 0; width: 0; height: 0; pointer-events: none; border: 1px solid rgba(40,240,255,.6); transform: translate(-50%,-50%); animation: rippleOut .7s ease-out forwards; }
-        @keyframes rippleOut { to { width: 160px; height: 160px; opacity: 0; } }
+        .wait-inner {
+            position: relative; z-index: 1; width: min(88vw, 560px);
+            display: flex; flex-direction: column; align-items: center; gap: 14px;
+            padding: 28px 28px 26px;
+            text-align: center;
+            background:
+                linear-gradient(180deg, rgba(7,9,18,.92), rgba(9,12,23,.84)),
+                repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px);
+            border: 1px solid rgba(90,246,255,.26);
+            box-shadow: var(--glow-cyan), var(--glow-pink), inset 0 0 0 1px rgba(255,255,255,.04);
+            clip-path: polygon(0 10px, 10px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 16px 100%, 0 calc(100% - 16px));
+        }
+        .wait-inner::before,
+        .wait-inner::after {
+            content: '';
+            position: absolute;
+            inset: 8px;
+            pointer-events: none;
+            border: 1px solid rgba(255,255,255,.035);
+            clip-path: inherit;
+        }
+        .wait-inner::after {
+            inset: auto 0 0 0;
+            height: 3px;
+            border: 0;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.7), rgba(255,79,174,.7), transparent);
+            filter: blur(.2px);
+        }
+        .wait-logo { font: 700 9px 'Press Start 2P', monospace; letter-spacing: .2em; color: rgba(217,236,255,.56); }
+        .wait-title {
+            font: 700 clamp(24px, 4vw, 34px) 'Press Start 2P', monospace;
+            color: var(--cyan);
+            text-shadow: 4px 0 0 rgba(255,79,174,.3), 0 0 18px rgba(90,246,255,.55), 0 0 42px rgba(90,246,255,.24);
+            line-height: 1.25;
+        }
+        .wait-sub { font: 700 13px 'Rajdhani', sans-serif; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,79,174,.76); }
+        .wait-bar-wrap {
+            width: min(100%, 340px); height: 8px; padding: 1px;
+            background: linear-gradient(90deg, rgba(90,246,255,.16), rgba(255,79,174,.16));
+            border: 1px solid rgba(90,246,255,.16);
+            box-shadow: inset 0 0 14px rgba(0,0,0,.45), 0 0 24px rgba(90,246,255,.12);
+        }
+        .wait-bar-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, var(--cyan), var(--amber), var(--pink));
+            box-shadow: 0 0 12px rgba(90,246,255,.4), 0 0 18px rgba(255,79,174,.2);
+            transition: width .3s ease;
+        }
+        .wait-status { font: 600 12px 'Rajdhani', sans-serif; color: rgba(217,236,255,.66); min-height: 18px; }
+        .wait-hint { font: 700 10px 'Rajdhani', sans-serif; letter-spacing: .2em; text-transform: uppercase; color: rgba(90,246,255,.34); }
+        .wait-ripple { position: absolute; border-radius: 0; width: 0; height: 0; pointer-events: none; border: 1px solid rgba(90,246,255,.6); transform: translate(-50%,-50%); animation: rippleOut .7s ease-out forwards; }
 
-        /* ── HUD (in-game score panel) ───────────────────────────────────── */
         #score {
-            position: fixed; top: 16px; right: 16px; z-index: 3;
-            padding: 10px 14px;
-            background: rgba(5,7,13,.9);
-            border: 1px solid var(--border);
-            clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-            min-width: 220px; max-width: 300px;
-            font-weight: 700; letter-spacing: .04em;
+            position: fixed; top: 14px; right: 14px; z-index: 3;
+            min-width: 300px; max-width: 360px;
+            padding: 14px 14px 12px;
+            color: var(--text);
+            background:
+                linear-gradient(180deg, rgba(7,10,18,.95), rgba(7,9,16,.84)),
+                repeating-linear-gradient(0deg, rgba(255,255,255,.016) 0 2px, transparent 2px 4px);
+            border: 1px solid rgba(90,246,255,.18);
+            box-shadow: var(--glow-cyan), inset -1px 0 0 rgba(255,79,174,.16), 0 18px 48px rgba(0,0,0,.34);
+            clip-path: polygon(0 10px, 10px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 18px 100%, 0 calc(100% - 18px));
             overflow: visible;
         }
-        .hud-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .score-stack { min-width: 0; }
-        .score-stack small { display: block; font: 700 8px 'Press Start 2P', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgba(40,240,255,.5); margin-bottom: 4px; }
-        .score-main { font: 700 24px 'Press Start 2P', monospace; color: var(--cyan); text-shadow: 0 0 14px rgba(40,240,255,.4); }
-        .hud-top-actions { display: flex; gap: 6px; align-items: center; }
-        .score-aux { text-align: right; }
-        .score-aux small { display: block; font: 700 8px 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgba(40,240,255,.5); margin-bottom: 4px; }
-        .score-aux strong { display: block; font: 700 16px 'Press Start 2P', monospace; color: var(--yellow); }
-        .score-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin-top: 8px; }
-        .score-meter { height: 2px; background: rgba(255,255,255,.06); margin-top: 8px; }
-        .score-meter-fill { height: 100%; width: 38%; background: linear-gradient(90deg, var(--cyan), var(--yellow)); }
-        .hud-module { padding: 8px 10px; background: rgba(40,240,255,.03); border: 1px solid rgba(40,240,255,.1); }
-        .hud-module small { display: block; font: 700 8px 'Press Start 2P', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgba(40,240,255,.45); margin-bottom: 3px; }
-        .hud-module strong { display: block; font: 700 12px 'Press Start 2P', monospace; color: var(--text); }
-        .hud-module.emphasis strong { color: var(--yellow); }
-        .hud-module.alert strong { color: var(--pink); }
-        #runState[data-state="invalid"] strong { color: var(--pink); }
-        .debug-strip { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 4px; margin-top: 6px; font: 700 8px 'Press Start 2P', monospace; color: rgba(40,240,255,.5); }
-        .debug-strip span { padding: 5px 6px; background: rgba(40,240,255,.03); border: 1px solid rgba(40,240,255,.07); }
-        .debug-strip b { color: var(--text); }
-        .debug-strip span.warn { border-color: rgba(255,60,166,.4); background: rgba(255,60,166,.08); }
-
-        /* ── Buttons ─────────────────────────────────────────────────────── */
-        button {
-            padding: 9px 18px;
-            background: rgba(5,7,13,.85);
-            border: 1px solid rgba(40,240,255,.35);
-            color: var(--cyan);
-            cursor: pointer; transition: all .18s;
-            font: 700 9px 'Press Start 2P', monospace;
-            letter-spacing: .04em; border-radius: 0;
+        #score::before,
+        #score::after {
+            content: '';
+            position: absolute;
+            pointer-events: none;
         }
-        button:hover:not(:disabled) { background: rgba(40,240,255,.1); box-shadow: 0 0 14px rgba(40,240,255,.25); }
-        button:disabled { opacity: .3; cursor: not-allowed; }
-        button.primary { border-color: var(--cyan); color: var(--cyan); }
-        button.accent  { border-color: var(--yellow); color: var(--yellow); }
-        button.danger  { border-color: var(--pink); color: var(--pink); }
-        .hud-control-btn { min-height: 34px; min-width: 70px; padding: 6px 10px; font-size: 8px; }
+        #score::before {
+            inset: 6px;
+            border: 1px solid rgba(255,255,255,.035);
+            clip-path: inherit;
+        }
+        #score::after {
+            top: 12px; right: 14px;
+            width: 80px; height: 3px;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.8), rgba(255,79,174,.8));
+            box-shadow: 0 0 10px rgba(90,246,255,.3);
+        }
+        .hud-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .score-stack { min-width: 0; flex: 1; }
+        .hud-label {
+            display: inline-block;
+            margin-bottom: 6px;
+            padding: 4px 6px 3px;
+            font: 700 8px 'Press Start 2P', monospace;
+            letter-spacing: .15em;
+            color: rgba(217,236,255,.72);
+            background: rgba(90,246,255,.08);
+            border: 1px solid rgba(90,246,255,.12);
+        }
+        .score-main {
+            font: 700 24px 'Press Start 2P', monospace;
+            color: var(--cyan);
+            text-shadow: 3px 0 0 rgba(255,79,174,.24), 0 0 16px rgba(90,246,255,.38), 0 0 28px rgba(90,246,255,.16);
+            letter-spacing: .05em;
+        }
+        .hud-top-actions { display: flex; gap: 8px; align-items: stretch; }
+        .score-aux {
+            min-width: 92px;
+            display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+            padding: 7px 9px 6px;
+            background: linear-gradient(180deg, rgba(255,79,174,.12), rgba(90,246,255,.06));
+            border: 1px solid rgba(255,79,174,.18);
+            box-shadow: inset 0 0 18px rgba(255,79,174,.06);
+        }
+        .score-aux small { display: block; font: 700 7px 'Press Start 2P', monospace; letter-spacing: .14em; color: rgba(217,236,255,.54); margin-bottom: 4px; }
+        .score-aux strong {
+            display: block;
+            font: 700 15px 'Press Start 2P', monospace;
+            color: var(--amber);
+            text-shadow: 2px 0 0 rgba(255,79,174,.2), 0 0 14px rgba(255,201,77,.22);
+        }
+        .hud-control-btn {
+            min-height: 46px; min-width: 74px; padding: 9px 12px;
+            font-size: 8px;
+        }
+        .hud-rack {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .hud-chip {
+            position: relative;
+            padding: 8px 9px 7px;
+            background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));
+            border: 1px solid rgba(90,246,255,.1);
+            overflow: hidden;
+        }
+        .hud-chip::before {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; top: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.8), transparent);
+            opacity: .55;
+        }
+        .hud-chip small {
+            display: block;
+            margin-bottom: 5px;
+            font: 700 7px 'Press Start 2P', monospace;
+            letter-spacing: .14em;
+            color: rgba(217,236,255,.52);
+        }
+        .hud-chip strong {
+            display: block;
+            font: 700 12px 'Press Start 2P', monospace;
+            color: var(--text);
+        }
+        .hud-chip.state strong { color: var(--cyan); }
+        .hud-chip.mode strong { color: var(--amber); }
+        .hud-chip.diff strong { color: #f3d4ff; }
+        #runState[data-state="invalid"] strong { color: var(--red); }
+        #runState[data-state="paused"] strong { color: var(--pink); }
+        #runState[data-state="ready"] strong { color: var(--amber); }
+        #runState[data-state="live"] strong { color: var(--cyan); }
+        .score-meter {
+            margin-top: 10px;
+            height: 8px;
+            padding: 1px;
+            background: rgba(255,255,255,.03);
+            border: 1px solid rgba(90,246,255,.1);
+            box-shadow: inset 0 0 12px rgba(0,0,0,.35);
+        }
+        .score-meter-fill {
+            height: 100%; width: 18%;
+            background: linear-gradient(90deg, var(--cyan), var(--amber), var(--pink));
+            box-shadow: 0 0 12px rgba(90,246,255,.34);
+        }
+        .debug-strip {
+            display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px;
+            margin-top: 10px;
+            font: 700 8px 'Press Start 2P', monospace;
+            color: rgba(217,236,255,.5);
+        }
+        .debug-strip span {
+            padding: 7px 7px 6px;
+            background: rgba(255,255,255,.02);
+            border: 1px solid rgba(90,246,255,.08);
+            min-height: 30px;
+        }
+        .debug-strip b { color: var(--text); }
+        .debug-strip span.warn { border-color: rgba(255,90,107,.4); background: rgba(255,90,107,.08); }
+        .debug-strip span.good { border-color: rgba(90,246,255,.28); background: rgba(90,246,255,.06); }
 
-        /* ── Setup screen (#uploadContainer) ─────────────────────────────── */
+        button,
+        .file-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 42px;
+            padding: 11px 18px;
+            background:
+                linear-gradient(180deg, rgba(9,11,20,.94), rgba(8,10,18,.9)),
+                repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 2px, transparent 2px 4px);
+            border: 1px solid rgba(90,246,255,.18);
+            color: var(--cyan);
+            cursor: pointer;
+            transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+            font: 700 8px 'Press Start 2P', monospace;
+            letter-spacing: .08em;
+            border-radius: 0;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.02), 0 0 0 1px rgba(0,0,0,.26), 0 10px 24px rgba(0,0,0,.22);
+            text-transform: uppercase;
+        }
+        button::before,
+        .file-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.18), rgba(255,79,174,.12), transparent);
+            opacity: .42;
+            pointer-events: none;
+        }
+        button:hover:not(:disabled),
+        .file-btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(90,246,255,.36);
+            box-shadow: 0 0 0 1px rgba(90,246,255,.16), 0 0 18px rgba(90,246,255,.12), 0 14px 28px rgba(0,0,0,.24);
+        }
+        button:active:not(:disabled),
+        .file-btn:active {
+            transform: translateY(1px);
+        }
+        button:disabled {
+            opacity: .32;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        button.primary, .file-btn { border-color: rgba(90,246,255,.24); color: var(--cyan); }
+        button.accent { border-color: rgba(255,201,77,.28); color: var(--amber); }
+        button.danger { border-color: rgba(255,90,107,.28); color: var(--red); }
+        .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
         #uploadContainer {
             position: fixed; inset: 0; z-index: 2;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            padding: 20px;
+            padding: 22px;
         }
 
         .cyber-setup {
-            width: 100%; max-width: 760px;
-            background: rgba(6,10,20,.92);
-            border: 1px solid rgba(40,240,255,.2);
-            clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
-            padding: 28px 32px 24px;
-            display: flex; flex-direction: column; gap: 20px;
+            position: relative;
+            width: 100%; max-width: 860px;
+            padding: 28px 30px 24px;
+            display: flex; flex-direction: column; gap: 18px;
+            background:
+                linear-gradient(180deg, rgba(7,10,18,.96), rgba(8,11,20,.88)),
+                repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+                linear-gradient(135deg, rgba(90,246,255,.05), transparent 28%, rgba(255,79,174,.03) 100%);
+            border: 1px solid rgba(90,246,255,.22);
+            box-shadow: var(--glow-cyan), var(--glow-pink), 0 26px 60px rgba(0,0,0,.34);
+            clip-path: polygon(0 16px, 16px 0, calc(100% - 26px) 0, 100% 26px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 26px 100%, 0 calc(100% - 26px));
+        }
+        .cyber-setup::before,
+        .cyber-setup::after {
+            content: '';
+            position: absolute;
+            pointer-events: none;
+        }
+        .cyber-setup::before {
+            inset: 8px;
+            border: 1px solid rgba(255,255,255,.04);
+            clip-path: inherit;
+        }
+        .cyber-setup::after {
+            left: 22px; right: 22px; top: 56px; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.5), rgba(255,79,174,.5), transparent);
+            opacity: .8;
         }
 
-        /* Title bar */
         .setup-title {
-            display: flex; align-items: center; gap: 12px;
-            border-bottom: 1px solid rgba(40,240,255,.12);
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 14px;
             padding-bottom: 14px;
         }
-        .setup-title-text {
-            font: 700 14px 'Press Start 2P', monospace;
+        .setup-emblem {
+            width: 38px; height: 38px;
+            display: grid; place-items: center;
+            font: 700 12px 'Press Start 2P', monospace;
             color: var(--cyan);
-            text-shadow: 0 0 24px rgba(40,240,255,.4);
-            letter-spacing: .06em;
+            background: linear-gradient(180deg, rgba(90,246,255,.12), rgba(255,79,174,.1));
+            border: 1px solid rgba(90,246,255,.22);
+            box-shadow: inset 0 0 14px rgba(90,246,255,.08), 0 0 16px rgba(90,246,255,.12);
+        }
+        .setup-title-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .setup-title-text {
+            font: 700 clamp(14px, 2vw, 18px) 'Press Start 2P', monospace;
+            color: var(--cyan);
+            text-shadow: 3px 0 0 rgba(255,79,174,.24), 0 0 18px rgba(90,246,255,.3);
+            letter-spacing: .08em;
+        }
+        .setup-title-sub {
+            font: 700 11px 'Rajdhani', sans-serif;
+            color: rgba(217,236,255,.64);
+            letter-spacing: .18em;
+            text-transform: uppercase;
         }
         .setup-title-tag {
+            justify-self: end;
+            padding: 7px 10px 6px;
             font: 700 8px 'Press Start 2P', monospace;
-            color: rgba(40,240,255,.4);
-            letter-spacing: .1em;
-            margin-left: auto;
+            color: var(--amber);
+            background: rgba(255,201,77,.08);
+            border: 1px solid rgba(255,201,77,.18);
+            letter-spacing: .12em;
         }
 
-        /* Input row */
-        .setup-inputs {
-            display: flex; flex-direction: column; gap: 10px;
+        .setup-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(260px, .9fr);
+            gap: 16px;
         }
-        .input-row {
-            display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap;
+        .setup-main,
+        .setup-side {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
+        .setup-panel,
+        .setup-sidecard,
+        .setup-statuscard {
+            position: relative;
+            padding: 14px;
+            background: linear-gradient(180deg, rgba(10,13,23,.76), rgba(7,10,18,.92));
+            border: 1px solid rgba(90,246,255,.12);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.018);
+        }
+        .setup-panel::before,
+        .setup-sidecard::before,
+        .setup-statuscard::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(90,246,255,.72), rgba(255,79,174,.68), transparent);
+            opacity: .7;
+        }
+        .panel-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            margin-bottom: 10px;
+        }
+        .panel-title {
+            font: 700 9px 'Press Start 2P', monospace;
+            letter-spacing: .15em;
+            color: rgba(217,236,255,.7);
+        }
+        .panel-tag {
+            font: 700 10px 'Rajdhani', sans-serif;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: rgba(90,246,255,.58);
+        }
+        .setup-inputs { display: flex; flex-direction: column; gap: 10px; }
+        .input-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
         .input-row.main { gap: 8px; }
 
         input[type="url"], select {
-            background: rgba(4,8,16,.9);
-            border: 1px solid rgba(40,240,255,.2);
+            background: linear-gradient(180deg, rgba(5,8,16,.96), rgba(7,10,18,.96));
+            border: 1px solid rgba(90,246,255,.16);
             color: var(--text);
-            font: 600 13px 'Rajdhani', sans-serif;
-            padding: 9px 12px;
+            font: 700 13px 'Rajdhani', sans-serif;
+            padding: 10px 12px;
             border-radius: 0;
             outline: none;
-            transition: border-color .18s;
-            min-height: 40px;
+            transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease;
+            min-height: 42px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.02);
         }
-        input[type="url"] { flex: 1; min-width: 200px; }
-        input[type="url"]::placeholder { color: rgba(224,244,255,.3); }
-        input[type="url"]:focus, select:focus { border-color: rgba(40,240,255,.5); }
+        input[type="url"] { flex: 1; min-width: 220px; }
+        input[type="url"]::placeholder { color: rgba(217,236,255,.28); }
+        input[type="url"]:focus, select:focus {
+            border-color: rgba(90,246,255,.4);
+            box-shadow: 0 0 0 1px rgba(90,246,255,.14), 0 0 18px rgba(90,246,255,.08);
+            transform: translateY(-1px);
+        }
         select { cursor: pointer; }
-        select option { background: #05070d; }
+        select option { background: #070a12; }
 
-        /* File upload */
-        .file-btn {
-            display: inline-flex; align-items: center; justify-content: center;
-            padding: 9px 16px; min-height: 40px;
-            background: rgba(5,7,13,.85);
-            border: 1px solid rgba(40,240,255,.35);
-            color: var(--cyan);
-            font: 700 8px 'Press Start 2P', monospace;
-            letter-spacing: .04em; cursor: pointer; white-space: nowrap;
-            transition: all .18s; position: relative;
-        }
-        .file-btn:hover { background: rgba(40,240,255,.08); }
-        .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
-
-        /* Action buttons row */
         .action-row {
-            display: flex; gap: 8px; flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
         }
-        .action-row button { flex: 1; min-width: 120px; }
 
-        /* Status panel */
+        .setup-sidecard {
+            min-height: 100%;
+            justify-content: space-between;
+        }
+        .setup-sidecopy {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .side-kicker {
+            font: 700 8px 'Press Start 2P', monospace;
+            letter-spacing: .16em;
+            color: rgba(90,246,255,.58);
+        }
+        .side-title {
+            font: 700 18px 'Press Start 2P', monospace;
+            line-height: 1.4;
+            color: var(--text);
+            text-shadow: 2px 0 0 rgba(255,79,174,.2), 0 0 16px rgba(90,246,255,.22);
+        }
+        .side-copy {
+            font: 700 13px 'Rajdhani', sans-serif;
+            line-height: 1.45;
+            color: rgba(217,236,255,.62);
+        }
+        .side-stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .side-stat {
+            padding: 9px 8px 8px;
+            background: rgba(255,255,255,.02);
+            border: 1px solid rgba(90,246,255,.08);
+        }
+        .side-stat small {
+            display: block;
+            margin-bottom: 5px;
+            font: 700 7px 'Press Start 2P', monospace;
+            letter-spacing: .14em;
+            color: rgba(217,236,255,.45);
+        }
+        .side-stat strong {
+            display: block;
+            font: 700 12px 'Press Start 2P', monospace;
+            color: var(--amber);
+        }
+
         #statusText {
-            padding: 10px 14px;
-            background: rgba(4,8,16,.6);
-            border: 1px solid rgba(40,240,255,.1);
-            font: 600 13px 'Rajdhani', sans-serif;
-            min-height: 44px;
+            position: relative;
+            padding: 14px 16px;
+            min-height: 60px;
+            background:
+                linear-gradient(180deg, rgba(9,12,22,.92), rgba(7,9,18,.82)),
+                repeating-linear-gradient(0deg, rgba(255,255,255,.016) 0 2px, transparent 2px 4px);
+            border: 1px solid rgba(90,246,255,.14);
+            font: 700 13px 'Rajdhani', sans-serif;
+            line-height: 1.35;
+            box-shadow: inset 0 0 18px rgba(90,246,255,.03);
         }
-        .success-message { color: var(--cyan); }
-        .error-message   { color: var(--pink); }
-        .loading-message { color: var(--yellow); }
-        .note-message    { color: rgba(224,244,255,.55); }
+        #statusText::before {
+            content: 'SYSTEM FEED';
+            position: absolute;
+            top: -9px; left: 12px;
+            padding: 2px 6px;
+            font: 700 7px 'Press Start 2P', monospace;
+            letter-spacing: .14em;
+            color: var(--amber);
+            background: #080b14;
+            border: 1px solid rgba(255,201,77,.16);
+        }
+        .success-message { color: var(--cyan); text-shadow: 0 0 10px rgba(90,246,255,.16); }
+        .error-message { color: var(--red); text-shadow: 0 0 10px rgba(255,90,107,.16); }
+        .loading-message { color: var(--amber); text-shadow: 0 0 10px rgba(255,201,77,.14); }
+        .note-message { color: rgba(217,236,255,.62); }
 
-        /* Ready summary */
         #readySummary {
-            display: none; /* shown by JS */
-            padding: 8px 14px;
-            border: 1px solid rgba(40,240,255,.1);
-            background: rgba(4,8,16,.5);
-            font: 600 12px 'Rajdhani', sans-serif;
+            display: none;
+            padding: 10px 14px;
+            border: 1px solid rgba(90,246,255,.1);
+            background: rgba(9,12,22,.7);
+            font: 700 12px 'Rajdhani', sans-serif;
             color: var(--muted);
-            letter-spacing: .04em;
+            letter-spacing: .08em;
+            text-transform: uppercase;
         }
 
-        /* ── Pause overlay ────────────────────────────────────────────────── */
         #pauseOverlay {
             position: fixed; inset: 0; z-index: 4;
             display: flex; align-items: center; justify-content: center;
             flex-direction: column; gap: 14px;
             background:
-                radial-gradient(circle at 50% 45%, rgba(40,240,255,.06), transparent 20%),
-                linear-gradient(180deg, rgba(5,7,13,.65), rgba(5,7,13,.75));
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+                linear-gradient(180deg, rgba(3,4,8,.64), rgba(4,6,12,.82)),
+                radial-gradient(circle at 50% 40%, rgba(90,246,255,.08), transparent 18%),
+                radial-gradient(circle at 50% 58%, rgba(255,79,174,.08), transparent 20%);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         #pauseOverlayText {
-            font: 700 28px 'Press Start 2P', monospace;
+            font: 700 clamp(26px, 5vw, 40px) 'Press Start 2P', monospace;
             color: var(--cyan);
-            text-shadow: 0 0 40px rgba(40,240,255,.4), 0 0 8px rgba(0,0,0,.8);
-            padding: 12px 20px;
-            border: 1px solid rgba(40,240,255,.2);
-            background: rgba(5,7,13,.35);
-            letter-spacing: .08em;
+            text-shadow: 4px 0 0 rgba(255,79,174,.28), 0 0 20px rgba(90,246,255,.46), 0 0 40px rgba(90,246,255,.16);
+            padding: 16px 22px;
+            border: 1px solid rgba(90,246,255,.22);
+            background:
+                linear-gradient(180deg, rgba(7,10,18,.82), rgba(6,8,15,.72)),
+                repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px);
+            letter-spacing: .1em;
+            box-shadow: var(--glow-cyan), var(--glow-pink);
         }
         #pauseOverlaySubtext {
-            font: 600 13px 'Rajdhani', sans-serif;
-            color: rgba(224,244,255,.6);
-            padding: 10px 18px;
-            border: 1px solid rgba(40,240,255,.1);
-            background: rgba(5,7,13,.3);
+            max-width: min(84vw, 520px);
+            font: 700 13px 'Rajdhani', sans-serif;
+            color: rgba(217,236,255,.72);
+            padding: 11px 18px;
+            border: 1px solid rgba(90,246,255,.1);
+            background: rgba(6,8,15,.54);
+            text-align: center;
+            letter-spacing: .05em;
         }
-        #overlayResumeBtn { margin-top: 4px; min-width: 160px; }
+        #overlayResumeBtn { margin-top: 4px; min-width: 180px; }
 
-        /* ── Live player holder ───────────────────────────────────────────── */
         #livePlayerHolder {
             position: fixed; left: 16px; bottom: 16px; z-index: 3;
-            background: rgba(5,7,13,.88);
+            background: rgba(6,8,15,.86);
             padding: 10px;
-            border: 1px solid rgba(40,240,255,.14);
+            border: 1px solid rgba(90,246,255,.12);
+            box-shadow: 0 12px 28px rgba(0,0,0,.24);
         }
         #liveAudio { width: 280px; }
 
-        /* ── Responsive ──────────────────────────────────────────────────── */
+        @keyframes rippleOut { to { width: 160px; height: 160px; opacity: 0; } }
+        @keyframes noiseDrift {
+            0% { transform: translate3d(0,0,0); }
+            20% { transform: translate3d(-2px,1px,0); }
+            40% { transform: translate3d(1px,-1px,0); }
+            60% { transform: translate3d(2px,1px,0); }
+            80% { transform: translate3d(-1px,2px,0); }
+            100% { transform: translate3d(0,0,0); }
+        }
+
+        @media (max-width: 920px) {
+            .setup-grid { grid-template-columns: 1fr; }
+            .setup-side { order: -1; }
+        }
         @media (max-width: 860px) {
             .cyber-setup { padding: 20px 18px 18px; }
-            .setup-title-text { font-size: 10px; }
+            .setup-title { grid-template-columns: auto 1fr; }
+            .setup-title-tag { justify-self: start; }
         }
-        @media (max-width: 600px) {
+        @media (max-width: 640px) {
             .cyber-setup { clip-path: none; }
             .input-row { flex-direction: column; }
-            .action-row button { min-width: 100px; }
-            #score { min-width: 0; width: calc(100vw - 32px); }
+            .action-row { grid-template-columns: 1fr; }
+            #score { min-width: 0; width: calc(100vw - 24px); left: 12px; right: 12px; top: 12px; max-width: none; }
+            .hud-rack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .score-main { font-size: 18px; }
+            .score-aux { min-width: 76px; }
         }
     </style>
 </head>
 <body>
     <canvas id="backgroundCanvas"></canvas>
     <canvas id="gameCanvas"></canvas>
+    <div class="screen-noise"></div>
+    <div class="screen-vignette"></div>
+    <div class="screen-frame"></div>
 
-    <!-- ── Loading overlay ── -->
     <div id="loadingOverlay">
         <canvas id="waitCanvas"></canvas>
         <div class="wait-inner">
-            <div class="wait-logo">CYBER GRID · Rhythm Engine</div>
+            <div class="wait-logo">CYBER GRID · ARCADE SCANNER</div>
             <div class="wait-title">ANALYZING</div>
-            <div class="wait-sub">Detecting BPM &amp; chart structure</div>
+            <div class="wait-sub">Locking rhythm signature / beat lanes / chart shell</div>
             <div class="wait-bar-wrap"><div class="wait-bar-fill" id="waitBarFill"></div></div>
             <div class="wait-status" id="waitStatusText"></div>
-            <div class="wait-hint">Processing audio — please wait</div>
+            <div class="wait-hint">Processing audio stream — stand by</div>
         </div>
     </div>
 
-    <!-- ── In-game HUD ── -->
     <div id="score">
         <div class="hud-topline">
             <div class="score-stack">
+                <div class="hud-label">RHYTHM SCORE</div>
                 <div class="score-main" id="scoreValue">000000</div>
             </div>
             <div class="hud-top-actions">
                 <div class="score-aux">
+                    <small>CHAIN</small>
                     <strong id="comboValue" style="display:none">0x</strong>
                 </div>
-                <button id="hudPauseBtn" class="hud-control-btn" aria-label="Pause">II</button>
+                <button id="hudPauseBtn" class="hud-control-btn" aria-label="Pause">PAUSE</button>
             </div>
+        </div>
+        <div class="hud-rack">
+            <div class="hud-chip mode"><small>MODE</small><strong id="hudMode">CASUAL</strong></div>
+            <div class="hud-chip diff"><small>DIFF</small><strong id="hudDifficulty">NORMAL</strong></div>
+            <div id="runState" class="hud-chip state" data-state="stable"><small>STATE</small><strong id="hudRunState">STABLE</strong></div>
+        </div>
+        <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
+        <div id="debugStrip" class="debug-strip hidden">
+            <span>Clock <b id="debugGameClock">0.00</b></span>
+            <span>Player <b id="debugPlayerClock">0.00</b></span>
+            <span>Chart <b id="debugChartProgress">0/0</b></span>
+            <span>Notes <b id="debugActiveNotes">0</b></span>
+            <span>Group <b id="debugGroupState">--</b></span>
+            <span>Playback <b id="debugPlaybackState">--</b></span>
+            <span>Diag <b id="debugDiagState">--</b></span>
+            <span id="debugReviewScoreWrap">Review <b id="debugReviewScore">--</b></span>
+            <span id="debugReviewStateWrap">Flags <b id="debugReviewState">--</b></span>
         </div>
         <div style="display:none;">
-            <strong id="hudMode">CASUAL</strong>
-            <strong id="hudDifficulty">NORMAL</strong>
             <strong id="hudAccuracy">--</strong>
-            <div id="runState" data-state="stable"><strong id="hudRunState">STABLE</strong></div>
-            <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
-            <div id="debugStrip" class="debug-strip hidden">
-                <span>Clock <b id="debugGameClock">0.00</b></span>
-                <span>Player <b id="debugPlayerClock">0.00</b></span>
-                <span>Chart <b id="debugChartProgress">0/0</b></span>
-                <span>Notes <b id="debugActiveNotes">0</b></span>
-                <span>Group <b id="debugGroupState">--</b></span>
-                <span>Playback <b id="debugPlaybackState">--</b></span>
-                <span>Diag <b id="debugDiagState">--</b></span>
-                <span id="debugReviewScoreWrap">Review <b id="debugReviewScore">--</b></span>
-                <span id="debugReviewStateWrap">Flags <b id="debugReviewState">--</b></span>
-            </div>
         </div>
     </div>
 
-    <!-- ── Setup screen ── -->
     <div id="uploadContainer">
         <div class="cyber-setup">
-            <!-- Title bar -->
             <div class="setup-title">
-                <div class="setup-title-text">CYBER GRID</div>
-                <div class="setup-title-tag">RHYTHM STAGE v2</div>
+                <div class="setup-emblem">CG</div>
+                <div class="setup-title-copy">
+                    <div class="setup-title-text">CYBER GRID</div>
+                    <div class="setup-title-sub">Heavy pixel rhythm cabinet / neon combat shell</div>
+                </div>
+                <div class="setup-title-tag">RHYTHM STAGE v3</div>
             </div>
 
-            <!-- Inputs -->
-            <div class="setup-inputs">
-                <input type="file" id="audioUpload" accept="audio/*" style="display:none" aria-hidden="true">
+            <div class="setup-grid">
+                <div class="setup-main">
+                    <div class="setup-panel">
+                        <div class="panel-head">
+                            <div class="panel-title">SOURCE LINK</div>
+                            <div class="panel-tag">input / routing</div>
+                        </div>
+                        <div class="setup-inputs">
+                            <input type="file" id="audioUpload" accept="audio/*" style="display:none" aria-hidden="true">
+                            <div class="input-row main">
+                                <input id="youtubeUrl" type="url" placeholder="Paste YouTube / Bilibili / media URL">
+                                <select id="difficultySelect">
+                                    <option value="easy">EASY</option>
+                                    <option value="normal" selected>NORMAL</option>
+                                    <option value="hard">HARD</option>
+                                </select>
+                                <select id="playModeSelect">
+                                    <option value="casual" selected>CASUAL</option>
+                                    <option value="strict">STRICT</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
 
-                <!-- URL + quick selects -->
-                <div class="input-row main">
-                    <input id="youtubeUrl" type="url" placeholder="Paste YouTube / Bilibili URL">
-                    <select id="difficultySelect">
-                        <option value="easy">EASY</option>
-                        <option value="normal" selected>NORMAL</option>
-                        <option value="hard">HARD</option>
-                    </select>
-                    <select id="playModeSelect">
-                        <option value="casual" selected>CASUAL</option>
-                        <option value="strict">STRICT</option>
-                    </select>
+                    <div class="setup-panel">
+                        <div class="panel-head">
+                            <div class="panel-title">ANALYSIS TUNING</div>
+                            <div class="panel-tag">density / strategy</div>
+                        </div>
+                        <div class="input-row">
+                            <select id="analysisStrategySelect">
+                                <option value="auto" selected>AUTO STRATEGY</option>
+                                <option value="full">FORCE FULL</option>
+                                <option value="segmented">FORCE SEGMENTED</option>
+                            </select>
+                            <select id="chartDensitySelect">
+                                <option value="relaxed">RELAXED DENSITY</option>
+                                <option value="normal" selected>NORMAL DENSITY</option>
+                                <option value="dense">DENSE DENSITY</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="setup-panel">
+                        <div class="panel-head">
+                            <div class="panel-title">RUN CONTROLS</div>
+                            <div class="panel-tag">cabinet actions</div>
+                        </div>
+                        <div class="action-row">
+                            <button id="analyzeYoutube" class="primary">SCAN LINK</button>
+                            <button id="startGame" class="accent" disabled>START RUN</button>
+                            <button id="cancelAnalyze" class="danger" disabled>CANCEL</button>
+                            <button id="pauseGameBtn" disabled>PAUSE</button>
+                            <button id="resumeGameBtn" disabled style="display:none;">RESUME</button>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Advanced selects -->
-                <div class="input-row">
-                    <select id="analysisStrategySelect">
-                        <option value="auto" selected>AUTO STRATEGY</option>
-                        <option value="full">FORCE FULL</option>
-                        <option value="segmented">FORCE SEGMENTED</option>
-                    </select>
-                    <select id="chartDensitySelect">
-                        <option value="relaxed">RELAXED DENSITY</option>
-                        <option value="normal" selected>NORMAL DENSITY</option>
-                        <option value="dense">DENSE DENSITY</option>
-                    </select>
+                <div class="setup-side">
+                    <div class="setup-sidecard">
+                        <div class="setup-sidecopy">
+                            <div class="side-kicker">SYSTEM PROFILE</div>
+                            <div class="side-title">HEAVY PIXEL<br>CYBER CABINET</div>
+                            <div class="side-copy">Industrial neon shell, loud judgement banners, hard scanline grit, and denser arcade framing — without touching timing, chart logic, or gameplay behavior.</div>
+                        </div>
+                        <div class="side-stats">
+                            <div class="side-stat"><small>STYLE</small><strong>PIXEL</strong></div>
+                            <div class="side-stat"><small>GLOW</small><strong>HEAVY</strong></div>
+                            <div class="side-stat"><small>MOOD</small><strong>CYBER</strong></div>
+                            <div class="side-stat"><small>LOGIC</small><strong>LOCKED</strong></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Action buttons -->
-            <div class="action-row">
-                <button id="analyzeYoutube" class="primary">▶ ANALYZE LINK</button>
-                <button id="startGame" class="accent" disabled>▶ START GAME</button>
-                <button id="cancelAnalyze" class="danger" disabled>✕ CANCEL</button>
-                <button id="pauseGameBtn" disabled>⏸ PAUSE</button>
-                <button id="resumeGameBtn" disabled style="display:none;">▶ RESUME</button>
+            <div class="setup-statuscard">
+                <div id="statusText"></div>
             </div>
-
-            <!-- Status -->
-            <div id="statusText"></div>
         </div>
     </div>
 
-    <!-- ── Pause overlay ── -->
     <div id="pauseOverlay" class="hidden">
         <div id="pauseOverlayText">PAUSED</div>
         <div id="pauseOverlaySubtext">Resume will count down 3 · 2 · 1</div>
-        <button id="overlayResumeBtn" class="primary">▶ RESUME</button>
+        <button id="overlayResumeBtn" class="primary">RESUME</button>
     </div>
 
-    <!-- ── Live player ── -->
     <div id="livePlayerHolder" class="hidden">
         <div id="ytPlayer"></div>
         <audio id="liveAudio" playsinline crossorigin="anonymous"></audio>
@@ -409,7 +851,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="rgb-effect.js?v=20260324a"></script>
+    <script src="rgb-effect.js?v=20260325b"></script>
     <script src="default-songs.js?v=20260307a"></script>
     <script src="music-api.js?v=20260307a"></script>
     <script src="clock-controller.js?v=20260312a"></script>
