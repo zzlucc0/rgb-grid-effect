@@ -2515,6 +2515,10 @@ class RhythmGame {
             }
         });
 
+
+        // Draw song progress bar
+        this.drawSongProgress();
+
         // Draw combo / mode HUD
         this.drawComboHUD();
         
@@ -2976,6 +2980,90 @@ RhythmGame.prototype.getNotePalette = function (note) {
     if (note.score === 'miss') return { core: '#ff899f', edge: '#ff5f76', glow: 'rgba(255,95,118,.35)' };
     const base = note.groupPalette || this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex || note.phrase || 0);
     return this.decoratePaletteForNote(base, note);
+};
+
+RhythmGame.prototype.drawSongProgress = function () {
+    if (!this.isPlaying) return;
+    const chartClock = this.resolveChartClock();
+
+    // Determine total duration
+    let totalSec = 0;
+    if (this.audioBuffer?.duration > 0) {
+        totalSec = this.audioBuffer.duration;
+    } else if (this.chartData?.fullDuration > 0) {
+        totalSec = this.chartData.fullDuration;
+    } else if (this.chartData?.notes?.length) {
+        const last = this.chartData.notes[this.chartData.notes.length - 1];
+        totalSec = (last?.time || 0) + 3;
+    }
+    if (totalSec <= 0) return;
+
+    const progress = Math.max(0, Math.min(1, chartClock / totalSec));
+    const now = performance.now();
+
+    const cw = this.canvas.width;
+    const barY = 10;
+    const barH = 10;
+    const barX = 56;
+    const barW = cw - 112;
+    const filled = barW * progress;
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // Background track (pixel blocks)
+    const blockW = 6;
+    const blockGap = 2;
+    const blockStep = blockW + blockGap;
+    const totalBlocks = Math.floor(barW / blockStep);
+    const filledBlocks = Math.floor(totalBlocks * progress);
+
+    for (let i = 0; i < totalBlocks; i++) {
+        const bx = barX + i * blockStep;
+        const lit = i < filledBlocks;
+        const isNearHead = i === filledBlocks - 1 || i === filledBlocks;
+        if (lit) {
+            const glow = 0.55 + 0.45 * Math.sin(now / 140 + i * 0.22);
+            ctx.fillStyle = `rgba(89,239,255,${glow.toFixed(3)})`;
+            ctx.shadowBlur = isNearHead ? 18 : 8;
+            ctx.shadowColor = '#59efff';
+        } else {
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(89,239,255,0.10)';
+        }
+        ctx.fillRect(bx, barY, blockW, barH);
+    }
+    ctx.shadowBlur = 0;
+
+    // Glowing head pixel
+    if (progress > 0.01 && progress < 0.999) {
+        const headX = barX + filled - 2;
+        const pulse = 1 + 0.5 * Math.sin(now / 80);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 20 * pulse;
+        ctx.shadowColor = '#59efff';
+        ctx.fillRect(headX, barY - 3, 5, barH + 6);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#59efff';
+        ctx.fillRect(headX + 1, barY - 1, 3, barH + 2);
+    }
+
+    // Time remaining text (pixel/monospace)
+    const remaining = Math.max(0, totalSec - chartClock);
+    const remMin = Math.floor(remaining / 60);
+    const remSec = Math.floor(remaining % 60);
+    const timeStr = `${remMin}:${String(remSec).padStart(2, '0')}`;
+    ctx.font = '700 9px "Press Start 2P", monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#59efff';
+    ctx.fillStyle = '#59efff';
+    ctx.fillText(timeStr, barX + barW + 46, barY + barH / 2);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
 };
 
 RhythmGame.prototype.drawEnergyBurst = function () {
