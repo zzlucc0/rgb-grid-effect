@@ -529,12 +529,15 @@ class RhythmGame {
     async enterRunStartSequence() {
         try {
             await this.prepareRun();
-            await this.runCountdown();
+            // 1. Sync first — start playback buffering and wait until ready
             if (this.liveMode) {
                 this.setRunPhase('awaiting-playback');
-                this.setStatusMessage('loading', 'Countdown complete · waiting for playback to begin...');
+                this.setStatusMessage('loading', 'Syncing playback…');
                 await this.startPlaybackAndWaitUntilPlaying();
             }
+            // 2. Countdown runs after sync completes: 3 2 1 START
+            await this.runCountdown();
+            // 3. Begin run immediately after countdown
             const dataArray = this.beginRun();
             if (!this.liveMode) this.startPlaybackBackend();
             this.armGameLoop(dataArray);
