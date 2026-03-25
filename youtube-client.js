@@ -4,6 +4,97 @@
   var analyzeCancelled = false;
 
   function el(id) { return document.getElementById(id); }
+
+  // ── Browser-local chart cache (IndexedDB) ───────────────────────────────
+  // Stores chart analysis results in the player's own browser.
+  // Key: url + difficulty + density + strategy → { result, savedAt }
+  // TTL: 7 days. No server storage consumed per player.
+  var IDB_NAME = 'cyber-grid-chart-cache';
+  var IDB_STORE = 'charts';
+  var IDB_VERSION = 1;
+  var IDB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+  function openIDB() {
+    return new Promise(function (resolve) {
+      if (!window.indexedDB) return resolve(null);
+      var req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onupgradeneeded = function (e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath: 'key' });
+      };
+      req.onsuccess = function (e) { resolve(e.target.result); };
+      req.onerror = function () { resolve(null); };
+    });
+  }
+
+  function makeKey(url, difficulty, density, strategy) {
+    return [url.trim(), difficulty || 'normal', density || 'normal', strategy || 'auto'].join('|');
+  }
+
+  function idbGet(url, difficulty, density, strategy) {
+    return openIDB().then(function (db) {
+      if (!db) return null;
+      var key = makeKey(url, difficulty, density, strategy);
+      return new Promise(function (resolve) {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = function (e) {
+          var rec = e.target.result;
+          if (!rec) return resolve(null);
+          if (Date.now() - (rec.savedAt || 0) > IDB_TTL_MS) {
+            var del = db.transaction(IDB_STORE, 'readwrite');
+            del.objectStore(IDB_STORE).delete(key);
+            return resolve(null);
+          }
+          resolve(rec.result);
+        };
+        req.onerror = function () { resolve(null); };
+      });
+    }).catch(function () { return null; });
+  }
+
+  function idbSet(url, difficulty, density, strategy, result) {
+    var mode = result && result.mode;
+    // Don't cache offline modes (audio not stored in IDB)
+    if (mode === 'offline' || mode === 'offline-capture-fallback' || mode === 'capture-poc') return Promise.resolve();
+    return openIDB().then(function (db) {
+      if (!db) return;
+      var key = makeKey(url, difficulty, density, strategy);
+      return new Promise(function (resolve) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put({ key: key, result: result, savedAt: Date.now() });
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+      });
+    }).catch(function () {});
+  }
+
+  // Debug helpers exposed to browser console
+  window._cyberGridCacheClear = function () {
+    return openIDB().then(function (db) {
+      if (!db) return;
+      var tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).clear();
+      console.log('[CyberGrid] Local chart cache cleared');
+    });
+  };
+  window._cyberGridCacheList = function () {
+    return openIDB().then(function (db) {
+      if (!db) return [];
+      return new Promise(function (resolve) {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).getAll();
+        req.onsuccess = function (e) {
+          var rows = (e.target.result || []).map(function (r) {
+            return { key: r.key, mode: r.result && r.result.mode, notes: r.result && r.result.chart && r.result.chart.notes && r.result.chart.notes.length, savedAt: new Date(r.savedAt).toISOString() };
+          });
+          console.table(rows);
+          resolve(rows);
+        };
+      });
+    });
+  };
+  // ────────────────────────────────────────────────────────────────────────
   function setStatus(type, text, metaHtml) {
     var box = el("statusText");
     if (!box) return;
@@ -202,17 +293,37 @@
     var startBtn = el("startGame");
     var cancelBtn = el("cancelAnalyze");
     startBtn.disabled = true;
-    if (cancelBtn) cancelBtn.disabled = false;
     analyzeCancelled = false;
-    var densityLabel = humanDensityLabel((el("chartDensitySelect") && el("chartDensitySelect").value) || "normal");
+
+    var difficulty  = (el("difficultySelect")       && el("difficultySelect").value)       || "normal";
+    var density     = (el("chartDensitySelect")      && el("chartDensitySelect").value)      || "normal";
+    var strategy    = (el("analysisStrategySelect")  && el("analysisStrategySelect").value)  || "auto";
+    var playMode    = (el("playModeSelect")           && el("playModeSelect").value)           || "casual";
+    var densityLabel = humanDensityLabel(density);
+
     if (window.game && window.game.setReadySummary) window.game.setReadySummary("-", false, "-", densityLabel);
-    else setReady("-", false, "-", (el("chartDensitySelect") && el("chartDensitySelect").value) || "normal");
+    else setReady("-", false, "-", density);
+
+    // ── 1. Check browser-local cache first ──────────────────────────────
+    var cached = await idbGet(url, difficulty, density, strategy);
+    if (cached) {
+      if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("loading", "Loading from local cache…");
+      else setStatus("loading", "Loading from local cache…");
+      if (window.setWaitProgress) window.setWaitProgress(90, "Found in local cache ✦");
+      await applyJob({ result: cached });
+      if (window.setWaitProgress) window.setWaitProgress(100, "Loaded from local cache ✦");
+      return;
+    }
+
+    // ── 2. Server analysis ───────────────────────────────────────────────
+    if (cancelBtn) cancelBtn.disabled = false;
     if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("loading", "Analyzing link rhythm...");
     else setStatus("loading", "Analyzing link rhythm...");
+
     var resp = await fetch(API_BASE + "/api/analyze-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: url, difficulty: ((el("difficultySelect") && el("difficultySelect").value) || "normal"), playMode: ((el("playModeSelect") && el("playModeSelect").value) || "casual"), analysisStrategy: ((el("analysisStrategySelect") && el("analysisStrategySelect").value) || "auto"), chartDensity: ((el("chartDensitySelect") && el("chartDensitySelect").value) || "normal") })
+      body: JSON.stringify({ url: url, difficulty: difficulty, playMode: playMode, analysisStrategy: strategy, chartDensity: density })
     });
     var created = await resp.json();
     currentAnalyzeJobId = created.jobId || null;
@@ -220,6 +331,10 @@
     var job = await pollJob(created.jobId);
     currentAnalyzeJobId = null;
     if (cancelBtn) cancelBtn.disabled = true;
+
+    // ── 3. Save to browser cache before applying ─────────────────────────
+    if (job && job.result) await idbSet(url, difficulty, density, strategy, job.result);
+
     await applyJob(job);
   }
 
