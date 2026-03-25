@@ -3896,9 +3896,14 @@ RhythmGame.prototype._resultPlayAgain = function() {
 };
 
 RhythmGame.prototype._resultBackToMenu = function() {
-    this.runResult=null;this.resultButtons=[];
-    this.setRunPhase('ready');this.setScene('ready',{force:true});
-    this.syncReadyState();this.updateHUD();
+    this.runResult = null;
+    this.resultButtons = [];
+    // Clear the game canvas so result screen doesn't bleed through
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.setRunPhase('ready');
+    this.setScene('ready', { force: true });
+    this.syncReadyState();
+    this.updateHUD();
 };
 
 // Initialize the game
