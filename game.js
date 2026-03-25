@@ -2529,48 +2529,47 @@ class RhythmGame {
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
                 const marker = ''; // no number labels on notes
                 if (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
-                    const displayLabel = note.keyboardCheckpoint && !note.keyboardHit ? `${tutorialLabel} + ${note.keyboardHint || 'SPACE'}` : tutorialLabel;
-                    const labelW = Math.max(note.noteType === 'hold' && note.inputChannel === 'keyboard' ? this.circleSize * 2.45 : this.circleSize * 1.8, displayLabel.length * (note.noteType === 'hold' && note.inputChannel === 'keyboard' ? 14 : 12));
-                    const labelH = note.noteType === 'hold' && note.inputChannel === 'keyboard' ? this.circleSize * 0.92 : this.circleSize * 0.7;
-                    const labelRise = (1 - note.approachProgress) * 6;
-                    const labelAlpha = Math.min(1, 0.25 + note.approachProgress * 1.05);
-                    this.ctx.globalAlpha = labelAlpha;
-                    this.ctx.beginPath();
-                    this.ctx.roundRect(note.x - labelW / 2, note.y - labelH / 2 - labelRise, labelW, labelH, 10);
-                    this.ctx.fillStyle = 'rgba(10,16,26,0.78)';
-                    this.ctx.fill();
-                    this.ctx.lineWidth = 2.5;
-                    this.ctx.strokeStyle = palette.edge;
-                    this.ctx.stroke();
-                    this.ctx.shadowBlur = 14;
+                    // 8bit pixel tutorial badge above note
+                    const displayLabel = note.keyboardCheckpoint && !note.keyboardHit
+                        ? `${tutorialLabel}+${note.keyboardHint || 'SPC'}`
+                        : (note.inputChannel === 'keyboard' && note.keyHint)
+                            ? `[${String(note.keyboardHint || note.keyHint || 'SPACE').toUpperCase()}]`
+                            : tutorialLabel;
+                    const labelA = Math.min(1, 0.3 + note.approachProgress * 1.1);
+                    const badgeY = note.y - this.circleSize * 1.55;
+                    const cw = this.circleSize;
+                    this.ctx.save();
+                    this.ctx.imageSmoothingEnabled = false;
+                    this.ctx.globalAlpha = labelA;
+                    // pixel badge background (dark fill, neon border)
+                    const bw2 = Math.max(displayLabel.length * 7 + 12, cw * 1.6);
+                    const bh = 18;
+                    const bx = note.x - bw2 / 2;
+                    const by = badgeY - bh / 2;
+                    this.ctx.fillStyle = 'rgba(4,12,20,.92)';
+                    this.ctx.fillRect(bx, by, bw2, bh);
+                    this.ctx.fillStyle = palette.edge;
+                    this.ctx.fillRect(bx, by, bw2, 2);
+                    this.ctx.fillRect(bx, by + bh - 2, bw2, 2);
+                    this.ctx.fillRect(bx, by, 2, bh);
+                    this.ctx.fillRect(bx + bw2 - 2, by, 2, bh);
+                    // bracket corners
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillRect(bx, by, 4, 4);
+                    this.ctx.fillRect(bx + bw2 - 4, by, 4, 4);
+                    this.ctx.fillRect(bx, by + bh - 4, 4, 4);
+                    this.ctx.fillRect(bx + bw2 - 4, by + bh - 4, 4, 4);
+                    // label text
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.font = '700 10px "Press Start 2P", monospace';
+                    this.ctx.shadowBlur = 10;
                     this.ctx.shadowColor = palette.edge;
-                    this.ctx.font = note.noteType === 'hold' && note.inputChannel === 'keyboard' ? '900 24px "Trebuchet MS", "Arial Black", sans-serif' : '900 20px "Trebuchet MS", "Arial Black", sans-serif';
-                    this.ctx.fillStyle = '#f8fcff';
-                    this.ctx.fillText(displayLabel, note.x, note.y + 0.5 - labelRise);
+                    this.ctx.fillStyle = palette.edge;
+                    this.ctx.fillText(displayLabel, note.x, badgeY + 0.5);
                     this.ctx.shadowBlur = 0;
                     this.ctx.globalAlpha = 1;
-                } else {
-                    // Only show number for tap notes; skip for drag/hold/flick/spin
-                    if (note.noteType === 'tap' && marker) {
-                        this.ctx.font = '900 18px "Arial Black", sans-serif';
-                        this.ctx.fillStyle = '#f3fcff';
-                        this.ctx.fillText(marker, note.x, note.y + 1);
-                    }
-                }
-                if ((note.keyboardCheckpoint || note.keyHint) && (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit))) {
-                    const chipW = this.circleSize * 1.15;
-                    const chipH = this.circleSize * 0.42;
-                    const chipY = note.y - this.circleSize * 1.18;
-                    this.ctx.beginPath();
-                    this.ctx.roundRect(note.x - chipW / 2, chipY - chipH / 2, chipW, chipH, 8);
-                    this.ctx.fillStyle = 'rgba(14,18,30,0.84)';
-                    this.ctx.fill();
-                    this.ctx.lineWidth = 2;
-                    this.ctx.strokeStyle = '#ffffff';
-                    this.ctx.stroke();
-                    this.ctx.font = '900 12px "Arial Black", sans-serif';
-                    this.ctx.fillStyle = '#ffffff';
-                    this.ctx.fillText(note.keyboardHint || note.keyHint || 'SPACE', note.x, chipY + 0.5);
+                    this.ctx.restore();
                 }
             }
 
@@ -3131,22 +3130,57 @@ RhythmGame.prototype.drawFloatJudges = function () {
     this.floatJudges = this.floatJudges.filter(j => now - j.at < j.lifeMs);
     const ctx = this.ctx;
     ctx.save();
+    ctx.imageSmoothingEnabled = false;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const j of this.floatJudges) {
         const t = (now - j.at) / j.lifeMs;
-        const alpha = Math.max(0, 1 - t * 1.6);
-        const rise = t * 32;
+        const alpha = Math.max(0, 1 - t * 1.5);
+        const rise = t * 40;
+        const scaleT = t < 0.15 ? (t / 0.15) : 1; // pop-in
+        const sx = j.x;
+        const sy = j.y - rise;
+        const fontSize = Math.round(j.size * (0.7 + scaleT * 0.3));
+
         ctx.globalAlpha = alpha;
-        ctx.font = `900 ${j.size}px "Press Start 2P", monospace`;
-        ctx.shadowBlur = 14;
-        ctx.shadowColor = j.shadow;
-        // outline
-        ctx.fillStyle = 'rgba(4,12,20,.7)';
-        ctx.fillText(j.text, j.x + 2, j.y - rise + 2);
-        ctx.fillStyle = j.color;
-        ctx.fillText(j.text, j.x, j.y - rise);
-        ctx.shadowBlur = 0;
+
+        if (j.text === 'PERFECT') {
+            // Cyan pixel font with particle-like scatter marks
+            ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
+            ctx.shadowBlur = 16;
+            ctx.shadowColor = '#59efff';
+            // outline dark
+            ctx.fillStyle = 'rgba(4,12,20,.75)';
+            ctx.fillText(j.text, sx + 2, sy + 2);
+            // main cyan
+            ctx.fillStyle = '#59efff';
+            ctx.fillText(j.text, sx, sy);
+            // white highlight offset
+            ctx.fillStyle = 'rgba(255,255,255,.45)';
+            ctx.fillText(j.text, sx - 1, sy - 1);
+            ctx.shadowBlur = 0;
+        } else if (j.text === 'GOOD') {
+            ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
+            ctx.shadowBlur = 14;
+            ctx.shadowColor = '#ff79ae';
+            ctx.fillStyle = 'rgba(4,12,20,.75)';
+            ctx.fillText(j.text, sx + 2, sy + 2);
+            ctx.fillStyle = '#ff79ae';
+            ctx.fillText(j.text, sx, sy);
+            ctx.shadowBlur = 0;
+        } else if (j.text === 'MISS') {
+            // Red pixel text with dark bg band
+            const bandW = fontSize * j.text.length * 0.72;
+            const bandH = fontSize * 1.1;
+            ctx.fillStyle = 'rgba(80,8,8,.7)';
+            ctx.fillRect(sx - bandW / 2 - 4, sy - bandH / 2, bandW + 8, bandH);
+            ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = '#ff2222';
+            ctx.fillStyle = '#ff3a3a';
+            ctx.fillText(j.text, sx, sy);
+            ctx.shadowBlur = 0;
+        }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
