@@ -258,7 +258,12 @@ class RhythmGame {
         else if (phase === 'paused-user' || phase === 'paused-system') this.setScene('playing');
         else if (phase === 'ready') this.setScene('ready');
         else if (phase === 'idle') this.setScene('input');
-        else if (phase === 'finished') { /* result screen handles scene transition */ this.updateHUD(); }
+        else if (phase === 'finished') {
+            // Hide setup panel so result screen canvas draws cleanly over the background
+            const uploadContainer = document.getElementById('uploadContainer');
+            if (uploadContainer) uploadContainer.classList.add('hidden');
+            this.updateHUD();
+        }
         else if (phase === 'failed') this.setScene('ready', { force: true });
         else this.updateHUD();
     }
@@ -3419,19 +3424,19 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         note.controlY = midY + dx / L * curve;
     }
 
-    // Brute-force separation: push note away from any overlapping neighbor
-    const _sepR = this.circleSize * 2.4;
-    for (let _iter = 0; _iter < 8; _iter++) {
+    // Brute-force separation: push note away from any overlapping time-neighbor
+    const _sepR = this.circleSize * 2.8; // Must exceed note visual radius to prevent overlap
+    for (let _iter = 0; _iter < 12; _iter++) {
         let _moved = false;
         for (const neighbor of active) {
             const _dx = (note.x || 0) - (neighbor.x || 0);
             const _dy = (note.y || 0) - (neighbor.y || 0);
             const _dist = Math.hypot(_dx, _dy);
             if (_dist < _sepR && _dist > 0.1) {
-                const _push = (_sepR - _dist) / 2;
+                const _push = (_sepR - _dist) * 0.6; // push more aggressively
                 const _nx = _dx / _dist, _ny = _dy / _dist;
                 note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, (note.x || 0) + _nx * _push));
-                note.y = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, (note.y || 0) + _ny * _push));
+                note.y = Math.max(this.safeArea.y + this.circleSize + 90, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, (note.y || 0) + _ny * _push));
                 _moved = true;
             }
         }
