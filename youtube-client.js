@@ -203,44 +203,6 @@
     var startBtn = el("startGame");
     var game = await waitForGame();
 
-    if (job.result.mode === "offline" || job.result.mode === "offline-capture-fallback" || job.result.mode === "capture-poc") {
-      // Prefer proven buffer playback path for reliability.
-      if (game.setStatusMessage) game.setStatusMessage("loading", "Loading analyzed audio...");
-      else setStatus("loading", "Loading analyzed audio...");
-      try {
-        var audioResp = await fetch(API_BASE + job.result.audioUrl);
-        if (!audioResp.ok) throw new Error("audio fetch failed");
-        var arrayBuffer = await audioResp.arrayBuffer();
-        var decoded = await game.audioContext.decodeAudioData(arrayBuffer.slice(0));
-        if (game.loadOfflineChartRuntime) game.loadOfflineChartRuntime(job.result.chart, decoded);
-        startBtn.disabled = false;
-        if (game.setReadySummary) game.setReadySummary("offline", true, job.result.chart.notes.length, humanDensityLabel(job.result.chart && job.result.chart.chartDensity));
-        else setReady("offline", true, job.result.chart.notes.length, job.result.chart && job.result.chart.chartDensity);
-        if (game.setStatusMessage) game.setStatusMessage("success", "Offline ready · notes: " + job.result.chart.notes.length);
-        else setStatus("success", "Offline ready · notes: " + job.result.chart.notes.length);
-      } catch (e) {
-        // fallback to live stream mode when decode path fails
-        var offlineStreamConfig;
-        if (job.result.hlsUrl) {
-          offlineStreamConfig = {
-            bpm: 122,
-            player: { type: "hls", url: API_BASE + job.result.hlsUrl },
-            fallbackAudioUrl: API_BASE + job.result.audioUrl
-          };
-        } else {
-          offlineStreamConfig = { bpm: 122, player: { type: "audio", url: API_BASE + job.result.audioUrl } };
-        }
-        if (game.loadOfflineStreamChartRuntime) game.loadOfflineStreamChartRuntime(job.result.chart, offlineStreamConfig);
-        startBtn.disabled = false;
-        if (game.setReadySummary) game.setReadySummary("offline", true, job.result.chart.notes.length + " notes", humanDensityLabel(job.result.chart && job.result.chart.chartDensity));
-        else setReady("offline", true, job.result.chart.notes.length + " notes", job.result.chart && job.result.chart.chartDensity);
-        if (game.setStatusMessage) game.setStatusMessage("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
-        else setStatus("success", "Offline ready · stream fallback · notes: " + job.result.chart.notes.length);
-      }
-      if (el("searchPanel")) el("searchPanel").style.display = "none";
-      return;
-    }
-
     if (job.result.mode === "online-analyzed") {
       var analyzedConfig = {
         bpm: (job.result.analysis && job.result.analysis.bpm) || 122,

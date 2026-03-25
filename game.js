@@ -333,15 +333,8 @@ class RhythmGame {
     }
 
     loadOfflineAudioBuffer(audioBuffer) {
-        this.audioBuffer = audioBuffer || null;
-        this.chartMode = false;
-        this.chartData = null;
-        this.nextChartIndex = 0;
-        if (this.chartRuntime?.reset) this.chartRuntime.reset(null);
-        this.liveMode = false;
-        this.liveConfig = null;
-        this.setScene('ready', { error: '' });
-        this.setupLoadedState('offline');
+        // Local file upload removed — online link mode only
+        console.warn('loadOfflineAudioBuffer: local upload disabled');
     }
 
     loadOfflineChartRuntime(chart, audioBuffer = null) {
@@ -441,32 +434,6 @@ class RhythmGame {
         const overlayResumeBtn = document.getElementById('overlayResumeBtn');
         const difficultySelect = document.getElementById('difficultySelect');
         const playModeSelect = document.getElementById('playModeSelect');
-
-        // File upload functionality
-        audioUpload.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                try {
-                    // Update the file upload button text to show the selected file name
-                    const fileUploadBtn = document.querySelector('.file-upload-btn');
-                    if (fileUploadBtn) {
-                        fileUploadBtn.textContent = file.name.length > 20 ? 
-                            file.name.substring(0, 17) + '...' : 
-                            file.name;
-                    }
-                    
-                    this.setStatusMessage('loading', 'Loading...');
-                    const arrayBuffer = await file.arrayBuffer();
-                    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-                    this.loadOfflineAudioBuffer(audioBuffer);
-                    this.setStatusMessage('success', 'File loaded successfully!');
-                } catch (error) {
-                    console.error('Error loading audio file:', error);
-                    this.clearLoadedState('Failed to load audio file');
-                    this.setStatusMessage('error', 'Failed to load audio file, please try another file');
-                }
-            }
-        });
 
         // Start game button
         startButton.addEventListener('click', async () => {
@@ -630,8 +597,9 @@ class RhythmGame {
         this.updateHUD();
 
         if (!this.chartMode && !this.liveMode) {
-            this.setStatusMessage('loading', 'Analyzing beats (preAnalyzeSong)...');
-            await this.preAnalyzeSong();
+            // Local file mode removed — skip offline pre-analysis
+            this.vocalSections = [];
+            this.analyzedSections = [];
         } else {
             this.analyzedSections = [];
             this.vocalSections = [];
@@ -738,13 +706,8 @@ class RhythmGame {
 
         let dataArray = new Uint8Array(this.analyser.frequencyBinCount);
         if (!this.liveMode) {
-            const source = this.audioContext.createBufferSource();
-            source.buffer = this.audioBuffer;
-            source.connect(this.analyser);
-            this.analyser.connect(this.audioContext.destination);
-            this.analyser.fftSize = 2048;
-            dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-            source.start();
+            // Local file mode removed — this path should not be reached in online-only mode
+            console.warn('beginRun: non-live, non-chart mode is unsupported');
         }
         return dataArray;
     }
@@ -847,106 +810,8 @@ class RhythmGame {
     
     // Pre-analyze the song, identify vocal parts and plan button generation
     async preAnalyzeSong() {
-        if (!this.audioBuffer || !this.audioBuffer.duration) {
-            this.vocalSections = [];
-            this.analyzedSections = [];
-            return;
-        }
-        return new Promise(resolve => {
-            // Show analyzing prompt
-            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.fillStyle = '#fff';
-            this.ctx.font = '36px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText('Analyzing song...', this.canvas.width / 2, this.canvas.height / 2 - 40);
-            
-            // Create offline audio context for analysis
-            const offlineCtx = new OfflineAudioContext({
-                numberOfChannels: 2,
-                length: 44100 * this.audioBuffer.duration,
-                sampleRate: 44100,
-            });
-            
-            // Create audio source
-            const source = offlineCtx.createBufferSource();
-            source.buffer = this.audioBuffer;
-            
-            // Create analyzer
-            const analyser = offlineCtx.createAnalyser();
-            analyser.fftSize = 2048;
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            
-            source.connect(analyser);
-            analyser.connect(offlineCtx.destination);
-            
-            // Define analysis interval (seconds)
-            const interval = 0.1; // Analyze every 0.1 second
-            const duration = this.audioBuffer.duration;
-            const sections = [];
-            
-            // Preparation before starting analysis
-            source.start();
-            
-            // Set callback for analysis at each time point
-            for (let time = 0; time < duration; time += interval) {
-                const analyzeTime = time;
-                offlineCtx.suspend(analyzeTime).then(() => {
-                    // Get frequency data
-                    analyser.getByteFrequencyData(dataArray);
-                    
-                    // Calculate vocal energy
-                    let vocalEnergy = 0;
-                    const sampleRate = offlineCtx.sampleRate;
-                    const vocalMinBin = Math.floor(this.vocalFreqRange.min * analyser.fftSize / sampleRate);
-                    const vocalMaxBin = Math.floor(this.vocalFreqRange.max * analyser.fftSize / sampleRate);
-                    
-                    // Ensure index is within valid range
-                    const minBin = Math.max(0, Math.min(vocalMinBin, dataArray.length - 1));
-                    const maxBin = Math.max(0, Math.min(vocalMaxBin, dataArray.length - 1));
-                    
-                    // Calculate energy in the vocal frequency range
-                    for (let i = minBin; i <= maxBin; i++) {
-                        vocalEnergy += dataArray[i];
-                    }
-                    vocalEnergy /= (maxBin - minBin + 1);
-                    
-                    // Calculate low frequency energy for beat detection
-                    let beatEnergy = 0;
-                    for (let i = 0; i < 32; i++) {
-                        beatEnergy += dataArray[i];
-                    }
-                    beatEnergy /= 32;
-                    
-                    // Store analysis results
-                    sections.push({
-                        time: analyzeTime,
-                        vocalEnergy: vocalEnergy,
-                        beatEnergy: beatEnergy,
-                        hasVocal: vocalEnergy > 100, // Simple threshold detection
-                        hasBeat: beatEnergy > 100    // Simple threshold detection
-                    });
-                    
-                    // Continue analysis
-                    offlineCtx.resume();
-                });
-            }
-            
-            // Processing after rendering is complete
-            offlineCtx.startRendering().then(() => {
-                // Sort by time
-                sections.sort((a, b) => a.time - b.time);
-                
-                // Save analysis results
-                this.analyzedSections = sections;
-                
-                // Process analysis results, identify vocal sections and beats
-                this.processAnalyzedData();
-                
-                console.log('Song analysis complete, vocal sections:', this.vocalSections.length);
-                resolve();
-            });
-        });
+        this.vocalSections = [];
+        this.analyzedSections = [];
     }
     
     // Process pre-analyzed data
@@ -1081,7 +946,7 @@ class RhythmGame {
 
     syncReadyState() {
         const startButton = document.getElementById('startGame');
-        const hasOffline = Boolean(this.audioBuffer && this.readyMode === 'offline');
+        const hasOffline = false; // local file upload disabled
         const hasLive = Boolean(this.readyMode && (this.liveMode || this.chartMode || this.liveConfig || this.chartData));
         const ready = hasOffline || hasLive;
         const busyStarting = this.gameState === 'starting' || this.gameState === 'awaiting-playback' || Boolean(this.pendingPlaybackStart?.promise);
@@ -3354,6 +3219,26 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         }
     }
 
+    // Brute-force separation: push live note away from any overlapping neighbor
+    const _liveActive = this._activeLiveNotes();
+    const _liveR = this.circleSize * 2.4;
+    for (let _iter = 0; _iter < 8; _iter++) {
+        let _moved = false;
+        for (const neighbor of _liveActive) {
+            const _dx = (note.x || 0) - (neighbor.x || 0);
+            const _dy = (note.y || 0) - (neighbor.y || 0);
+            const _dist = Math.hypot(_dx, _dy);
+            if (_dist < _liveR && _dist > 0.1) {
+                const _push = (_liveR - _dist) / 2;
+                const _nx = _dx / _dist, _ny = _dy / _dist;
+                note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, (note.x || 0) + _nx * _push));
+                note.y = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, (note.y || 0) + _ny * _push));
+                _moved = true;
+            }
+        }
+        if (!_moved) break;
+    }
+
     this.liveEngine.lastSpawnX = note.x;
     this.liveEngine.lastSpawnY = note.y;
     this.liveEngine.phrase.left -= 1;
@@ -3385,8 +3270,13 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         });
     let basePos = null;
     let chosenLane = laneIndex;
-    const active = (this.notes || []).filter(n => !n.hit && !n.completed);
-    const minNoteSpacing = this.circleSize * 3.2;
+    // Only check notes that could be visible at the same time
+    const visibleWindow = (this.spawnLeadTimeMs / 1000) * 1.2; // slightly wider than approach window
+    const active = (this.notes || []).filter(n =>
+        !n.hit && !n.completed &&
+        Math.abs((n.hitTime || 0) - (chartNote.time || 0)) < visibleWindow
+    );
+    const minNoteSpacing = this.circleSize * 2.8;
     const hudExclusionY = 90;
     for (const shift of candidateShifts) {
         const candidateLane = Math.max(0, Math.min(laneCount - 1, laneIndex + shift));
@@ -3527,6 +3417,25 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         const curve = Math.min(this.circleSize * 1.6, L * 0.24);
         note.controlX = midX - dy / L * curve;
         note.controlY = midY + dx / L * curve;
+    }
+
+    // Brute-force separation: push note away from any overlapping neighbor
+    const _sepR = this.circleSize * 2.4;
+    for (let _iter = 0; _iter < 8; _iter++) {
+        let _moved = false;
+        for (const neighbor of active) {
+            const _dx = (note.x || 0) - (neighbor.x || 0);
+            const _dy = (note.y || 0) - (neighbor.y || 0);
+            const _dist = Math.hypot(_dx, _dy);
+            if (_dist < _sepR && _dist > 0.1) {
+                const _push = (_sepR - _dist) / 2;
+                const _nx = _dx / _dist, _ny = _dy / _dist;
+                note.x = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, (note.x || 0) + _nx * _push));
+                note.y = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, (note.y || 0) + _ny * _push));
+                _moved = true;
+            }
+        }
+        if (!_moved) break;
     }
 
     return note;
