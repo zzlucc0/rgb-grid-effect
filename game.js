@@ -2183,34 +2183,21 @@ class RhythmGame {
                         this.ctx.lineTo(vec.x * shell * 0.35 + px * shell * 0.18, vec.y * shell * 0.35 + py * shell * 0.18);
                         this.ctx.stroke();
                     } else {
-                        // 8bit L-bracket corners
-                        const size = shell * 1.44;
+                        // Light corner brackets only
+                        const size = shell * 1.38;
                         const hf = size / 2;
-                        const arm = Math.max(7, size * 0.26);
-                        const th = Math.max(3, Math.round(size / 20));
-                        const alpha = 0.32 + rotateT * 0.44;
-                        this.ctx.strokeStyle = 'none';
-                        this.ctx.shadowBlur = 0;
+                        const arm = Math.max(6, size * 0.20);
+                        const th = 2;
+                        const alpha = (0.18 + rotateT * 0.35) * (0.5 + 0.5 * Math.sin(performance.now() / 280));
                         this.ctx.fillStyle = `rgba(89,239,255,${alpha.toFixed(3)})`;
-                        // top-left
                         this.ctx.fillRect(-hf, -hf, arm, th);
                         this.ctx.fillRect(-hf, -hf, th, arm);
-                        // top-right
                         this.ctx.fillRect(hf - arm, -hf, arm, th);
                         this.ctx.fillRect(hf - th, -hf, th, arm);
-                        // bottom-left
                         this.ctx.fillRect(-hf, hf - th, arm, th);
                         this.ctx.fillRect(-hf, hf - arm, th, arm);
-                        // bottom-right
                         this.ctx.fillRect(hf - arm, hf - th, arm, th);
                         this.ctx.fillRect(hf - th, hf - arm, th, arm);
-                        // corner dots
-                        const dot = th + 2;
-                        this.ctx.fillStyle = `rgba(89,239,255,${Math.min(1, alpha + 0.3).toFixed(3)})`;
-                        this.ctx.fillRect(-hf, -hf, dot, dot);
-                        this.ctx.fillRect(hf - dot, -hf, dot, dot);
-                        this.ctx.fillRect(-hf, hf - dot, dot, dot);
-                        this.ctx.fillRect(hf - dot, hf - dot, dot, dot);
                     }
                     this.ctx.restore();
                 }
@@ -2466,52 +2453,38 @@ class RhythmGame {
                 this.ctx.stroke();
             }
             
-            // ── 8bit pixel tap ─────────────────────────────────────────────
-            const bodySize = Math.round(this.circleSize * 0.94 * popScale * tighten * bodyPulse);
-            const bodyX = Math.round(note.x - bodySize * 0.68);
-            const bodyY = Math.round(note.y - bodySize * 0.68);
-            const bodyW = Math.round(bodySize * 1.36);
-            const bodyH = Math.round(bodySize * 1.36);
-            const pw = Math.max(2, Math.round(bodyW / 14));
+            // ── 8bit pixel tap (light) ──────────────────────────────────────
+            const bodySize = Math.round(this.circleSize * 0.82 * popScale * tighten * bodyPulse);
+            const bodyX = Math.round(note.x - bodySize * 0.5);
+            const bodyY = Math.round(note.y - bodySize * 0.5);
+            const bodyW = bodySize;
+            const bodyH = bodySize;
+            const pw = Math.max(2, Math.round(bodyW / 16));
             this.ctx.save();
             this.ctx.imageSmoothingEnabled = false;
-            // fill
-            this.ctx.fillStyle = 'rgba(4,12,20,.97)';
+            // dark fill - semi-transparent
+            this.ctx.fillStyle = 'rgba(4,12,20,.72)';
             this.ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
-            // border (pixel-wide filled rects)
+            // neon border
+            const bAlpha = 0.70 + dangerPulse * 0.28 + spawnFlash * 0.18;
             this.ctx.fillStyle = palette.edge;
-            this.ctx.globalAlpha = 0.85 + dangerPulse * 0.15 + spawnFlash * 0.15;
+            this.ctx.globalAlpha = bAlpha;
             this.ctx.fillRect(bodyX, bodyY, bodyW, pw);
             this.ctx.fillRect(bodyX, bodyY + bodyH - pw, bodyW, pw);
             this.ctx.fillRect(bodyX, bodyY, pw, bodyH);
             this.ctx.fillRect(bodyX + bodyW - pw, bodyY, pw, bodyH);
             this.ctx.globalAlpha = 1;
-            // inner glow fill
-            this.ctx.fillStyle = palette.glow.replace('.38', '.07').replace('.42', '.07').replace('.4', '.07');
+            // tiny inner glow
+            this.ctx.fillStyle = palette.glow.replace('.38', '.06').replace('.42', '.06').replace('.4', '.06');
             this.ctx.fillRect(bodyX + pw * 2, bodyY + pw * 2, bodyW - pw * 4, bodyH - pw * 4);
-            // crosshair
-            this.ctx.fillStyle = palette.edge;
-            this.ctx.globalAlpha = 0.30;
-            this.ctx.fillRect(bodyX + pw * 2, note.y - 1, bodyW - pw * 4, 2);
-            this.ctx.fillRect(note.x - 1, bodyY + pw * 2, 2, bodyH - pw * 4);
-            this.ctx.globalAlpha = 1;
-            // inner corner dots
-            const ca = pw + 2;
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.globalAlpha = 0.45;
-            this.ctx.fillRect(bodyX + ca, bodyY + ca, pw, pw);
-            this.ctx.fillRect(bodyX + bodyW - ca - pw, bodyY + ca, pw, pw);
-            this.ctx.fillRect(bodyX + ca, bodyY + bodyH - ca - pw, pw, pw);
-            this.ctx.fillRect(bodyX + bodyW - ca - pw, bodyY + bodyH - ca - pw, pw, pw);
-            this.ctx.globalAlpha = 1;
-            // danger outer flash border
+            // danger pulse extra ring
             if (dangerPulse > 0.02) {
-                this.ctx.fillStyle = '#ffffff';
-                this.ctx.globalAlpha = dangerPulse * 0.45;
-                this.ctx.fillRect(bodyX - pw, bodyY - pw, bodyW + pw * 2, pw);
-                this.ctx.fillRect(bodyX - pw, bodyY + bodyH, bodyW + pw * 2, pw);
-                this.ctx.fillRect(bodyX - pw, bodyY - pw, pw, bodyH + pw * 2);
-                this.ctx.fillRect(bodyX + bodyW, bodyY - pw, pw, bodyH + pw * 2);
+                this.ctx.fillStyle = palette.edge;
+                this.ctx.globalAlpha = dangerPulse * 0.5;
+                this.ctx.fillRect(bodyX - pw * 2, bodyY - pw * 2, bodyW + pw * 4, pw);
+                this.ctx.fillRect(bodyX - pw * 2, bodyY + bodyH + pw, bodyW + pw * 4, pw);
+                this.ctx.fillRect(bodyX - pw * 2, bodyY - pw * 2, pw, bodyH + pw * 4);
+                this.ctx.fillRect(bodyX + bodyW + pw, bodyY - pw * 2, pw, bodyH + pw * 4);
                 this.ctx.globalAlpha = 1;
             }
             this.ctx.restore();
@@ -2529,44 +2502,26 @@ class RhythmGame {
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
                 const marker = ''; // no number labels on notes
                 if (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
-                    // 8bit pixel tutorial badge above note
+                    // Tutorial label CENTERED on note
+                    const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit
-                        ? `${tutorialLabel}+${note.keyboardHint || 'SPC'}`
-                        : (note.inputChannel === 'keyboard' && note.keyHint)
-                            ? `[${String(note.keyboardHint || note.keyHint || 'SPACE').toUpperCase()}]`
+                        ? String(note.keyboardHint || note.keyboardHint || note.keyHint || 'SPACE').toUpperCase()
+                        : isKbd
+                            ? String(note.keyboardHint || note.keyHint || 'SPACE').toUpperCase()
                             : tutorialLabel;
-                    const labelA = Math.min(1, 0.3 + note.approachProgress * 1.1);
-                    const badgeY = note.y - this.circleSize * 1.55;
-                    const cw = this.circleSize;
+                    const labelA = Math.min(1, 0.4 + note.approachProgress * 0.9);
+                    const fs = Math.max(11, Math.round(bodySize * 0.36));
                     this.ctx.save();
-                    this.ctx.imageSmoothingEnabled = false;
-                    this.ctx.globalAlpha = labelA;
-                    // pixel badge background (dark fill, neon border)
-                    const bw2 = Math.max(displayLabel.length * 7 + 12, cw * 1.6);
-                    const bh = 18;
-                    const bx = note.x - bw2 / 2;
-                    const by = badgeY - bh / 2;
-                    this.ctx.fillStyle = 'rgba(4,12,20,.92)';
-                    this.ctx.fillRect(bx, by, bw2, bh);
-                    this.ctx.fillStyle = palette.edge;
-                    this.ctx.fillRect(bx, by, bw2, 2);
-                    this.ctx.fillRect(bx, by + bh - 2, bw2, 2);
-                    this.ctx.fillRect(bx, by, 2, bh);
-                    this.ctx.fillRect(bx + bw2 - 2, by, 2, bh);
-                    // bracket corners
-                    this.ctx.fillStyle = '#ffffff';
-                    this.ctx.fillRect(bx, by, 4, 4);
-                    this.ctx.fillRect(bx + bw2 - 4, by, 4, 4);
-                    this.ctx.fillRect(bx, by + bh - 4, 4, 4);
-                    this.ctx.fillRect(bx + bw2 - 4, by + bh - 4, 4, 4);
-                    // label text
                     this.ctx.textAlign = 'center';
                     this.ctx.textBaseline = 'middle';
-                    this.ctx.font = '700 10px "Press Start 2P", monospace';
-                    this.ctx.shadowBlur = 10;
+                    this.ctx.globalAlpha = labelA;
+                    this.ctx.font = `900 ${fs}px "Press Start 2P", monospace`;
+                    this.ctx.shadowBlur = 12;
                     this.ctx.shadowColor = palette.edge;
-                    this.ctx.fillStyle = palette.edge;
-                    this.ctx.fillText(displayLabel, note.x, badgeY + 0.5);
+                    this.ctx.fillStyle = 'rgba(4,12,20,.65)';
+                    this.ctx.fillText(displayLabel, note.x + 2, note.y + 2);
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillText(displayLabel, note.x, note.y);
                     this.ctx.shadowBlur = 0;
                     this.ctx.globalAlpha = 1;
                     this.ctx.restore();
@@ -3135,52 +3090,89 @@ RhythmGame.prototype.drawFloatJudges = function () {
     ctx.textBaseline = 'middle';
     for (const j of this.floatJudges) {
         const t = (now - j.at) / j.lifeMs;
-        const alpha = Math.max(0, 1 - t * 1.5);
-        const rise = t * 40;
-        const scaleT = t < 0.15 ? (t / 0.15) : 1; // pop-in
+        const alpha = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85);
+        const rise = t * 50;
+        const bounceS = t < 0.12 ? 1 + 0.25 * Math.sin(t / 0.12 * Math.PI) : 1;
         const sx = j.x;
         const sy = j.y - rise;
-        const fontSize = Math.round(j.size * (0.7 + scaleT * 0.3));
+        const fontSize = Math.round(j.size * bounceS);
 
         ctx.globalAlpha = alpha;
+        ctx.save();
+        ctx.translate(sx, sy);
 
         if (j.text === 'PERFECT') {
-            // Cyan pixel font with particle-like scatter marks
+            // cyan 3D-ish pixel font
             ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
-            ctx.shadowBlur = 16;
+            // dark 3d shadow
+            for (let d = 3; d >= 1; d--) {
+                ctx.fillStyle = `rgba(0,80,100,${0.5 - d * 0.1})`;
+                ctx.fillText('PERFECT!', d, d + 2);
+            }
+            ctx.shadowBlur = 18;
             ctx.shadowColor = '#59efff';
-            // outline dark
-            ctx.fillStyle = 'rgba(4,12,20,.75)';
-            ctx.fillText(j.text, sx + 2, sy + 2);
-            // main cyan
             ctx.fillStyle = '#59efff';
-            ctx.fillText(j.text, sx, sy);
-            // white highlight offset
-            ctx.fillStyle = 'rgba(255,255,255,.45)';
-            ctx.fillText(j.text, sx - 1, sy - 1);
+            ctx.fillText('PERFECT!', 0, 0);
             ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.fillText('PERFECT!', -1, -2);
+            // pixel scatter particles (static per judge using seed)
+            ctx.fillStyle = '#59efff';
+            const seed = j.at % 100;
+            for (let i = 0; i < 14; i++) {
+                const ang = (seed + i * 23) % 360 * Math.PI / 180;
+                const dist = 24 + (seed + i * 17) % 22;
+                const ps = 2 + (i % 3);
+                ctx.globalAlpha = alpha * (0.4 + 0.5 * (1 - t));
+                ctx.fillRect(Math.cos(ang) * dist - ps/2, Math.sin(ang) * dist - ps/2, ps, ps);
+            }
+            ctx.globalAlpha = alpha;
         } else if (j.text === 'GOOD') {
             ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
-            ctx.shadowBlur = 14;
+            for (let d = 2; d >= 1; d--) {
+                ctx.fillStyle = `rgba(120,0,60,${0.45 - d * 0.1})`;
+                ctx.fillText('GOOD!', d, d + 2);
+            }
+            ctx.shadowBlur = 16;
             ctx.shadowColor = '#ff79ae';
-            ctx.fillStyle = 'rgba(4,12,20,.75)';
-            ctx.fillText(j.text, sx + 2, sy + 2);
             ctx.fillStyle = '#ff79ae';
-            ctx.fillText(j.text, sx, sy);
+            ctx.fillText('GOOD!', 0, 0);
             ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255,200,220,0.45)';
+            ctx.fillText('GOOD!', -1, -2);
+            // pink pixel scatter
+            const seed2 = j.at % 100;
+            for (let i = 0; i < 10; i++) {
+                const ang = (seed2 + i * 31) % 360 * Math.PI / 180;
+                const dist = 20 + (seed2 + i * 19) % 18;
+                const ps = 2 + (i % 2);
+                ctx.globalAlpha = alpha * (0.35 + 0.45 * (1 - t));
+                ctx.fillStyle = '#ff79ae';
+                ctx.fillRect(Math.cos(ang) * dist - ps/2, Math.sin(ang) * dist - ps/2, ps, ps);
+            }
+            ctx.globalAlpha = alpha;
         } else if (j.text === 'MISS') {
-            // Red pixel text with dark bg band
-            const bandW = fontSize * j.text.length * 0.72;
-            const bandH = fontSize * 1.1;
-            ctx.fillStyle = 'rgba(80,8,8,.7)';
-            ctx.fillRect(sx - bandW / 2 - 4, sy - bandH / 2, bandW + 8, bandH);
             ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
+            // dark red bg band like reference image
+            const bw3 = fontSize * 5.5;
+            const bh3 = fontSize * 1.4;
+            ctx.fillStyle = 'rgba(100,5,5,.82)';
+            ctx.fillRect(-bw3/2, -bh3/2, bw3, bh3);
+            // horizontal stripe texture
+            ctx.fillStyle = 'rgba(200,30,30,.20)';
+            for (let ln = -bh3/2 + 4; ln < bh3/2; ln += 6) {
+                ctx.fillRect(-bw3/2, ln, bw3, 2);
+            }
+            // 3D shadow
+            ctx.fillStyle = 'rgba(40,0,0,.7)';
+            ctx.fillText('MISS', 3, 3);
             ctx.shadowBlur = 12;
             ctx.shadowColor = '#ff2222';
-            ctx.fillStyle = '#ff3a3a';
-            ctx.fillText(j.text, sx, sy);
+            ctx.fillStyle = '#ff4444';
+            ctx.fillText('MISS', 0, 0);
             ctx.shadowBlur = 0;
         }
+        ctx.restore();
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -4554,12 +4546,12 @@ RhythmGame.prototype.showResultOverlay = function () {
 RhythmGame.prototype.floatJudges = [];
 RhythmGame.prototype.pushFloatJudge = function (type, x, y) {
     const cfg = {
-        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 12 },
-        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 11 },
-        miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 11 },
+        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 16 },
+        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 15 },
+        miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 15 },
     };
     const c = cfg[type] || cfg.good;
-    (this.floatJudges = this.floatJudges || []).push({ text: c.text, color: c.color, shadow: c.shadow, size: c.size, x, y: y || (this.canvas.height * 0.3), at: performance.now(), lifeMs: 680 });
+    (this.floatJudges = this.floatJudges || []).push({ text: c.text, color: c.color, shadow: c.shadow, size: c.size, x, y: y || (this.canvas.height * 0.3), at: performance.now(), lifeMs: 850 });
 };
 
 // Initialize the game
