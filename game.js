@@ -1289,6 +1289,7 @@ class RhythmGame {
         if (this.runOrchestrator?.finish) this.runOrchestrator.finish({ reason });
         const totalNotes = this.chartRuntime?.getProgress ? this.chartRuntime.getProgress().spawnedCount : this.spawnedChartNotes;
         this.setStatusMessage('success', `Run finished · ${reason}`, `spawned ${totalNotes || 0} notes`);
+        this.showResultOverlay();
     }
 
     failRun(error) {
@@ -2045,7 +2046,7 @@ class RhythmGame {
                 note.hit = true;
                 note.score = 'miss';
                 this.combo = 0;
-                this.recordJudgement('miss');
+                this.recordJudgement('miss', note.x, note.y);
                 return true;
             }
             
@@ -2508,7 +2509,7 @@ class RhythmGame {
                 const tutorialLimit = note.noteType === 'tap' ? 2 : 3;
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
-                const marker = note.noteType === 'spin' ? '↻' : note.noteType === 'hold' ? '◉' : note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '≈' : note.noteType === 'drag' ? '↘' : note.noteNumber.toString();
+                const marker = note.noteType === 'tap' ? note.noteNumber.toString() : '';
                 if (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit ? `${tutorialLabel} + ${note.keyboardHint || 'SPACE'}` : tutorialLabel;
                     const labelW = Math.max(note.noteType === 'hold' && note.inputChannel === 'keyboard' ? this.circleSize * 2.45 : this.circleSize * 1.8, displayLabel.length * (note.noteType === 'hold' && note.inputChannel === 'keyboard' ? 14 : 12));
@@ -2531,10 +2532,12 @@ class RhythmGame {
                     this.ctx.shadowBlur = 0;
                     this.ctx.globalAlpha = 1;
                 } else {
-                    const centerLabel = (note.keyboardHint || note.keyHint || marker || '').toString().toUpperCase();
-                    this.ctx.font = '900 20px "Arial Black", sans-serif';
-                    this.ctx.fillStyle = '#f3fcff';
-                    this.ctx.fillText(centerLabel, note.x, note.y + 0.5);
+                    // Only show number for tap notes; skip for drag/hold/flick/spin
+                    if (note.noteType === 'tap' && marker) {
+                        this.ctx.font = '900 18px "Arial Black", sans-serif';
+                        this.ctx.fillStyle = '#f3fcff';
+                        this.ctx.fillText(marker, note.x, note.y + 1);
+                    }
                 }
                 if ((note.keyboardCheckpoint || note.keyHint) && (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit))) {
                     const chipW = this.circleSize * 1.15;
@@ -2578,6 +2581,12 @@ class RhythmGame {
 
         // Draw song progress bar
         this.drawSongProgress();
+
+        // Draw float judge popups at note positions
+        this.drawFloatJudges();
+
+        // Draw glow connection lines between same-group tap notes
+        this.drawNoteLinks();
 
         // Draw combo / mode HUD
         this.drawComboHUD();
@@ -3040,6 +3049,85 @@ RhythmGame.prototype.getNotePalette = function (note) {
     if (note.score === 'miss') return { core: '#ff899f', edge: '#ff5f76', glow: 'rgba(255,95,118,.35)' };
     const base = note.groupPalette || this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex || note.phrase || 0);
     return this.decoratePaletteForNote(base, note);
+};
+
+RhythmGame.prototype.drawFloatJudges = function () {
+    if (!this.floatJudges) return;
+    const now = performance.now();
+    this.floatJudges = this.floatJudges.filter(j => now - j.at < j.lifeMs);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const j of this.floatJudges) {
+        const t = (now - j.at) / j.lifeMs;
+        const alpha = Math.max(0, 1 - t * 1.6);
+        const rise = t * 32;
+        ctx.globalAlpha = alpha;
+        ctx.font = `900 ${j.size}px "Press Start 2P", monospace`;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = j.shadow;
+        // outline
+        ctx.fillStyle = 'rgba(4,12,20,.7)';
+        ctx.fillText(j.text, j.x + 2, j.y - rise + 2);
+        ctx.fillStyle = j.color;
+        ctx.fillText(j.text, j.x, j.y - rise);
+        ctx.shadowBlur = 0;
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+};
+
+RhythmGame.prototype.drawNoteLinks = function () {
+    const ctx = this.ctx;
+    const notes = (this.notes || []).filter(n => !n.hit && !n.completed && n.noteType === 'tap');
+    if (notes.length < 2) return;
+    const now = performance.now();
+    ctx.save();
+    // Sort by note number within same group
+    const groups = {};
+    for (const n of notes) {
+        const key = n.groupKey || 'default';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(n);
+    }
+    for (const key in groups) {
+        const grp = groups[key].sort((a, b) => (a.noteNumber || 0) - (b.noteNumber || 0));
+        for (let i = 0; i < grp.length - 1; i++) {
+            const a = grp[i];
+            const b = grp[i + 1];
+            const dist = Math.hypot(b.x - a.x, b.y - a.y);
+            if (dist > this.circleSize * 12) continue; // skip if too far apart
+            const pct = Math.max(a.approachProgress || 0, b.approachProgress || 0);
+            const flow = 0.5 + 0.5 * Math.sin(now / 200 + i * 1.3);
+            const alpha = Math.min(0.55, pct * 0.75) * flow;
+            if (alpha < 0.04) continue;
+            const grd = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+            grd.addColorStop(0, `rgba(89,239,255,${alpha.toFixed(3)})`);
+            grd.addColorStop(0.5, `rgba(255,255,255,${(alpha * 0.7).toFixed(3)})`);
+            grd.addColorStop(1, `rgba(89,239,255,${alpha.toFixed(3)})`);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = grd;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 5]);
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#59efff';
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.shadowBlur = 0;
+            // traveling spark
+            const sparkT = ((now / 400) + i * 0.4) % 1;
+            const sx = a.x + (b.x - a.x) * sparkT;
+            const sy = a.y + (b.y - a.y) * sparkT;
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = alpha * 0.9;
+            ctx.fillRect(sx - 2, sy - 2, 4, 4);
+            ctx.globalAlpha = 1;
+        }
+    }
+    ctx.restore();
 };
 
 RhythmGame.prototype.drawSongProgress = function () {
@@ -4287,11 +4375,83 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
     return note;
 };
 
-RhythmGame.prototype.recordJudgement = function (score) {
+RhythmGame.prototype.recordJudgement = function (score, noteX, noteY) {
     if (!score || !this.judgementStats[score] && score !== 'miss') return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
-    this.pushFeedbackBanner(score, { y: this.canvas.height * 0.3, scale: score === 'perfect' ? 1.08 : (score === 'good' ? 0.98 : 0.94) });
+    const x = (noteX != null) ? noteX : this.canvas.width / 2;
+    const y = (noteY != null) ? noteY - this.circleSize * 1.8 : this.canvas.height * 0.3;
+    this.pushFloatJudge(score, x, y);
     this.updateHUD();
+};
+
+// ─── Result overlay shown after run finishes ─────────────────────────────────
+RhythmGame.prototype.showResultOverlay = function () {
+    const total = this.judgementStats.perfect + this.judgementStats.good + this.judgementStats.miss;
+    const acc = total ? ((this.judgementStats.perfect + this.judgementStats.good * 0.6) / total) * 100 : 0;
+    const score = Math.floor(this.score || 0);
+
+    let overlay = document.getElementById('resultOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'resultOverlay';
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'z-index:9999',
+            'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
+            'background:rgba(4,10,20,0.88)',
+            'font-family:"Press Start 2P",monospace',
+            'color:#59efff', 'pointer-events:all'
+        ].join(';');
+        document.body.appendChild(overlay);
+    }
+
+    const grade = acc >= 95 ? 'S' : acc >= 85 ? 'A' : acc >= 70 ? 'B' : acc >= 55 ? 'C' : 'D';
+    const gradeColor = acc >= 95 ? '#ffe95a' : acc >= 85 ? '#59efff' : acc >= 70 ? '#b892ff' : acc >= 55 ? '#ff9bb4' : '#ff5f76';
+
+    overlay.innerHTML = `
+        <div style="font-size:10px;letter-spacing:4px;color:rgba(89,239,255,.55);margin-bottom:18px">── RESULT ──</div>
+        <div style="font-size:52px;color:${gradeColor};text-shadow:0 0 24px ${gradeColor},0 0 8px #fff;margin-bottom:24px">${grade}</div>
+        <div style="font-size:22px;color:#fff;text-shadow:0 0 12px #59efff;margin-bottom:32px">${String(score).padStart(7,'0')}</div>
+        <div style="display:flex;gap:32px;margin-bottom:36px">
+            <div style="text-align:center">
+                <div style="font-size:18px;color:#59efff;text-shadow:0 0 10px #59efff">${this.judgementStats.perfect}</div>
+                <div style="font-size:7px;color:rgba(89,239,255,.55);margin-top:6px">PERFECT</div>
+            </div>
+            <div style="text-align:center">
+                <div style="font-size:18px;color:#ff9bb4;text-shadow:0 0 10px #ff9bb4">${this.judgementStats.good}</div>
+                <div style="font-size:7px;color:rgba(255,155,180,.55);margin-top:6px">GOOD</div>
+            </div>
+            <div style="text-align:center">
+                <div style="font-size:18px;color:#ff5f76;text-shadow:0 0 10px #ff5f76">${this.judgementStats.miss}</div>
+                <div style="font-size:7px;color:rgba(255,95,118,.55);margin-top:6px">MISS</div>
+            </div>
+        </div>
+        <div style="font-size:9px;color:rgba(89,239,255,.6);margin-bottom:28px">ACCURACY ${acc.toFixed(1)}%</div>
+        <button id="resultRetryBtn" style="
+            font-family:'Press Start 2P',monospace;font-size:9px;
+            padding:12px 28px;background:rgba(89,239,255,.08);
+            border:2px solid #59efff;color:#59efff;cursor:pointer;
+            text-shadow:0 0 10px #59efff;letter-spacing:2px;
+        ">PLAY AGAIN</button>`;
+    overlay.style.display = 'flex';
+    const btn = document.getElementById('resultRetryBtn');
+    if (btn) btn.onclick = () => {
+        overlay.style.display = 'none';
+        this.setScene('ready', { force: true });
+        this.setRunPhase('idle');
+        setTimeout(() => this.setScene('ready', { force: true }), 50);
+    };
+};
+
+// ─── Float judge text at note position ───────────────────────────────────────
+RhythmGame.prototype.floatJudges = [];
+RhythmGame.prototype.pushFloatJudge = function (type, x, y) {
+    const cfg = {
+        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 12 },
+        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 11 },
+        miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 11 },
+    };
+    const c = cfg[type] || cfg.good;
+    (this.floatJudges = this.floatJudges || []).push({ text: c.text, color: c.color, shadow: c.shadow, size: c.size, x, y: y || (this.canvas.height * 0.3), at: performance.now(), lifeMs: 680 });
 };
 
 // Initialize the game
