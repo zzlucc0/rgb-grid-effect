@@ -561,12 +561,13 @@ class RhythmGame {
     async enterRunStartSequence() {
         try {
             await this.prepareRun();
-            await this.runCountdown();
+            // Sync playback BEFORE countdown so player sees 3·2·1 only after audio is ready
             if (this.liveMode) {
                 this.setRunPhase('awaiting-playback');
-                this.setStatusMessage('loading', 'Countdown complete · waiting for playback to begin...');
+                this.setStatusMessage('loading', 'Linking playback…');
                 await this.startPlaybackAndWaitUntilPlaying();
             }
+            await this.runCountdown();
             const dataArray = this.beginRun();
             if (!this.liveMode) this.startPlaybackBackend();
             this.armGameLoop(dataArray);
