@@ -566,6 +566,9 @@ class RhythmGame {
                 this.setRunPhase('awaiting-playback');
                 this.setStatusMessage('loading', 'Linking playback…');
                 await this.startPlaybackAndWaitUntilPlaying();
+                // Sync complete — switch phase so sync overlay dismisses before countdown
+                this.gameState = 'starting';
+                this.updatePauseUI();
             }
             await this.runCountdown();
             const dataArray = this.beginRun();
