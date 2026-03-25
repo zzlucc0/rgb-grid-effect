@@ -74,6 +74,8 @@ class RhythmGame {
         this.tutorialSeenCounts = {};
         this.visualBursts = [];
         this.signatureBursts = [];
+        this.feedbackBanners = [];
+        this.countdownFlash = null;
         this.groupHistory = [];
         this.activeGroupState = null;
         this.segmentGroupPalettes = {
@@ -1009,53 +1011,75 @@ class RhythmGame {
                 Math.round(this.vocalSections.reduce((sum, s) => sum + s.plannedButtonCount, 0) / this.vocalSections.length) : 
                 'Analyzing';
 
-            const renderCountdown = () => {
+            const renderCountdown = (showStart = false) => {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                const panelW = Math.min(560, this.canvas.width * 0.72);
-                const panelH = 270;
+                const panelW = Math.min(620, this.canvas.width * 0.78);
+                const panelH = 292;
                 const x = this.canvas.width / 2 - panelW / 2;
                 const y = this.canvas.height / 2 - panelH / 2;
 
-                this.ctx.fillStyle = 'rgba(5,8,12,.78)';
-                this.ctx.strokeStyle = 'rgba(255,255,255,.1)';
-                this.ctx.lineWidth = 1;
+                this.ctx.fillStyle = 'rgba(6,8,15,.78)';
                 this.ctx.beginPath();
-                this.ctx.roundRect(x, y, panelW, panelH, 24);
+                this.ctx.moveTo(x + 18, y);
+                this.ctx.lineTo(x + panelW - 24, y);
+                this.ctx.lineTo(x + panelW, y + 24);
+                this.ctx.lineTo(x + panelW, y + panelH - 18);
+                this.ctx.lineTo(x + panelW - 18, y + panelH);
+                this.ctx.lineTo(x + 24, y + panelH);
+                this.ctx.lineTo(x, y + panelH - 24);
+                this.ctx.lineTo(x, y + 18);
+                this.ctx.closePath();
                 this.ctx.fill();
+                this.ctx.strokeStyle = 'rgba(90,246,255,.28)';
+                this.ctx.lineWidth = 2;
                 this.ctx.stroke();
 
-                this.ctx.strokeStyle = 'rgba(84,241,255,.22)';
-                this.ctx.beginPath();
-                this.ctx.moveTo(x + 24, y + 42);
-                this.ctx.lineTo(x + panelW - 24, y + 42);
-                this.ctx.stroke();
+                this.ctx.fillStyle = 'rgba(90,246,255,.22)';
+                this.ctx.fillRect(x + 24, y + 22, panelW - 48, 4);
+                this.ctx.fillStyle = 'rgba(255,79,174,.16)';
+                this.ctx.fillRect(x + 42, y + 38, panelW - 84, 2);
 
-                this.ctx.fillStyle = 'rgba(255,184,77,.92)';
-                this.ctx.font = '700 14px Rajdhani';
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText('SYSTEM ARMING', this.canvas.width / 2, y + 28);
+                this.ctx.fillStyle = 'rgba(255,201,77,.92)';
+                this.ctx.font = '700 10px "Press Start 2P", monospace';
+                this.ctx.fillText('SYSTEM ARMING', this.canvas.width / 2, y + 52);
 
-                this.ctx.fillStyle = '#fff';
-                this.ctx.font = '900 110px Archivo';
-                this.ctx.fillText(remaining, this.canvas.width / 2, this.canvas.height / 2 + 12);
+                const mainText = showStart ? 'START!' : String(remaining);
+                const accent = showStart ? '#ff4fae' : '#5af6ff';
+                this.ctx.font = showStart ? '700 54px "Press Start 2P", monospace' : '700 92px "Press Start 2P", monospace';
+                for (let i = 0; i < 4; i += 1) {
+                    this.ctx.fillStyle = `rgba(255,79,174,${(0.12 - i * 0.02).toFixed(3)})`;
+                    this.ctx.fillText(mainText, this.canvas.width / 2 - 18 - i * 8, this.canvas.height / 2 + 8);
+                }
+                this.ctx.shadowBlur = 24;
+                this.ctx.shadowColor = accent;
+                this.ctx.fillStyle = accent;
+                this.ctx.fillText(mainText, this.canvas.width / 2 + 3, this.canvas.height / 2 + 8);
+                this.ctx.shadowBlur = 0;
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillText(mainText, this.canvas.width / 2, this.canvas.height / 2 + 4);
 
                 this.ctx.fillStyle = 'rgba(228,241,248,.88)';
-                this.ctx.font = '700 18px Rajdhani';
-                this.ctx.fillText(`VOCAL SEGMENTS  ${totalVocalSections}`, this.canvas.width / 2, y + 174);
-                this.ctx.fillText(`AVG GROUP LOAD  ${avgButtonsPerGroup}`, this.canvas.width / 2, y + 202);
+                this.ctx.font = '700 16px Rajdhani';
+                this.ctx.fillText(`VOCAL SEGMENTS  ${totalVocalSections}`, this.canvas.width / 2, y + 208);
+                this.ctx.fillText(`AVG GROUP LOAD  ${avgButtonsPerGroup}`, this.canvas.width / 2, y + 232);
                 this.ctx.fillStyle = 'rgba(228,241,248,.58)';
-                this.ctx.font = '600 14px Rajdhani';
-                this.ctx.fillText('Synchronizing track and gameplay shell...', this.canvas.width / 2, y + 232);
+                this.ctx.font = '700 12px Rajdhani';
+                this.ctx.fillText(showStart ? 'Combat shell engaged.' : 'Synchronizing track and gameplay shell...', this.canvas.width / 2, y + 258);
             };
 
+            this.pushCountdownFlash(String(remaining));
             renderCountdown();
             const countdownInterval = setInterval(() => {
                 remaining -= 1;
                 if (remaining <= 0) {
+                    this.pushCountdownFlash('START!', { lifeMs: 900 });
+                    renderCountdown(true);
                     clearInterval(countdownInterval);
-                    resolve();
+                    setTimeout(resolve, 260);
                     return;
                 }
+                this.pushCountdownFlash(String(remaining));
                 renderCountdown();
             }, 1000);
         });
@@ -2772,35 +2796,39 @@ class RhythmGame {
 
     createHitEffect = (x, y, scoreType = 'perfect') => {
         const particles = [];
-        const particleCount = scoreType === 'perfect' ? 22 : scoreType === 'good' ? 12 : 8;
-        const particleSpeed = scoreType === 'perfect' ? 7.4 : scoreType === 'good' ? 4.8 : 3.6;
+        const particleCount = scoreType === 'perfect' ? 28 : scoreType === 'good' ? 18 : 12;
+        const particleSpeed = scoreType === 'perfect' ? 8.6 : scoreType === 'good' ? 5.6 : 4.2;
         let particleColor;
-        
+
         switch (scoreType) {
             case 'perfect':
-                particleColor = '84,241,255';
+                particleColor = '90,246,255';
                 break;
             case 'good':
-                particleColor = '255,184,77';
+                particleColor = '255,79,174';
                 break;
             case 'miss':
-                particleColor = '255,95,118';
+                particleColor = '255,90,107';
                 break;
             default:
                 particleColor = '255,255,255';
         }
         this.pushBurst(x, y, scoreType);
-        
+
         for (let i = 0; i < particleCount; i++) {
             const angle = (Math.PI * 2 * i) / particleCount;
+            const square = i % 3 === 0;
             particles.push({
                 x: x,
                 y: y,
-                vx: Math.cos(angle) * particleSpeed * (0.7 + Math.random() * 0.6),
-                vy: Math.sin(angle) * particleSpeed * (0.7 + Math.random() * 0.6),
+                vx: Math.cos(angle) * particleSpeed * (0.7 + Math.random() * 0.85),
+                vy: Math.sin(angle) * particleSpeed * (0.7 + Math.random() * 0.85),
                 life: 1,
-                size: 2 + Math.random() * 4,
-                color: particleColor
+                size: 2 + Math.random() * 6,
+                color: particleColor,
+                square,
+                spin: (Math.random() - 0.5) * 0.35,
+                rot: Math.random() * Math.PI
             });
         }
 
@@ -2808,17 +2836,25 @@ class RhythmGame {
             particles.forEach(p => {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vx *= scoreType === 'perfect' ? 0.978 : 0.985;
-                p.vy *= scoreType === 'perfect' ? 0.978 : 0.985;
-                p.life -= scoreType === 'miss' ? 0.04 : (scoreType === 'good' ? 0.03 : 0.024);
+                p.rot += p.spin;
+                p.vx *= scoreType === 'perfect' ? 0.975 : 0.982;
+                p.vy *= scoreType === 'perfect' ? 0.975 : 0.982;
+                p.life -= scoreType === 'miss' ? 0.05 : (scoreType === 'good' ? 0.034 : 0.026);
 
                 if (p.life > 0) {
-                    this.ctx.beginPath();
-                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    this.ctx.save();
+                    this.ctx.translate(p.x, p.y);
+                    this.ctx.rotate(p.rot);
                     this.ctx.fillStyle = `rgba(${p.color}, ${Math.max(0, p.life)})`;
-                    this.ctx.shadowBlur = 16;
-                    this.ctx.shadowColor = `rgba(${p.color}, .45)`;
-                    this.ctx.fill();
+                    this.ctx.shadowBlur = 18;
+                    this.ctx.shadowColor = `rgba(${p.color}, .52)`;
+                    if (p.square) this.ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                    else {
+                        this.ctx.beginPath();
+                        this.ctx.arc(0, 0, p.size * 0.46, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                    this.ctx.restore();
                     this.ctx.shadowBlur = 0;
                 }
             });
@@ -2888,21 +2924,31 @@ RhythmGame.prototype.drawEnergyBurst = function () {
     const now = performance.now();
     this.visualBursts = this.visualBursts.filter(b => now - b.at < 550);
     this.signatureBursts = this.signatureBursts.filter(b => now - b.at < 900);
+    this.feedbackBanners = (this.feedbackBanners || []).filter(b => now - b.at < (b.lifeMs || 720));
+    if (this.countdownFlash && now - this.countdownFlash.at > (this.countdownFlash.lifeMs || 900)) this.countdownFlash = null;
+
     for (const b of this.visualBursts) {
         const t = Math.min(1, (now - b.at) / 550);
-        const alpha = (1 - t) * 0.22;
-        const radius = (60 + t * 180) * (b.scale || 1);
+        const alpha = (1 - t) * 0.24;
+        const radius = (58 + t * 188) * (b.scale || 1);
         this.ctx.beginPath();
         this.ctx.arc(b.x, b.y, radius, 0, Math.PI * 2);
         this.ctx.strokeStyle = b.color.replace('ALPHA', alpha.toFixed(3));
-        this.ctx.lineWidth = 3;
+        this.ctx.lineWidth = 3.5;
         this.ctx.stroke();
         this.ctx.beginPath();
-        this.ctx.arc(b.x, b.y, radius * 0.58, 0, Math.PI * 2);
+        this.ctx.arc(b.x, b.y, radius * 0.56, 0, Math.PI * 2);
         this.ctx.strokeStyle = b.inner.replace('ALPHA', (alpha * 0.9).toFixed(3));
         this.ctx.lineWidth = 1.5;
         this.ctx.stroke();
+
+        this.ctx.save();
+        this.ctx.globalAlpha = alpha * 0.85;
+        this.ctx.fillStyle = b.smear || 'rgba(255,255,255,0.12)';
+        this.ctx.fillRect(b.x - radius * 1.2, b.y - 2, radius * 2.4, 4);
+        this.ctx.restore();
     }
+
     for (const b of this.signatureBursts) {
         const t = Math.min(1, (now - b.at) / 900);
         const alpha = (1 - t) * 0.28;
@@ -2914,16 +2960,158 @@ RhythmGame.prototype.drawEnergyBurst = function () {
         this.ctx.strokeRect(-b.size * (0.4 + t * 0.8), -b.size * 0.28, b.size * (0.8 + t * 1.6), b.size * 0.56);
         this.ctx.restore();
     }
+
+    for (const banner of (this.feedbackBanners || [])) {
+        this.drawFeedbackBanner(banner, now);
+    }
+
+    if (this.countdownFlash) this.drawCountdownFlash(this.countdownFlash, now);
 };
 
 RhythmGame.prototype.pushBurst = function (x, y, type) {
     const map = {
-        perfect: { color: 'rgba(84,241,255,ALPHA)', inner: 'rgba(255,255,255,ALPHA)' },
-        good: { color: 'rgba(255,184,77,ALPHA)', inner: 'rgba(255,240,196,ALPHA)' },
-        miss: { color: 'rgba(255,95,118,ALPHA)', inner: 'rgba(255,170,180,ALPHA)' }
+        perfect: { color: 'rgba(90,246,255,ALPHA)', inner: 'rgba(255,255,255,ALPHA)', smear: 'rgba(90,246,255,0.18)' },
+        good: { color: 'rgba(255,79,174,ALPHA)', inner: 'rgba(255,214,236,ALPHA)', smear: 'rgba(255,79,174,0.16)' },
+        miss: { color: 'rgba(255,90,107,ALPHA)', inner: 'rgba(255,184,192,ALPHA)', smear: 'rgba(255,90,107,0.15)' }
     };
-    this.visualBursts.push({ x, y, at: performance.now(), scale: type === 'perfect' ? 1.16 : type === 'good' ? 0.92 : 0.78, ...(map[type] || map.perfect) });
+    this.visualBursts.push({ x, y, at: performance.now(), scale: type === 'perfect' ? 1.22 : type === 'good' ? 0.96 : 0.82, ...(map[type] || map.perfect) });
     this.updateHUD();
+};
+
+RhythmGame.prototype.pushFeedbackBanner = function (type, options = {}) {
+    const now = performance.now();
+    const palette = {
+        perfect: { fill: '#5af6ff', shadow: 'rgba(90,246,255,.42)', accent: '#ffffff', strip: 'rgba(255,79,174,.28)', text: 'PERFECT!' },
+        good: { fill: '#ff4fae', shadow: 'rgba(255,79,174,.34)', accent: '#ffd7ef', strip: 'rgba(90,246,255,.24)', text: 'GOOD!' },
+        miss: { fill: '#ff5a6b', shadow: 'rgba(255,90,107,.32)', accent: '#ffe4e8', strip: 'rgba(255,255,255,.12)', text: 'MISS' },
+        combo: { fill: '#ffc94d', shadow: 'rgba(255,201,77,.32)', accent: '#fff1c5', strip: 'rgba(90,246,255,.22)', text: options.text || 'COMBO' },
+        start: { fill: '#ff4fae', shadow: 'rgba(255,79,174,.34)', accent: '#ffffff', strip: 'rgba(90,246,255,.22)', text: options.text || 'START!' },
+        count: { fill: '#5af6ff', shadow: 'rgba(90,246,255,.34)', accent: '#ffffff', strip: 'rgba(255,79,174,.22)', text: options.text || '3' }
+    }[type] || { fill: '#ffffff', shadow: 'rgba(255,255,255,.24)', accent: '#ffffff', strip: 'rgba(255,255,255,.12)', text: options.text || String(type || '').toUpperCase() };
+
+    this.feedbackBanners.push({
+        type,
+        at: now,
+        lifeMs: options.lifeMs || (type === 'combo' ? 760 : type === 'count' ? 680 : 620),
+        text: options.text || palette.text,
+        x: options.x || this.canvas.width / 2,
+        y: options.y || (type === 'combo' ? this.canvas.height * 0.22 : this.canvas.height * 0.3),
+        scale: options.scale || 1,
+        fill: palette.fill,
+        shadow: palette.shadow,
+        accent: palette.accent,
+        strip: palette.strip,
+        level: options.level || 0
+    });
+};
+
+RhythmGame.prototype.drawFeedbackBanner = function (banner, now = performance.now()) {
+    const age = now - banner.at;
+    const life = Math.max(1, banner.lifeMs || 620);
+    const t = Math.min(1, age / life);
+    const out = 1 - t;
+    const slam = Math.max(0, 1 - age / 120);
+    const x = banner.x || this.canvas.width / 2;
+    const y = (banner.y || this.canvas.height * 0.3) - t * 26;
+    const scale = (banner.scale || 1) * (1 + slam * 0.18);
+    const text = String(banner.text || '').toUpperCase();
+    const w = Math.max(200, 84 + text.length * 26 + (banner.level || 0) * 10);
+    const h = banner.type === 'combo' ? 64 : 56;
+
+    this.ctx.save();
+    this.ctx.translate(x, y);
+    this.ctx.scale(scale, scale);
+    this.ctx.globalAlpha = Math.min(1, out * 1.05);
+
+    this.ctx.fillStyle = banner.strip;
+    this.ctx.fillRect(-w * (0.7 + slam * 0.4), -2, w * (1.4 + slam * 0.8), 4);
+    this.ctx.fillRect(-w * (0.55 + slam * 0.25), 10, w * (1.1 + slam * 0.5), 2);
+
+    this.ctx.shadowBlur = 22;
+    this.ctx.shadowColor = banner.shadow;
+    this.ctx.fillStyle = 'rgba(7,10,18,.84)';
+    this.ctx.beginPath();
+    this.ctx.moveTo(-w / 2 + 14, -h / 2);
+    this.ctx.lineTo(w / 2 - 18, -h / 2);
+    this.ctx.lineTo(w / 2, -h / 2 + 18);
+    this.ctx.lineTo(w / 2, h / 2 - 12);
+    this.ctx.lineTo(w / 2 - 12, h / 2);
+    this.ctx.lineTo(-w / 2 + 18, h / 2);
+    this.ctx.lineTo(-w / 2, h / 2 - 18);
+    this.ctx.lineTo(-w / 2, -h / 2 + 14);
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.strokeStyle = banner.fill;
+    this.ctx.lineWidth = 2.4;
+    this.ctx.stroke();
+
+    this.ctx.fillStyle = banner.fill;
+    this.ctx.fillRect(-w / 2 + 10, -h / 2 + 8, w - 20, 4);
+
+    this.ctx.font = banner.type === 'combo' ? '700 18px "Press Start 2P", monospace' : '700 16px "Press Start 2P", monospace';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillStyle = banner.fill;
+    this.ctx.fillText(text, 3, 1);
+    this.ctx.fillStyle = banner.accent;
+    this.ctx.fillText(text, 0, -1);
+
+    this.ctx.globalAlpha = out * 0.7;
+    this.ctx.fillStyle = banner.shadow;
+    this.ctx.fillText(text, -8 - slam * 8, 0);
+
+    this.ctx.restore();
+};
+
+RhythmGame.prototype.pushCountdownFlash = function (text, options = {}) {
+    this.countdownFlash = {
+        at: performance.now(),
+        lifeMs: options.lifeMs || (String(text).toUpperCase() === 'START!' ? 940 : 760),
+        text: String(text),
+        color: options.color || (String(text).toUpperCase() === 'START!' ? '#ff4fae' : '#5af6ff'),
+        accent: options.accent || '#ffffff'
+    };
+    this.pushFeedbackBanner(String(text).toUpperCase() === 'START!' ? 'start' : 'count', {
+        text: String(text),
+        y: this.canvas.height * 0.32,
+        lifeMs: options.lifeMs || (String(text).toUpperCase() === 'START!' ? 880 : 620),
+        scale: String(text).toUpperCase() === 'START!' ? 1.1 : 1.24
+    });
+};
+
+RhythmGame.prototype.drawCountdownFlash = function (flash, now = performance.now()) {
+    const age = now - flash.at;
+    const life = Math.max(1, flash.lifeMs || 760);
+    const t = Math.min(1, age / life);
+    const out = 1 - t;
+    const slam = Math.max(0, 1 - age / 160);
+    const text = String(flash.text || '').toUpperCase();
+    const x = this.canvas.width / 2;
+    const y = this.canvas.height * 0.5 + 8 - t * 8;
+    const scale = text === 'START!' ? 1.18 + slam * 0.16 : 1.46 + slam * 0.22;
+
+    this.ctx.save();
+    this.ctx.translate(x, y);
+    this.ctx.scale(scale, scale);
+    this.ctx.globalAlpha = out;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.font = text === 'START!' ? '700 44px "Press Start 2P", monospace' : '700 72px "Press Start 2P", monospace';
+
+    for (let i = 0; i < 4; i += 1) {
+        this.ctx.fillStyle = `rgba(255,79,174,${(out * 0.14 * (1 - i * 0.18)).toFixed(3)})`;
+        this.ctx.fillText(text, -18 - i * 10, 0);
+    }
+    this.ctx.shadowBlur = 26;
+    this.ctx.shadowColor = flash.color;
+    this.ctx.fillStyle = flash.color;
+    this.ctx.fillText(text, 4, 2);
+    this.ctx.shadowBlur = 0;
+    this.ctx.fillStyle = flash.accent || '#ffffff';
+    this.ctx.fillText(text, 0, 0);
+    this.ctx.restore();
 };
 
 RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'gate') {
@@ -2940,25 +3128,53 @@ RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'gate') {
 RhythmGame.prototype.drawComboHUD = function () {
     this.updateHUD();
     this.ctx.textAlign = 'center';
-    const comboBounce = 1 + Math.min(0.16, (this.combo % 5) * 0.012);
+    const comboBounce = 1 + Math.min(0.22, (this.combo % 6) * 0.016);
     if (this.combo > 1) {
+        const text = `${this.combo}x COMBO`;
+        const w = Math.max(220, 110 + text.length * 12);
         this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, 56);
+        this.ctx.translate(this.canvas.width / 2, 64);
         this.ctx.scale(comboBounce, comboBounce);
-        this.ctx.fillStyle = 'rgba(255,255,255,.92)';
-        this.ctx.font = '700 28px Rajdhani';
-        this.ctx.fillText(`${this.combo}x COMBO`, 0, 0);
+        this.ctx.fillStyle = 'rgba(90,246,255,.16)';
+        this.ctx.fillRect(-w * 0.62, -4, w * 1.24, 4);
+        this.ctx.fillStyle = 'rgba(255,79,174,.12)';
+        this.ctx.fillRect(-w * 0.48, 10, w * 0.96, 2);
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(-w / 2 + 16, -24);
+        this.ctx.lineTo(w / 2 - 18, -24);
+        this.ctx.lineTo(w / 2, -6);
+        this.ctx.lineTo(w / 2, 22);
+        this.ctx.lineTo(w / 2 - 12, 34);
+        this.ctx.lineTo(-w / 2 + 18, 34);
+        this.ctx.lineTo(-w / 2, 16);
+        this.ctx.lineTo(-w / 2, -8);
+        this.ctx.closePath();
+        this.ctx.fillStyle = 'rgba(7,10,18,.76)';
+        this.ctx.shadowBlur = 20;
+        this.ctx.shadowColor = 'rgba(90,246,255,.24)';
+        this.ctx.fill();
+        this.ctx.shadowBlur = 0;
+        this.ctx.strokeStyle = this.combo >= 50 ? '#ffc94d' : '#5af6ff';
+        this.ctx.lineWidth = 2.2;
+        this.ctx.stroke();
+
+        this.ctx.font = this.combo >= 100 ? '700 20px "Press Start 2P", monospace' : '700 16px "Press Start 2P", monospace';
+        this.ctx.fillStyle = 'rgba(255,79,174,.34)';
+        this.ctx.fillText(text, 5, 4);
+        this.ctx.fillStyle = this.combo >= 50 ? '#ffc94d' : '#5af6ff';
+        this.ctx.fillText(text, 2, 1);
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillText(text, 0, -1);
         this.ctx.restore();
-        this.ctx.fillStyle = 'rgba(84,241,255,.22)';
-        this.ctx.fillRect(this.canvas.width / 2 - 90, 68, 180, 4);
     }
-    this.ctx.fillStyle = this.runInvalid ? 'rgba(255,95,118,.92)' : 'rgba(255,255,255,.84)';
-    this.ctx.font = '600 18px Rajdhani';
+    this.ctx.fillStyle = this.runInvalid ? 'rgba(255,90,107,.94)' : 'rgba(217,236,255,.86)';
+    this.ctx.font = '700 12px "Press Start 2P", monospace';
     const modeText = `${String(this.playMode || 'casual').toUpperCase()}${this.runInvalid ? ' · INVALID RUN' : ''}`;
-    this.ctx.fillText(modeText, this.canvas.width / 2, 92);
-    const underPulse = 0.24 + 0.12 * (0.5 + 0.5 * Math.sin(performance.now() / 260));
-    this.ctx.fillStyle = `rgba(255,215,168,${underPulse.toFixed(3)})`;
-    this.ctx.fillRect(this.canvas.width / 2 - 64, 100, 128, 2.5);
+    this.ctx.fillText(modeText, this.canvas.width / 2, 110);
+    const underPulse = 0.26 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() / 260));
+    this.ctx.fillStyle = `rgba(255,201,77,${underPulse.toFixed(3)})`;
+    this.ctx.fillRect(this.canvas.width / 2 - 72, 118, 144, 3);
 };
 
 
@@ -3868,6 +4084,7 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
 RhythmGame.prototype.recordJudgement = function (score) {
     if (!score || !this.judgementStats[score] && score !== 'miss') return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
+    this.pushFeedbackBanner(score, { y: this.canvas.height * 0.3, scale: score === 'perfect' ? 1.08 : (score === 'good' ? 0.98 : 0.94) });
     this.updateHUD();
 };
 
