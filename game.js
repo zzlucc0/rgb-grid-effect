@@ -2403,8 +2403,8 @@ class RhythmGame {
                 }
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.5 : 0.38);
-                this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '#bffaf4' : palette.edge;
+                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.62 : 0.38);
+                this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '#ffcc00' : palette.edge;
                 this.ctx.shadowBlur = 24;
                 this.ctx.shadowColor = palette.edge;
                 if (dragSamples.length) {
@@ -2416,6 +2416,26 @@ class RhythmGame {
                 }
                 this.ctx.stroke();
                 this.ctx.shadowBlur = 0;
+                // Pixel particle effect along drag track
+                if (dragSamples.length >= 2) {
+                    const now = performance.now();
+                    const particleCount = Math.min(18, Math.floor(dragSamples.length * 0.7));
+                    for (let pi = 0; pi < particleCount; pi++) {
+                        const sampleIdx = Math.floor((pi / particleCount) * (dragSamples.length - 1));
+                        const pt = dragSamples[sampleIdx];
+                        if (!pt) continue;
+                        const seed = (pi * 137 + (note.noteNumber || 0) * 31) % 1000;
+                        const drift = Math.sin(now / 600 + seed * 0.1) * 8 + Math.cos(now / 400 + seed * 0.07) * 5;
+                        const driftY = Math.cos(now / 500 + seed * 0.13) * 6;
+                        const alpha = 0.25 + (seed % 200) / 400;
+                        const size = 3 + (seed % 3);
+                        this.ctx.fillStyle = `rgba(90,246,255,${alpha.toFixed(2)})`;
+                        this.ctx.shadowBlur = 6;
+                        this.ctx.shadowColor = '#5af6ff';
+                        this.ctx.fillRect(Math.round(pt.x + drift - size / 2), Math.round(pt.y + driftY - size / 2), size, size);
+                    }
+                    this.ctx.shadowBlur = 0;
+                }
                 if (dragSamples.length >= 3) {
                     const mid = dragSamples[Math.floor(dragSamples.length * 0.5)];
                     this.ctx.fillStyle = palette.edge;
@@ -3071,9 +3091,9 @@ RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
     }
     if (note && note.isDrag) {
         if (note.pathVariant === 'starTrace') {
-            palette.core = '#fff1c7';
-            palette.edge = '#ffd36a';
-            palette.glow = 'rgba(255,211,106,.42)';
+            palette.core = '#fff5a0';
+            palette.edge = '#ffcc00';
+            palette.glow = 'rgba(255,204,0,.52)';
         }
         palette.glow = palette.glow.replace('.42', '.46').replace('.38', '.44').replace('.36', '.42').replace('.34', '.4');
     }
@@ -3279,6 +3299,48 @@ RhythmGame.prototype.drawNoteLinks = function () {
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.shadowBlur = 0;
+
+            // Pixel chevron arrows along connection line
+            const lineDx = b.x - a.x;
+            const lineDy = b.y - a.y;
+            const lineLen = Math.hypot(lineDx, lineDy);
+            if (lineLen > 20) {
+                const dirX = lineDx / lineLen;
+                const dirY = lineDy / lineLen;
+                const perpX = -dirY;
+                const perpY = dirX;
+                const chevronCount = Math.max(1, Math.floor(lineLen / (this.circleSize * 1.8)));
+                for (let ci = 1; ci <= chevronCount; ci++) {
+                    const ct = ci / (chevronCount + 1);
+                    const cx = a.x + lineDx * ct;
+                    const cy = a.y + lineDy * ct;
+                    const ps = 3; // pixel size
+                    ctx.fillStyle = `rgba(89,239,255,${(alpha * 0.8).toFixed(3)})`;
+                    // Draw chevron: two angled lines forming >>>
+                    for (let chevOff = -1; chevOff <= 1; chevOff += 2) {
+                        for (let seg = 0; seg < 3; seg++) {
+                            const px = cx - dirX * (seg * ps * 0.7) + perpX * chevOff * (ps + seg * ps * 0.5);
+                            const py = cy - dirY * (seg * ps * 0.7) + perpY * chevOff * (ps + seg * ps * 0.5);
+                            ctx.fillRect(Math.round(px - ps / 2), Math.round(py - ps / 2), ps, ps);
+                        }
+                    }
+                }
+            }
+
+            // Floating particle trail along connection line
+            const particleTrailCount = Math.max(2, Math.floor(lineLen / 30));
+            for (let pi = 0; pi < particleTrailCount; pi++) {
+                const pt = ((now / 800 + pi * 0.15 + i * 0.3) % 1);
+                const px = a.x + lineDx * pt;
+                const py = a.y + lineDy * pt;
+                const driftAmt = Math.sin(now / 350 + pi * 2.1) * 4;
+                const perpDx = -(lineDy / (lineLen || 1));
+                const perpDyN = (lineDx / (lineLen || 1));
+                const pSize = 2 + (pi % 2);
+                ctx.fillStyle = `rgba(89,239,255,${(alpha * 0.5 + (pi % 3) * 0.08).toFixed(3)})`;
+                ctx.fillRect(Math.round(px + perpDx * driftAmt - pSize / 2), Math.round(py + perpDyN * driftAmt - pSize / 2), pSize, pSize);
+            }
+
             // traveling spark
             const sparkT = ((now / 400) + i * 0.4) % 1;
             const sx = a.x + (b.x - a.x) * sparkT;
@@ -4004,6 +4066,12 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
                 note.extraPath = window.PathTemplates.sampleDiamondLoop(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'starTrace') {
                 note.extraPath = window.PathTemplates.sampleStarTrace(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'spiral') {
+                note.extraPath = window.PathTemplates.sampleSpiral(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'zigzag') {
+                note.extraPath = window.PathTemplates.sampleZigzag(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'scurve') {
+                note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             }
         }
     }
@@ -4181,6 +4249,25 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         const curve = Math.min(this.circleSize * 1.6, L * 0.24);
         note.controlX = midX - dy / L * curve;
         note.controlY = midY + dx / L * curve;
+
+        // Apply path template geometry for chart-driven notes
+        if (window.PathTemplates && note.pathTemplate) {
+            if (note.pathTemplate === 'orbit') {
+                const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
+                note.controlX = orbit.controlX;
+                note.controlY = orbit.controlY;
+            } else if (note.pathTemplate === 'diamondLoop') {
+                note.extraPath = window.PathTemplates.sampleDiamondLoop(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'starTrace') {
+                note.extraPath = window.PathTemplates.sampleStarTrace(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'spiral') {
+                note.extraPath = window.PathTemplates.sampleSpiral(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'zigzag') {
+                note.extraPath = window.PathTemplates.sampleZigzag(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'scurve') {
+                note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
+            }
+        }
     }
 
     return note;
@@ -4535,6 +4622,18 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
     note.keyboardKey = null;
     note.keyboardHint = null;
     note.keyboardHit = false;
+
+    // Re-assign keyboard keys for shared/keyboard actionable notes based on lane
+    const actionableTypes = ['tap', 'flick', 'cut', 'gate'];
+    if ((note.inputChannel === 'shared' || note.inputChannel === 'keyboard') && actionableTypes.includes(note.noteType)) {
+        const laneKeyMap = ['a', 's', 'd', 'f'];
+        const lane = Math.max(0, Math.min(3, note.laneHint || 0));
+        const assignedKey = laneKeyMap[lane];
+        note.keyboardKey = assignedKey;
+        note.keyboardHint = assignedKey;
+        note.keyHint = assignedKey;
+    }
+
     return note;
 };
 

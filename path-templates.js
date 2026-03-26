@@ -45,6 +45,65 @@
     };
   }
 
+  function sampleSpiral(startX, startY, endX, endY) {
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const arc = len * 0.45;
+    return {
+      kind: 'spiral',
+      points: [
+        { x: startX, y: startY },
+        { x: startX + dx * 0.25 + nx * arc * 0.6, y: startY + dy * 0.25 + ny * arc * 0.6 },
+        { x: midX + nx * arc * 0.3, y: midY + ny * arc * 0.3 },
+        { x: startX + dx * 0.75 - nx * arc * 0.4, y: startY + dy * 0.75 - ny * arc * 0.4 },
+        { x: endX, y: endY }
+      ]
+    };
+  }
+
+  function sampleZigzag(startX, startY, endX, endY) {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const offset = len * 0.3;
+    return {
+      kind: 'zigzag',
+      points: [
+        { x: startX, y: startY },
+        { x: startX + dx * 0.25 + nx * offset, y: startY + dy * 0.25 + ny * offset },
+        { x: startX + dx * 0.5 - nx * offset, y: startY + dy * 0.5 - ny * offset },
+        { x: startX + dx * 0.75 + nx * offset * 0.6, y: startY + dy * 0.75 + ny * offset * 0.6 },
+        { x: endX, y: endY }
+      ]
+    };
+  }
+
+  function sampleScurve(startX, startY, endX, endY) {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const curve = len * 0.38;
+    return {
+      kind: 'scurve',
+      points: [
+        { x: startX, y: startY },
+        { x: startX + dx * 0.3 + nx * curve, y: startY + dy * 0.3 + ny * curve },
+        { x: midX = (startX + endX) / 2, y: midY = (startY + endY) / 2 },
+        { x: startX + dx * 0.7 - nx * curve, y: startY + dy * 0.7 - ny * curve },
+        { x: endX, y: endY }
+      ]
+    };
+  }
+
   function chooseTemplate(note, difficulty = 'normal', context = {}) {
     const seq = Math.abs(Number(note?.noteNumber || 0));
     const segment = note?.segmentLabel || 'verse';
@@ -61,18 +120,21 @@
       if (name === 'orbit') s += difficulty === 'easy' ? 4 : 1.2;
       if (name === 'diamondLoop') s += (segment === 'chorus' ? 3.4 : 2.2) + geometryBiasBoost * 1.1;
       if (name === 'starTrace') s += (segment === 'chorus' ? 3.8 : (segment === 'bridge' ? 2.4 : 1.1)) + geometryBiasBoost * 1.25;
+      if (name === 'spiral') s += (segment === 'verse' ? 2.6 : 1.8) + (intent === 'sweep' ? 1.2 : 0);
+      if (name === 'zigzag') s += (segment === 'chorus' ? 2.8 : 1.6) + (difficulty === 'hard' ? 1.0 : 0);
+      if (name === 'scurve') s += (segment === 'bridge' ? 2.9 : 2.0);
       if (intent === 'sweep' && name === 'starTrace') s += 1.5;
       if (intent === 'pivot' && name === 'diamondLoop') s += 1.2;
       if (inOpening && name !== 'orbit') s -= 0.8;
       s -= countRecent(name) * 2.1;
       if ((forceGeometry || forceGeometryFloor >= 3) && name !== 'orbit') s += 4.8 + geometryBiasBoost * 0.8;
       if (difficulty === 'hard' && name !== 'orbit') s += 0.9;
-      if (difficulty === 'easy' && name === 'starTrace') s -= 2.2;
+      if (difficulty === 'easy' && (name === 'starTrace' || name === 'zigzag')) s -= 2.2;
       s += ((seq * (name.length + 3)) % 7) * 0.07;
       return s;
     };
 
-    const options = ['orbit', 'diamondLoop', 'starTrace'];
+    const options = ['orbit', 'diamondLoop', 'starTrace', 'spiral', 'zigzag', 'scurve'];
     return options.sort((a, b) => score(b) - score(a))[0] || 'orbit';
   }
 
@@ -96,7 +158,7 @@
     return out;
   }
 
-  const api = { sampleOrbit, sampleDiamondLoop, sampleStarTrace, chooseTemplate, samplePathPoints };
+  const api = { sampleOrbit, sampleDiamondLoop, sampleStarTrace, sampleSpiral, sampleZigzag, sampleScurve, chooseTemplate, samplePathPoints };
   if (typeof window !== 'undefined') window.PathTemplates = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
