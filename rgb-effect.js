@@ -95,7 +95,7 @@ class RGBEffect {
             x += w + 8 + Math.random() * 18;
         }
 
-        const signTexts = ['CYBER', 'GRID', 'SYNC', 'OVERDRIVE', 'COMBO', '夜市', 'NEON', 'PULSE'];
+        const signTexts = ['ZPULSE', 'SYNC', 'OVERDRIVE', 'COMBO', '夜市', 'NEON', 'PULSE', 'STAGE'];
         const signColors = ['#5af6ff', '#ff4fae', '#9c6bff', '#ffc94d'];
         this.neonSigns = Array.from({ length: 5 }, (_, i) => {
             const b = this.buildings[Math.floor(Math.random() * this.buildings.length)];
