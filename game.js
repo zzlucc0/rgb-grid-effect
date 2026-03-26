@@ -4566,7 +4566,7 @@ RhythmGame.prototype.showResultOverlay = function () {
         overlay.style.cssText = [
             'position:fixed', 'inset:0', 'z-index:9999',
             'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
-            'background:rgba(4,10,20,0.88)',
+            'background:rgba(4,10,20,1)',
             'font-family:"Press Start 2P",monospace',
             'color:#59efff', 'pointer-events:all'
         ].join(';');
