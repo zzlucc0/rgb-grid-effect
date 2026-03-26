@@ -849,13 +849,20 @@ class RhythmGame {
     }
 
     async resumeRunSequence() {
-        const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
-        this.pauseAccumulated += pausedFor;
+        // Show 3-2-1 countdown WHILE STILL PAUSED so the clock does not advance
         const overlayText = document.getElementById('pauseOverlayText');
         for (const n of [3,2,1]) {
             if (overlayText) overlayText.textContent = 'Resuming in ' + n;
             await new Promise(r => setTimeout(r, 600));
         }
+
+        // Calculate pause duration AFTER countdown — includes countdown time in the pause gap
+        const pausedFor = Math.max(0, (performance.now() - (this.pausedAt || performance.now())) / 1000);
+        this.pauseAccumulated += pausedFor;
+
+        // NOW resume the orchestrator clock (after countdown, before game loop restarts)
+        if (this.runOrchestrator?.resume) this.runOrchestrator.resume({ reason: this.pauseReason || 'resume' });
+
         this.setRunPhase('playing');
         this.pauseReason = 'none';
         this.resumePlaybackMedia();
@@ -3756,7 +3763,8 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
 
 RhythmGame.prototype.resumeGame = async function () {
     if (!(this.isPausedPhase())) return;
-    if (this.runOrchestrator?.resume) this.runOrchestrator.resume({ reason: this.pauseReason || 'resume' });
+    // NOTE: orchestrator.resume() is deferred until AFTER countdown
+    // to prevent the clock from advancing during the 3-2-1 countdown.
     return this.resumeRunSequence();
 };
 
