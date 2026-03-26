@@ -857,7 +857,7 @@ class RhythmGame {
         this.setRunPhase('playing');
         this.pauseReason = 'none';
         this.resumePlaybackMedia();
-        // Offline mode: restart audio from saved offset
+        // Offline mode: restart audio from saved offset IMMEDIATELY after countdown
         if (!this.liveMode && this.audioBuffer) {
             const offset = Math.min(this._offlinePlayOffset || 0, this.audioBuffer.duration - 0.05);
             const source = this.audioContext.createBufferSource();
@@ -865,6 +865,10 @@ class RhythmGame {
             source.connect(this.analyser);
             this.analyser.connect(this.audioContext.destination);
             this._offlineSource = source;
+            // Ensure AudioContext is running (browser may have suspended it)
+            if (this.audioContext.state !== 'running') {
+                await this.audioContext.resume().catch(() => {});
+            }
             // Recalculate startTime so resolveRunClock() stays accurate
             this.startTime = this.audioContext.currentTime - offset - (this.pauseAccumulated || 0);
             source.start(0, offset);
@@ -3071,7 +3075,7 @@ RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
 };
 
 RhythmGame.prototype.getNotePalette = function (note) {
-    if (note.score === 'perfect') return { core: '#fff3cf', edge: '#ffd978', glow: 'rgba(255,217,120,.45)' };
+    if (note.score === 'perfect') return { core: '#d0faff', edge: '#59efff', glow: 'rgba(89,239,255,.45)' };
     if (note.score === 'good') return { core: '#ffd9e5', edge: '#ff9bb4', glow: 'rgba(255,155,180,.4)' };
     if (note.score === 'miss') return { core: '#ff899f', edge: '#ff5f76', glow: 'rgba(255,95,118,.35)' };
     const base = note.groupPalette || this.getSegmentPalette(note.segmentLabel || 'verse', note.groupIndex || note.phrase || 0);
@@ -3113,9 +3117,12 @@ RhythmGame.prototype.drawFloatJudges = function () {
         const alpha = t < 0.08 ? t / 0.08 : Math.max(0, 1 - (t - 0.08) / 0.92);
         const bounceS = t < 0.10 ? (1 + 0.30 * Math.sin(t / 0.10 * Math.PI)) : 1;
         const rise = t * 55;
-        // Always centered on screen, big
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height * 0.32 - rise;
+        // MISS: at note position; PERFECT/GOOD: centered on screen
+        const isMiss = j.text === 'MISS';
+        const cx = isMiss ? (j.x || this.canvas.width / 2) : this.canvas.width / 2;
+        const cy = isMiss
+            ? (j.y || this.canvas.height * 0.32) - rise
+            : this.canvas.height * 0.32 - rise;
 
         ctx.save();
         ctx.imageSmoothingEnabled = false;
