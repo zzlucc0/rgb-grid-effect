@@ -4631,8 +4631,8 @@ RhythmGame.prototype.showResultOverlay = function () {
 RhythmGame.prototype.floatJudges = [];
 RhythmGame.prototype.pushFloatJudge = function (type, x, y) {
     const cfg = {
-        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 22 },
-        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 22 },
+        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 32 },
+        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 32 },
         miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 22 },
     };
     const c = cfg[type] || cfg.good;

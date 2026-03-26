@@ -101,8 +101,21 @@
             background: radial-gradient(circle at center, transparent 45%, rgba(0,0,0,.12) 70%, rgba(0,0,0,.34) 100%);
         }
 
-        #backgroundCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-        #gameCanvas { position: fixed; inset: 0; z-index: 1; }
+        #gameArea {
+            position: fixed;
+            top: 0; left: 50%; transform: translateX(-50%);
+            width: min(100vw, calc(100vh * 16 / 9));
+            height: 100vh;
+            z-index: 0;
+        }
+        #gameCanvas, #backgroundCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #backgroundCanvas { z-index: 0; pointer-events: none; }
+        #gameCanvas { z-index: 1; }
         .hidden { display: none !important; }
 
         #loadingOverlay {
@@ -171,8 +184,8 @@
         .wait-ripple { position: absolute; border-radius: 0; width: 0; height: 0; pointer-events: none; border: 1px solid rgba(90,246,255,.6); transform: translate(-50%,-50%); animation: rippleOut .7s ease-out forwards; }
 
         #score {
-            position: fixed; top: 14px; right: 14px; z-index: 3;
-            min-width: 300px; max-width: 360px;
+            position: fixed; top: 50px; right: 14px; z-index: 3;
+            min-width: 160px; max-width: 200px;
             padding: 14px 14px 12px;
             color: var(--text);
             background:
@@ -435,7 +448,7 @@
 
         .setup-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.45fr) minmax(260px, .9fr);
+            grid-template-columns: 1fr;
             gap: 16px;
         }
         .setup-main,
@@ -700,8 +713,10 @@
     </style>
 </head>
 <body>
-    <canvas id="backgroundCanvas"></canvas>
-    <canvas id="gameCanvas"></canvas>
+    <div id="gameArea">
+        <canvas id="backgroundCanvas"></canvas>
+        <canvas id="gameCanvas"></canvas>
+    </div>
     <div class="screen-noise"></div>
     <div class="screen-vignette"></div>
     <div class="screen-frame"></div>
@@ -732,13 +747,13 @@
                 <button id="hudPauseBtn" class="hud-control-btn" aria-label="Pause">PAUSE</button>
             </div>
         </div>
-        <div class="hud-rack">
+        <div class="hud-rack" style="display:none">
             <div class="hud-chip mode"><small>MODE</small><strong id="hudMode">CASUAL</strong></div>
             <div class="hud-chip diff"><small>DIFF</small><strong id="hudDifficulty">NORMAL</strong></div>
             <div id="runState" class="hud-chip state" data-state="stable"><small>STATE</small><strong id="hudRunState">STABLE</strong></div>
         </div>
-        <div class="score-meter"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
-        <div id="debugStrip" class="debug-strip hidden">
+        <div class="score-meter" style="display:none"><div class="score-meter-fill" id="scoreMeterFill"></div></div>
+        <div id="debugStrip" class="debug-strip hidden" style="display:none">
             <span>Clock <b id="debugGameClock">0.00</b></span>
             <span>Player <b id="debugPlayerClock">0.00</b></span>
             <span>Chart <b id="debugChartProgress">0/0</b></span>
@@ -789,23 +804,17 @@
                         </div>
                     </div>
 
-                    <div class="setup-panel">
-                        <div class="panel-head">
-                            <div class="panel-title">ANALYSIS TUNING</div>
-                            <div class="panel-tag">density / strategy</div>
-                        </div>
-                        <div class="input-row">
-                            <select id="analysisStrategySelect">
-                                <option value="auto" selected>AUTO STRATEGY</option>
-                                <option value="full">FORCE FULL</option>
-                                <option value="segmented">FORCE SEGMENTED</option>
-                            </select>
-                            <select id="chartDensitySelect">
-                                <option value="relaxed">RELAXED DENSITY</option>
-                                <option value="normal" selected>NORMAL DENSITY</option>
-                                <option value="dense">DENSE DENSITY</option>
-                            </select>
-                        </div>
+                    <div style="display:none">
+                        <select id="analysisStrategySelect">
+                            <option value="auto" selected>AUTO STRATEGY</option>
+                            <option value="full">FORCE FULL</option>
+                            <option value="segmented">FORCE SEGMENTED</option>
+                        </select>
+                        <select id="chartDensitySelect">
+                            <option value="relaxed">RELAXED DENSITY</option>
+                            <option value="normal" selected>NORMAL DENSITY</option>
+                            <option value="dense">DENSE DENSITY</option>
+                        </select>
                     </div>
 
                     <div class="setup-panel">
@@ -817,34 +826,20 @@
                             <button id="analyzeYoutube" class="primary">SCAN LINK</button>
                             <button id="startGame" class="accent" disabled>START RUN</button>
                             <button id="cancelAnalyze" class="danger" disabled>CANCEL</button>
-                            <button id="pauseGameBtn" disabled>PAUSE</button>
-                            <button id="resumeGameBtn" disabled style="display:none;">RESUME</button>
+                            <button id="pauseGameBtn" disabled style="display:none">PAUSE</button>
+                            <button id="resumeGameBtn" disabled style="display:none">RESUME</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="setup-side">
-                    <div class="setup-sidecard">
-                        <div class="setup-sidecopy">
-                            <div class="side-kicker">SYSTEM PROFILE</div>
-                            <div class="side-title">HEAVY PIXEL<br>CYBER CABINET</div>
-                            <div class="side-copy">Industrial neon shell, loud judgement banners, hard scanline grit, and denser arcade framing — without touching timing, chart logic, or gameplay behavior.</div>
-                        </div>
-                        <div class="side-stats">
-                            <div class="side-stat"><small>STYLE</small><strong>PIXEL</strong></div>
-                            <div class="side-stat"><small>GLOW</small><strong>HEAVY</strong></div>
-                            <div class="side-stat"><small>MOOD</small><strong>CYBER</strong></div>
-                            <div class="side-stat"><small>LOGIC</small><strong>LOCKED</strong></div>
-                        </div>
-                    </div>
-                </div>
+
             </div>
 
             <div class="setup-statuscard">
                 <div id="statusText"></div>
             </div>
 
-            <div id="readyPanel">
+            <div id="readyPanel" style="display:none">
                 <div class="ready-badge"><small>MODE</small><strong id="modeBadge">-</strong></div>
                 <div class="ready-badge"><small>READY</small><strong id="readyBadge">no</strong></div>
                 <div class="ready-badge"><small>NOTES</small><strong id="notesBadge">-</strong></div>
@@ -896,7 +891,7 @@
     <script src="chart-policy.js?v=20260313h"></script>
     <script src="chart-reviewer.js?v=20260313c"></script>
     <script src="path-templates.js?v=20260313c"></script>
-    <script src="game.js?v=20260326d"></script>
+    <script src="game.js?v=20260326e"></script>
     <script src="youtube-client.js?v=20260324a"></script>
 </body>
 </html>
