@@ -3182,12 +3182,24 @@ RhythmGame.prototype.drawFloatJudges = function () {
 
         } else if (j.text === 'GOOD') {
             const fs = Math.round(j.size * bounceS);
+            // ─ rough pink brush-stroke bg (like MISS) ─
+            const bw = fs * 5.4;
+            const bh = fs * 1.55;
+            const stripCount = 10;
+            for (let s = 0; s < stripCount; s++) {
+                const sy2 = -bh/2 + (s / stripCount) * bh;
+                const sh = bh / stripCount * (0.6 + ((seed + s * 7) % 10) / 15);
+                const sw = bw * (0.72 + ((seed * 3 + s * 11) % 28) / 100);
+                const soff = ((seed + s * 3) % 14) - 7;
+                ctx.fillStyle = s % 3 === 0 ? 'rgba(60,0,30,.88)' : 'rgba(80,0,40,.80)';
+                ctx.fillRect(soff - sw/2, sy2, sw, sh);
+            }
             // ─ pink pixel fragments ─
-            const fragCount = 16;
+            const fragCount = 22;
             for (let i = 0; i < fragCount; i++) {
                 const ang = ((seed * 5 + i * 360 / fragCount) % 360) * Math.PI / 180;
-                const dist = (30 + (seed * 2 + i * 13) % 30) * (0.4 + t * 0.9);
-                const ps = 3 + (i % 3);
+                const dist = (40 + (seed * 2 + i * 13) % 40) * (0.35 + t * 1.0);
+                const ps = 3 + (i % 4);
                 const fa = alpha * Math.max(0, 1 - t * 1.1) * (0.5 + 0.4 * (i % 2));
                 ctx.globalAlpha = fa;
                 ctx.fillStyle = i % 2 === 0 ? '#ffb8d8' : '#ff79ae';
@@ -3197,18 +3209,18 @@ RhythmGame.prototype.drawFloatJudges = function () {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = `900 ${fs}px "Press Start 2P", monospace`;
-            for (let d = 3; d >= 1; d--) {
-                ctx.fillStyle = `rgba(100,0,50,${0.65 - d * 0.15})`;
-                ctx.fillText('GOOD!', d * 1.5, d * 1.5);
+            for (let d = 4; d >= 1; d--) {
+                ctx.fillStyle = `rgba(100,0,50,${0.7 - d * 0.12})`;
+                ctx.fillText('GOOD!', d * 2, d * 2);
             }
             ctx.fillStyle = '#cc3070';
             ctx.fillText('GOOD!', 2, 2);
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = 24;
             ctx.shadowColor = '#ff79ae';
             ctx.fillStyle = '#ff79ae';
             ctx.fillText('GOOD!', 0, 0);
             ctx.shadowBlur = 0;
-            ctx.fillStyle = 'rgba(255,220,235,0.65)';
+            ctx.fillStyle = 'rgba(255,220,235,0.70)';
             ctx.fillText('GOOD!', -1, -3);
 
         } else if (j.text === 'MISS') {
