@@ -278,8 +278,17 @@ class RhythmGame {
         else if (phase === 'paused-user' || phase === 'paused-system') this.setScene('playing');
         else if (phase === 'ready') this.setScene('ready');
         else if (phase === 'idle') this.setScene('input');
-        else if (phase === 'finished') this.setScene('ready', { force: true });
-        else if (phase === 'failed') this.setScene('ready', { force: true });
+        else if (phase === 'finished') {
+            this.setScene('ready', { force: true });
+            // Result overlay will hide the input container; keep it hidden until player chooses
+            const uc = document.getElementById('uploadContainer');
+            if (uc) uc.classList.add('hidden');
+        }
+        else if (phase === 'failed') {
+            this.setScene('ready', { force: true });
+            const uc = document.getElementById('uploadContainer');
+            if (uc) uc.classList.add('hidden');
+        }
         else this.updateHUD();
     }
 
@@ -757,7 +766,9 @@ class RhythmGame {
             this.analyser.connect(this.audioContext.destination);
             this.analyser.fftSize = 2048;
             dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-            source.start();
+            this._offlineSource = source;
+            this._offlinePlayOffset = 0; // seconds into audio when resumed
+            source.start(0, 0);
         }
         return dataArray;
     }
@@ -846,6 +857,18 @@ class RhythmGame {
         this.setRunPhase('playing');
         this.pauseReason = 'none';
         this.resumePlaybackMedia();
+        // Offline mode: restart audio from saved offset
+        if (!this.liveMode && this.audioBuffer) {
+            const offset = Math.min(this._offlinePlayOffset || 0, this.audioBuffer.duration - 0.05);
+            const source = this.audioContext.createBufferSource();
+            source.buffer = this.audioBuffer;
+            source.connect(this.analyser);
+            this.analyser.connect(this.audioContext.destination);
+            this._offlineSource = source;
+            // Recalculate startTime so resolveRunClock() stays accurate
+            this.startTime = this.audioContext.currentTime - offset - (this.pauseAccumulated || 0);
+            source.start(0, offset);
+        }
         this.updatePauseUI();
         this.updateHUD();
         const resumeArray = new Uint8Array(this.analyser.frequencyBinCount);
@@ -3487,19 +3510,25 @@ RhythmGame.prototype.drawFeedbackBanner = function (banner, now = performance.no
 };
 
 RhythmGame.prototype.pushCountdownFlash = function (text, options = {}) {
-    this.countdownFlash = {
-        at: performance.now(),
-        lifeMs: options.lifeMs || (String(text).toUpperCase() === 'START!' ? 940 : 760),
-        text: String(text),
-        color: options.color || (String(text).toUpperCase() === 'START!' ? '#ff4fae' : '#5af6ff'),
-        accent: options.accent || '#ffffff'
-    };
-    this.pushFeedbackBanner(String(text).toUpperCase() === 'START!' ? 'start' : 'count', {
-        text: String(text),
-        y: this.canvas.height * 0.32,
-        lifeMs: options.lifeMs || (String(text).toUpperCase() === 'START!' ? 880 : 620),
-        scale: String(text).toUpperCase() === 'START!' ? 1.1 : 1.24
-    });
+    const isStart = String(text).toUpperCase() === 'START!';
+    // For START! only show the big canvas flash (no feedbackBanner = no double START!)
+    // For 3/2/1 show the small banner only (countdownFlash stays null so numbers don't double too)
+    if (isStart) {
+        this.countdownFlash = {
+            at: performance.now(),
+            lifeMs: options.lifeMs || 940,
+            text: String(text),
+            color: options.color || '#ff4fae',
+            accent: options.accent || '#ffffff'
+        };
+    } else {
+        this.pushFeedbackBanner('count', {
+            text: String(text),
+            y: this.canvas.height * 0.32,
+            lifeMs: options.lifeMs || 620,
+            scale: 1.24
+        });
+    }
 };
 
 RhythmGame.prototype.drawCountdownFlash = function (flash, now = performance.now()) {
@@ -3722,6 +3751,12 @@ RhythmGame.prototype.pauseGame = function (reason = 'user') {
     this.frozenGameTime = this.resolveRunClock();
     if (this.runOrchestrator?.pause) this.runOrchestrator.pause({ reason });
     this.pausePlaybackMedia();
+    // Offline mode: stop bufferSource and record position so resume can seek
+    if (!this.liveMode && this._offlineSource) {
+        this._offlinePlayOffset = Math.max(0, (this.audioContext.currentTime - this.startTime - (this.pauseAccumulated || 0)));
+        try { this._offlineSource.stop(); } catch(_) {}
+        this._offlineSource = null;
+    }
     this.updatePauseUI();
     this.updateHUD();
 };
@@ -4534,6 +4569,12 @@ RhythmGame.prototype.showResultOverlay = function () {
     const grade = acc >= 95 ? 'S' : acc >= 85 ? 'A' : acc >= 70 ? 'B' : acc >= 55 ? 'C' : 'D';
     const gradeColor = acc >= 95 ? '#ffe95a' : acc >= 85 ? '#59efff' : acc >= 70 ? '#b892ff' : acc >= 55 ? '#ff9bb4' : '#ff5f76';
 
+    // Hide input UI while result is showing
+    const uploadContainer = document.getElementById('uploadContainer');
+    if (uploadContainer) uploadContainer.classList.add('hidden');
+
+    const btnStyle = `font-family:'Press Start 2P',monospace;font-size:9px;
+        padding:12px 28px;border:2px solid;cursor:pointer;letter-spacing:2px;margin:0 8px;`;
     overlay.innerHTML = `
         <div style="font-size:10px;letter-spacing:4px;color:rgba(89,239,255,.55);margin-bottom:18px">── RESULT ──</div>
         <div style="font-size:52px;color:${gradeColor};text-shadow:0 0 24px ${gradeColor},0 0 8px #fff;margin-bottom:24px">${grade}</div>
@@ -4553,19 +4594,29 @@ RhythmGame.prototype.showResultOverlay = function () {
             </div>
         </div>
         <div style="font-size:9px;color:rgba(89,239,255,.6);margin-bottom:28px">ACCURACY ${acc.toFixed(1)}%</div>
-        <button id="resultRetryBtn" style="
-            font-family:'Press Start 2P',monospace;font-size:9px;
-            padding:12px 28px;background:rgba(89,239,255,.08);
-            border:2px solid #59efff;color:#59efff;cursor:pointer;
-            text-shadow:0 0 10px #59efff;letter-spacing:2px;
-        ">PLAY AGAIN</button>`;
+        <div style="display:flex;align-items:center;justify-content:center">
+            <button id="resultRetryBtn" style="${btnStyle}background:rgba(89,239,255,.08);border-color:#59efff;color:#59efff;text-shadow:0 0 10px #59efff;">PLAY AGAIN</button>
+            <button id="resultMenuBtn" style="${btnStyle}background:rgba(255,79,174,.08);border-color:#ff4fae;color:#ff4fae;text-shadow:0 0 10px #ff4fae;">BACK TO MENU</button>
+        </div>`;
     overlay.style.display = 'flex';
-    const btn = document.getElementById('resultRetryBtn');
-    if (btn) btn.onclick = () => {
-        overlay.style.display = 'none';
-        this.setScene('ready', { force: true });
+
+    const hideOverlay = () => { overlay.style.display = 'none'; };
+
+    const retryBtn = document.getElementById('resultRetryBtn');
+    if (retryBtn) retryBtn.onclick = () => {
+        hideOverlay();
         this.setRunPhase('idle');
-        setTimeout(() => this.setScene('ready', { force: true }), 50);
+        this.setScene('ready', { force: true });
+    };
+
+    const menuBtn = document.getElementById('resultMenuBtn');
+    if (menuBtn) menuBtn.onclick = () => {
+        hideOverlay();
+        this.isPlaying = false;
+        this.setRunPhase('idle');
+        this.setScene('input', { force: true });
+        // Show input UI
+        if (uploadContainer) uploadContainer.classList.remove('hidden');
     };
 };
 
