@@ -312,6 +312,8 @@ class RhythmGame {
         const inRun = this.isPlaying || this.isStartingPhase() || this.scene === 'countdown' || this.scene === 'playing' || this.isPausedPhase();
         const showSetup = !inRun && (this.scene === 'input' || this.scene === 'ready');
         if (uploadContainer) uploadContainer.classList.toggle('hidden', !showSetup);
+        const scorePanel = document.getElementById('score');
+        if (scorePanel) scorePanel.style.display = inRun ? 'block' : 'none';
         if (pauseOverlay && (this.scene === 'countdown' || this.scene === 'playing' || this.scene === 'error' || inRun)) {
             const syncing = this.gameState === 'awaiting-playback';
             const paused = this.isPausedPhase();
@@ -3133,12 +3135,24 @@ RhythmGame.prototype.drawFloatJudges = function () {
 
         if (j.text === 'PERFECT') {
             const fs = Math.round(j.size * bounceS);
+            // ─ rough cyan brush-stroke bg (like MISS but cyan) ─
+            const bw = fs * 5.8;
+            const bh = fs * 1.6;
+            const stripCount = 12;
+            for (let s = 0; s < stripCount; s++) {
+                const sy2 = -bh/2 + (s / stripCount) * bh;
+                const sh = bh / stripCount * (0.6 + ((seed + s * 7) % 10) / 15);
+                const sw = bw * (0.72 + ((seed * 3 + s * 11) % 28) / 100);
+                const soff = ((seed + s * 3) % 14) - 7;
+                ctx.fillStyle = s % 3 === 0 ? 'rgba(0,40,50,.88)' : 'rgba(0,55,70,.80)';
+                ctx.fillRect(soff - sw/2, sy2, sw, sh);
+            }
             // ─ many cyan pixel fragments scattered outward ─
-            const fragCount = 22;
+            const fragCount = 28;
             for (let i = 0; i < fragCount; i++) {
                 const ang = ((seed * 7 + i * 360 / fragCount) % 360) * Math.PI / 180;
-                const dist = (38 + (seed * 3 + i * 11) % 38) * (0.4 + t * 0.9);
-                const ps = 3 + (i % 4);
+                const dist = (44 + (seed * 3 + i * 11) % 44) * (0.35 + t * 1.0);
+                const ps = 3 + (i % 5);
                 const fa = alpha * Math.max(0, 1 - t * 1.1) * (0.5 + 0.5 * (i % 2));
                 ctx.globalAlpha = fa;
                 ctx.fillStyle = i % 3 === 0 ? '#a0f8ff' : '#59efff';
@@ -3151,19 +3165,19 @@ RhythmGame.prototype.drawFloatJudges = function () {
             // 3D chunky shadow (dark teal)
             for (let d = 4; d >= 1; d--) {
                 ctx.fillStyle = `rgba(0,60,80,${0.7 - d * 0.12})`;
-                ctx.fillText('PERFECT!', d * 1.5, d * 1.5);
+                ctx.fillText('PERFECT!', d * 2, d * 2);
             }
             // mid fill (dark cyan)
             ctx.fillStyle = '#1ab8cc';
             ctx.fillText('PERFECT!', 2, 2);
             // main glow
-            ctx.shadowBlur = 22;
+            ctx.shadowBlur = 28;
             ctx.shadowColor = '#59efff';
             ctx.fillStyle = '#59efff';
             ctx.fillText('PERFECT!', 0, 0);
             ctx.shadowBlur = 0;
             // top highlight
-            ctx.fillStyle = 'rgba(255,255,255,0.70)';
+            ctx.fillStyle = 'rgba(255,255,255,0.75)';
             ctx.fillText('PERFECT!', -1, -3);
 
         } else if (j.text === 'GOOD') {
@@ -3354,19 +3368,7 @@ RhythmGame.prototype.drawSongProgress = function () {
         ctx.fillRect(headX + 1, barY - 1, 3, barH + 2);
     }
 
-    // Time remaining text (pixel/monospace)
-    const remaining = Math.max(0, totalSec - chartClock);
-    const remMin = Math.floor(remaining / 60);
-    const remSec = Math.floor(remaining % 60);
-    const timeStr = `${remMin}:${String(remSec).padStart(2, '0')}`;
-    ctx.font = '700 9px "Press Start 2P", monospace';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#59efff';
-    ctx.fillStyle = '#59efff';
-    ctx.fillText(timeStr, barX + barW + 46, barY + barH / 2);
-    ctx.shadowBlur = 0;
+    // Time remaining text removed per user request — progress bar only
 
     ctx.restore();
 };
@@ -4612,8 +4614,8 @@ RhythmGame.prototype.showResultOverlay = function () {
     const retryBtn = document.getElementById('resultRetryBtn');
     if (retryBtn) retryBtn.onclick = () => {
         hideOverlay();
-        this.setRunPhase('idle');
-        this.setScene('ready', { force: true });
+        // Directly restart the game with the same song — skip input page
+        this.startGame();
     };
 
     const menuBtn = document.getElementById('resultMenuBtn');
@@ -4631,8 +4633,8 @@ RhythmGame.prototype.showResultOverlay = function () {
 RhythmGame.prototype.floatJudges = [];
 RhythmGame.prototype.pushFloatJudge = function (type, x, y) {
     const cfg = {
-        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 32 },
-        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 32 },
+        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 42 },
+        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 36 },
         miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 22 },
     };
     const c = cfg[type] || cfg.good;
