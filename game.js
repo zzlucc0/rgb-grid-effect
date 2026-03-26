@@ -217,7 +217,7 @@ class RhythmGame {
         this.approachRate = 1250; // Legacy shared approach timing (milliseconds)
         this.spawnLeadTimeMs = this.approachRate; // Spawn lookahead for chart scheduling
         this.visualApproachDurationMs = Math.round(this.approachRate * 0.84); // Visual shrink timing kept separate from scheduling
-        this.circleSize = 60; // Target circle size
+        this.circleSize = 80; // Target circle size
         this.approachCircleSize = 180; // Initial approach circle size
         this.perfectRange = 430; // Perfect judgment range (milliseconds)
         this.goodRange = 680; // Good judgment range (milliseconds)
@@ -1096,7 +1096,7 @@ class RhythmGame {
                 remaining -= 1;
                 if (remaining <= 0) {
                     this.pushCountdownFlash('START!', { lifeMs: 900 });
-                    renderCountdown(true);
+                    // Don't call renderCountdown(true) – that would show a second START! on canvas
                     clearInterval(countdownInterval);
                     setTimeout(resolve, 260);
                     return;
@@ -2501,9 +2501,9 @@ class RhythmGame {
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
                 const marker = ''; // no number labels on notes
-                if (seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
+                const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
+                if (isKbd || seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
                     // Tutorial label CENTERED on note
-                    const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit
                         ? String(note.keyboardHint || note.keyboardHint || note.keyHint || 'SPACE').toUpperCase()
                         : isKbd
@@ -3084,98 +3084,125 @@ RhythmGame.prototype.drawFloatJudges = function () {
     const now = performance.now();
     this.floatJudges = this.floatJudges.filter(j => now - j.at < j.lifeMs);
     const ctx = this.ctx;
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+
     for (const j of this.floatJudges) {
         const t = (now - j.at) / j.lifeMs;
-        const alpha = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85);
-        const rise = t * 50;
-        const bounceS = t < 0.12 ? 1 + 0.25 * Math.sin(t / 0.12 * Math.PI) : 1;
-        const sx = j.x;
-        const sy = j.y - rise;
-        const fontSize = Math.round(j.size * bounceS);
+        const alpha = t < 0.08 ? t / 0.08 : Math.max(0, 1 - (t - 0.08) / 0.92);
+        const bounceS = t < 0.10 ? (1 + 0.30 * Math.sin(t / 0.10 * Math.PI)) : 1;
+        const rise = t * 55;
+        // Always centered on screen, big
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height * 0.32 - rise;
 
-        ctx.globalAlpha = alpha;
         ctx.save();
-        ctx.translate(sx, sy);
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(cx, cy);
+        ctx.globalAlpha = alpha;
+
+        const seed = (j.at | 0) % 97;
 
         if (j.text === 'PERFECT') {
-            // cyan 3D-ish pixel font
-            ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
-            // dark 3d shadow
-            for (let d = 3; d >= 1; d--) {
-                ctx.fillStyle = `rgba(0,80,100,${0.5 - d * 0.1})`;
-                ctx.fillText('PERFECT!', d, d + 2);
+            const fs = Math.round(j.size * bounceS);
+            // ─ many cyan pixel fragments scattered outward ─
+            const fragCount = 22;
+            for (let i = 0; i < fragCount; i++) {
+                const ang = ((seed * 7 + i * 360 / fragCount) % 360) * Math.PI / 180;
+                const dist = (38 + (seed * 3 + i * 11) % 38) * (0.4 + t * 0.9);
+                const ps = 3 + (i % 4);
+                const fa = alpha * Math.max(0, 1 - t * 1.1) * (0.5 + 0.5 * (i % 2));
+                ctx.globalAlpha = fa;
+                ctx.fillStyle = i % 3 === 0 ? '#a0f8ff' : '#59efff';
+                ctx.fillRect(Math.cos(ang) * dist - ps/2, Math.sin(ang) * dist - ps/2, ps, ps);
             }
-            ctx.shadowBlur = 18;
+            ctx.globalAlpha = alpha;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `900 ${fs}px "Press Start 2P", monospace`;
+            // 3D chunky shadow (dark teal)
+            for (let d = 4; d >= 1; d--) {
+                ctx.fillStyle = `rgba(0,60,80,${0.7 - d * 0.12})`;
+                ctx.fillText('PERFECT!', d * 1.5, d * 1.5);
+            }
+            // mid fill (dark cyan)
+            ctx.fillStyle = '#1ab8cc';
+            ctx.fillText('PERFECT!', 2, 2);
+            // main glow
+            ctx.shadowBlur = 22;
             ctx.shadowColor = '#59efff';
             ctx.fillStyle = '#59efff';
             ctx.fillText('PERFECT!', 0, 0);
             ctx.shadowBlur = 0;
-            ctx.fillStyle = 'rgba(255,255,255,0.55)';
-            ctx.fillText('PERFECT!', -1, -2);
-            // pixel scatter particles (static per judge using seed)
-            ctx.fillStyle = '#59efff';
-            const seed = j.at % 100;
-            for (let i = 0; i < 14; i++) {
-                const ang = (seed + i * 23) % 360 * Math.PI / 180;
-                const dist = 24 + (seed + i * 17) % 22;
-                const ps = 2 + (i % 3);
-                ctx.globalAlpha = alpha * (0.4 + 0.5 * (1 - t));
+            // top highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.70)';
+            ctx.fillText('PERFECT!', -1, -3);
+
+        } else if (j.text === 'GOOD') {
+            const fs = Math.round(j.size * bounceS);
+            // ─ pink pixel fragments ─
+            const fragCount = 16;
+            for (let i = 0; i < fragCount; i++) {
+                const ang = ((seed * 5 + i * 360 / fragCount) % 360) * Math.PI / 180;
+                const dist = (30 + (seed * 2 + i * 13) % 30) * (0.4 + t * 0.9);
+                const ps = 3 + (i % 3);
+                const fa = alpha * Math.max(0, 1 - t * 1.1) * (0.5 + 0.4 * (i % 2));
+                ctx.globalAlpha = fa;
+                ctx.fillStyle = i % 2 === 0 ? '#ffb8d8' : '#ff79ae';
                 ctx.fillRect(Math.cos(ang) * dist - ps/2, Math.sin(ang) * dist - ps/2, ps, ps);
             }
             ctx.globalAlpha = alpha;
-        } else if (j.text === 'GOOD') {
-            ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
-            for (let d = 2; d >= 1; d--) {
-                ctx.fillStyle = `rgba(120,0,60,${0.45 - d * 0.1})`;
-                ctx.fillText('GOOD!', d, d + 2);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `900 ${fs}px "Press Start 2P", monospace`;
+            for (let d = 3; d >= 1; d--) {
+                ctx.fillStyle = `rgba(100,0,50,${0.65 - d * 0.15})`;
+                ctx.fillText('GOOD!', d * 1.5, d * 1.5);
             }
-            ctx.shadowBlur = 16;
+            ctx.fillStyle = '#cc3070';
+            ctx.fillText('GOOD!', 2, 2);
+            ctx.shadowBlur = 20;
             ctx.shadowColor = '#ff79ae';
             ctx.fillStyle = '#ff79ae';
             ctx.fillText('GOOD!', 0, 0);
             ctx.shadowBlur = 0;
-            ctx.fillStyle = 'rgba(255,200,220,0.45)';
-            ctx.fillText('GOOD!', -1, -2);
-            // pink pixel scatter
-            const seed2 = j.at % 100;
-            for (let i = 0; i < 10; i++) {
-                const ang = (seed2 + i * 31) % 360 * Math.PI / 180;
-                const dist = 20 + (seed2 + i * 19) % 18;
-                const ps = 2 + (i % 2);
-                ctx.globalAlpha = alpha * (0.35 + 0.45 * (1 - t));
-                ctx.fillStyle = '#ff79ae';
-                ctx.fillRect(Math.cos(ang) * dist - ps/2, Math.sin(ang) * dist - ps/2, ps, ps);
-            }
-            ctx.globalAlpha = alpha;
+            ctx.fillStyle = 'rgba(255,220,235,0.65)';
+            ctx.fillText('GOOD!', -1, -3);
+
         } else if (j.text === 'MISS') {
-            ctx.font = `900 ${fontSize}px "Press Start 2P", monospace`;
-            // dark red bg band like reference image
-            const bw3 = fontSize * 5.5;
-            const bh3 = fontSize * 1.4;
-            ctx.fillStyle = 'rgba(100,5,5,.82)';
-            ctx.fillRect(-bw3/2, -bh3/2, bw3, bh3);
-            // horizontal stripe texture
-            ctx.fillStyle = 'rgba(200,30,30,.20)';
-            for (let ln = -bh3/2 + 4; ln < bh3/2; ln += 6) {
-                ctx.fillRect(-bw3/2, ln, bw3, 2);
+            const fs = Math.round(j.size * bounceS);
+            // ─ rough dark red brush-stroke bg ─
+            const bw = fs * 5.2;
+            const bh = fs * 1.55;
+            // jagged dark red bg stripes (simulate rough brush)
+            const stripCount = 10;
+            for (let s = 0; s < stripCount; s++) {
+                const sy2 = -bh/2 + (s / stripCount) * bh;
+                const sh = bh / stripCount * (0.6 + ((seed + s * 7) % 10) / 15);
+                const sw = bw * (0.72 + ((seed * 3 + s * 11) % 28) / 100);
+                const soff = ((seed + s * 3) % 14) - 7;
+                ctx.fillStyle = s % 3 === 0 ? 'rgba(60,0,0,.90)' : 'rgba(90,5,5,.82)';
+                ctx.fillRect(soff - sw/2, sy2, sw, sh);
             }
-            // 3D shadow
-            ctx.fillStyle = 'rgba(40,0,0,.7)';
-            ctx.fillText('MISS', 3, 3);
-            ctx.shadowBlur = 12;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `900 ${fs}px "Press Start 2P", monospace`;
+            // 3D red shadow
+            for (let d = 3; d >= 1; d--) {
+                ctx.fillStyle = `rgba(80,0,0,${0.7 - d * 0.18})`;
+                ctx.fillText('MISS', d * 2, d * 2);
+            }
+            ctx.fillStyle = '#991111';
+            ctx.fillText('MISS', 2, 2);
+            ctx.shadowBlur = 16;
             ctx.shadowColor = '#ff2222';
-            ctx.fillStyle = '#ff4444';
+            ctx.fillStyle = '#ff3a3a';
             ctx.fillText('MISS', 0, 0);
             ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255,160,160,0.50)';
+            ctx.fillText('MISS', -1, -3);
         }
+
         ctx.restore();
     }
-    ctx.globalAlpha = 1;
-    ctx.restore();
 };
 
 RhythmGame.prototype.drawNoteLinks = function () {
@@ -4546,12 +4573,12 @@ RhythmGame.prototype.showResultOverlay = function () {
 RhythmGame.prototype.floatJudges = [];
 RhythmGame.prototype.pushFloatJudge = function (type, x, y) {
     const cfg = {
-        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 16 },
-        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 15 },
-        miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 15 },
+        perfect: { text: 'PERFECT', color: '#59efff', shadow: '#59efff', size: 22 },
+        good:    { text: 'GOOD',    color: '#ff9bb4', shadow: '#ff9bb4', size: 22 },
+        miss:    { text: 'MISS',    color: '#ff5f76', shadow: '#ff5f76', size: 22 },
     };
     const c = cfg[type] || cfg.good;
-    (this.floatJudges = this.floatJudges || []).push({ text: c.text, color: c.color, shadow: c.shadow, size: c.size, x, y: y || (this.canvas.height * 0.3), at: performance.now(), lifeMs: 850 });
+    (this.floatJudges = this.floatJudges || []).push({ text: c.text, color: c.color, shadow: c.shadow, size: c.size, x, y: y || (this.canvas.height * 0.3), at: performance.now(), lifeMs: 1100 });
 };
 
 // Initialize the game
