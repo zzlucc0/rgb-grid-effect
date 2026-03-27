@@ -2874,7 +2874,9 @@ class RhythmGame {
             this.notes.forEach(note => {
                 if (note.hit || note.completed) return;
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
-                if (distance > this.circleSize) return;
+                // Drag notes get a larger tap radius — they're harder to start
+                const hitRadius = note.isDrag ? this.circleSize * 1.5 : this.circleSize;
+                if (distance > hitRadius) return;
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
 
                 if (note.isSpin) {
@@ -2895,17 +2897,15 @@ class RhythmGame {
                     note._cachedPath2D = null;
                     note._milestonesFired = null;
                     // Determine drag direction NOW at tap time using initial pointer position.
-                    // For heart: bottom-tip start → left lobe first if player is to the RIGHT of the note
-                    // (they'll sweep left), right lobe first if player is to the LEFT.
-                    // dx = pointerX - note.x: positive = right side tap → left-lobe first (reversed path)
+                    // Heart: bottom-tip start.
+                    //   tap to the RIGHT of note → player sweeps left → reverse path (left lobe first)
+                    //   tap to the LEFT          → player sweeps right → default (right lobe first)
                     if (note.pathTemplate === 'heart' && note.extraPath?.points?.length) {
                         const rawPts = note.extraPath.points;
                         const dx = x - note.x;
                         const orderedPts = dx > 0 ? rawPts.slice().reverse() : rawPts;
                         const segs = Math.max(1, orderedPts.length - 1);
                         note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
-                        // Snap first point to tap position so progress starts at 0 correctly
-                        if (note._cachedPath[0]) { note._cachedPath[0].t = 0; }
                     }
                     this.currentDragNote = note;
                     return;
@@ -4131,7 +4131,8 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'live', note.groupIndex);
     note.groupPattern = this.pickGroupPattern(note.groupIndex, note.segmentLabel || 'live');
-    this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
+    // NOTE: applyGroupMechanics moved to AFTER drag block so pathTemplate is finalized first
+    // (applyNoteMechanicProfile inside it must see the final heart/vortex value)
 
     if (note.isDrag) {
         // Force-remap to heart/vortex before extraPath is generated
@@ -4203,6 +4204,9 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
             }
         }
     }
+
+    // Apply group mechanics AFTER drag/path setup so applyNoteMechanicProfile sees final pathTemplate
+    this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
 
     this.liveEngine.lastSpawnX = note.x;
     this.liveEngine.lastSpawnY = note.y;
@@ -4768,27 +4772,24 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         note.traceStrictness = 0.2;
     }
     if (note.noteType === 'drag' && window.PathTemplates?.chooseTemplate) {
-        const activeTemplates = (this.notes || []).filter(n => !n.hit && !n.completed).map(n => n.pathTemplate).filter(Boolean).slice(-4);
-        const geometrySeenCount = (this.notes || []).filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate)).length;
-        const tuning = this.runtimeTuning || {};
-        const geometryFloor = Number(tuning.forceGeometryFloor || 2);
-        const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < geometryFloor;
-        note.pathTemplate = note.pathTemplate || note.pathVariant || window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal', {
-            recentTemplates: activeTemplates,
-            forceGeometry: shouldForceGeometry,
-            forceGeometryFloor: geometryFloor,
-            geometryBiasBoost: Number(tuning.geometryBiasBoost || 0)
-        });
-        // ── Force-remap all legacy drag templates to the two new visual shapes ──
-        // Server-side charts may emit 'starTrace', 'zigzag', 'diamondLoop', etc.
-        // We replace them here, before extraPath is generated, so the new
-        // renderers (heart / vortex) are guaranteed to be used.
-        const _dragRemap = {
-            starTrace: 'heart', diamondLoop: 'heart',
-            zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex'
-        };
-        note.pathTemplate = _dragRemap[note.pathTemplate] || note.pathTemplate;
-        note.pathVariant = note.pathTemplate;
+        // If already set to a final shape by the note-creation remap, do NOT override.
+        const _finalShapes = { heart: true, vortex: true };
+        if (!_finalShapes[note.pathTemplate]) {
+            const activeTemplates = (this.notes || []).filter(n => !n.hit && !n.completed).map(n => n.pathTemplate).filter(Boolean).slice(-4);
+            const tuning = this.runtimeTuning || {};
+            const geometryFloor = Number(tuning.forceGeometryFloor || 2);
+            const geometrySeenCount = (this.notes || []).filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate)).length;
+            const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < geometryFloor;
+            const chosen = note.pathTemplate || note.pathVariant || window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal', {
+                recentTemplates: activeTemplates,
+                forceGeometry: shouldForceGeometry,
+                forceGeometryFloor: geometryFloor,
+                geometryBiasBoost: Number(tuning.geometryBiasBoost || 0)
+            });
+            const _dragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
+            note.pathTemplate = _dragRemap[chosen] || chosen || 'heart';
+            note.pathVariant = note.pathTemplate;
+        }
     }
     note.keyboardCheckpoint = false;
     note.keyboardKey = null;
