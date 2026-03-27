@@ -2354,194 +2354,211 @@ class RhythmGame {
             // If it's a drag button, draw the track
             if (note.isDrag) {
                 const palette = this.getNotePalette(note);
+                const tmpl = note.pathTemplate || note.pathVariant || '';
+                const isHeart = tmpl === 'heart';
+                const isVortex = tmpl === 'vortex';
+                const isGeometry = isHeart || isVortex;
+
                 const dragSamples = note.extraPath?.points?.length
                     ? note.extraPath.points
-                    : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 40) : []);
+                    : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 60) : []);
 
-                // ── Soft glow underlay along the full track ──
+                const now = performance.now();
+
                 if (dragSamples.length >= 2) {
                     this.ctx.save();
+
+                    // ── Layer 1: fat outer glow (reference: thick luminous aura) ──
                     this.ctx.beginPath();
                     this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
                     for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                    this.ctx.strokeStyle = palette.glow.replace(/[\d.]+\)$/, '0.10)');
-                    this.ctx.lineWidth = this.circleSize * 0.72;
+                    if (isHeart) this.ctx.closePath();
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = this.circleSize * 0.55;
                     this.ctx.lineCap = 'round';
                     this.ctx.lineJoin = 'round';
+                    this.ctx.globalAlpha = 0.08;
                     this.ctx.stroke();
-                    this.ctx.restore();
-                }
+                    this.ctx.globalAlpha = 1;
 
-                // ── Ribbon segments with breathing width ──
-                if (dragSamples.length >= 2) {
-                    this.ctx.save();
-                    const now = performance.now();
-                    for (let i = 0; i < dragSamples.length - 1; i++) {
-                        const a = dragSamples[i];
-                        const b = dragSamples[i + 1];
-                        const t = i / Math.max(1, dragSamples.length - 2);
-                        const dx = b.x - a.x;
-                        const dy = b.y - a.y;
-                        const segLen = Math.max(1, Math.hypot(dx, dy));
-                        const nx = -dy / segLen;
-                        const ny = dx / segLen;
-                        const breathe = 1 + Math.sin(now / 320 + t * Math.PI * 3) * 0.18;
-                        const halfW = this.circleSize * (0.10 + 0.06 * Math.sin(t * Math.PI)) * breathe;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(a.x + nx * halfW, a.y + ny * halfW);
-                        this.ctx.lineTo(b.x + nx * halfW, b.y + ny * halfW);
-                        this.ctx.lineTo(b.x - nx * halfW, b.y - ny * halfW);
-                        this.ctx.lineTo(a.x - nx * halfW, a.y - ny * halfW);
-                        this.ctx.closePath();
-                        const alpha = 0.06 + 0.12 * (1 - Math.abs(t - 0.5) * 1.6);
-                        this.ctx.fillStyle = `rgba(89,239,255,${Math.max(0, alpha).toFixed(3)})`;
-                        this.ctx.fill();
-                    }
-                    this.ctx.restore();
-                }
-
-                // ── Main stroke ──
-                this.ctx.beginPath();
-                this.ctx.lineCap = 'round';
-                this.ctx.lineJoin = 'round';
-                this.ctx.lineWidth = this.circleSize * 0.22;
-                this.ctx.strokeStyle = palette.edge;
-                this.ctx.shadowBlur = 18;
-                this.ctx.shadowColor = palette.edge;
-                if (dragSamples.length) {
+                    // ── Layer 2: medium glow ──
+                    this.ctx.beginPath();
                     this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
                     for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                } else {
-                    this.ctx.moveTo(note.x, note.y);
-                    this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
-                }
-                this.ctx.stroke();
-                this.ctx.shadowBlur = 0;
+                    if (isHeart) this.ctx.closePath();
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = this.circleSize * 0.28;
+                    this.ctx.globalAlpha = 0.18;
+                    this.ctx.stroke();
+                    this.ctx.globalAlpha = 1;
 
-                // ── Ambient sparkles drifting along the track ──
-                if (dragSamples.length >= 2) {
-                    const now = performance.now();
-                    const sparkleCount = Math.min(14, Math.floor(dragSamples.length * 0.4));
+                    // ── Layer 3: bright core neon line (the main visible stroke) ──
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
+                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
+                    if (isHeart) this.ctx.closePath();
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = this.circleSize * 0.10;
+                    this.ctx.shadowBlur = 22;
+                    this.ctx.shadowColor = palette.edge;
+                    this.ctx.globalAlpha = 0.9;
+                    this.ctx.stroke();
+                    this.ctx.shadowBlur = 0;
+                    this.ctx.globalAlpha = 1;
+
+                    // ── Layer 4: white hot center ──
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
+                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
+                    if (isHeart) this.ctx.closePath();
+                    this.ctx.strokeStyle = '#ffffff';
+                    this.ctx.lineWidth = this.circleSize * 0.035;
+                    this.ctx.globalAlpha = 0.55;
+                    this.ctx.stroke();
+                    this.ctx.globalAlpha = 1;
+
+                    // ── Layer 5: sparkle dots scattered along the track ──
+                    const sparkleCount = isGeometry ? Math.min(38, dragSamples.length) : Math.min(18, dragSamples.length);
                     for (let pi = 0; pi < sparkleCount; pi++) {
-                        const sampleIdx = Math.floor((pi / sparkleCount) * (dragSamples.length - 1));
-                        const pt = dragSamples[sampleIdx];
+                        const sIdx = Math.floor((pi / sparkleCount) * (dragSamples.length - 1));
+                        const pt = dragSamples[sIdx];
                         if (!pt) continue;
-                        const seed = (pi * 137 + (note.noteNumber || 0) * 31) % 1000;
-                        const drift = Math.sin(now / 600 + seed * 0.1) * 6 + Math.cos(now / 400 + seed * 0.07) * 4;
-                        const driftY = Math.cos(now / 500 + seed * 0.13) * 5;
-                        const alpha = 0.18 + (seed % 200) / 500;
-                        const size = 2 + (seed % 3);
-                        this.ctx.fillStyle = `rgba(90,246,255,${alpha.toFixed(2)})`;
-                        this.ctx.fillRect(Math.round(pt.x + drift - size / 2), Math.round(pt.y + driftY - size / 2), size, size);
+                        const seed = (pi * 173 + (note.noteNumber || 0) * 37) % 1000;
+                        // Two types: tiny floating stars that drift, and static bright dots
+                        const isDrift = seed % 3 !== 0;
+                        const drift = isDrift ? (Math.sin(now / 700 + seed * 0.09) * 7 + Math.cos(now / 430 + seed * 0.06) * 5) : 0;
+                        const driftY = isDrift ? (Math.cos(now / 550 + seed * 0.11) * 6) : 0;
+                        const alpha = isDrift ? (0.35 + Math.sin(now / 380 + seed * 0.2) * 0.25) : (0.7 + (seed % 100) / 250);
+                        const size = isDrift ? (2 + (seed % 3)) : (3 + (seed % 4));
+                        const col = seed % 5 === 0 ? '#ffffff' : palette.edge;
+                        this.ctx.fillStyle = col;
+                        this.ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+                        if (!isDrift && size >= 4) {
+                            // bright dot with mini glow
+                            this.ctx.shadowBlur = 8;
+                            this.ctx.shadowColor = palette.edge;
+                        }
+                        this.ctx.fillRect(
+                            Math.round(pt.x + drift - size / 2),
+                            Math.round(pt.y + driftY - size / 2),
+                            size, size
+                        );
+                        this.ctx.shadowBlur = 0;
+                        this.ctx.globalAlpha = 1;
                     }
+
+                    this.ctx.restore();
                 }
 
-                // ── While held: progress highlight + jet trail particles ──
+                // ── While held: bright progress trail + jet exhaust ──
                 if (note.held) {
                     const fullPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
                     const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
-                    const currentX = fullPath[progressIndex]?.x ?? (Math.pow(1 - note.progress, 2) * note.x + 2 * (1 - note.progress) * note.progress * note.controlX + Math.pow(note.progress, 2) * note.endX);
-                    const currentY = fullPath[progressIndex]?.y ?? (Math.pow(1 - note.progress, 2) * note.y + 2 * (1 - note.progress) * note.progress * note.controlY + Math.pow(note.progress, 2) * note.endY);
+                    const currentX = fullPath[progressIndex]?.x ?? note.x;
+                    const currentY = fullPath[progressIndex]?.y ?? note.y;
 
-                    // Completed portion glow
-                    if (fullPath.length) {
+                    // Bright completed-portion overlay
+                    if (fullPath.length > 1) {
+                        this.ctx.save();
                         this.ctx.beginPath();
-                        this.ctx.moveTo(fullPath[0]?.x || note.x, fullPath[0]?.y || note.y);
+                        this.ctx.moveTo(fullPath[0].x, fullPath[0].y);
+                        for (let i = 1; i <= progressIndex; i++) this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
+                        this.ctx.strokeStyle = '#ffffff';
+                        this.ctx.lineWidth = this.circleSize * 0.13;
                         this.ctx.lineCap = 'round';
                         this.ctx.lineJoin = 'round';
-                        this.ctx.lineWidth = this.circleSize * 0.26;
-                        this.ctx.strokeStyle = palette.edge;
-                        this.ctx.shadowBlur = 16;
+                        this.ctx.shadowBlur = 14;
                         this.ctx.shadowColor = palette.edge;
-                        for (let i = 1; i <= progressIndex; i++) this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
+                        this.ctx.globalAlpha = 0.75;
                         this.ctx.stroke();
                         this.ctx.shadowBlur = 0;
+                        this.ctx.globalAlpha = 1;
+                        this.ctx.restore();
                     }
 
-                    // ── Jet trail: spray particles behind the drag cursor ──
-                    if (progressIndex >= 2) {
-                        const prev = fullPath[Math.max(0, progressIndex - 2)];
-                        const dirX = currentX - prev.x;
-                        const dirY = currentY - prev.y;
-                        const dirLen = Math.hypot(dirX, dirY) || 1;
-                        const jetCount = 3 + Math.floor(Math.random() * 3);
+                    // ── Jet exhaust: continuous trail behind cursor ──
+                    if (progressIndex >= 1) {
+                        const prev = fullPath[Math.max(0, progressIndex - 2)] || fullPath[0];
+                        const baseAngle = Math.atan2(prev.y - currentY, prev.x - currentX);
+                        const jetCount = 4 + Math.floor(Math.random() * 4);
                         for (let ji = 0; ji < jetCount; ji++) {
-                            const spread = (Math.random() - 0.5) * Math.PI * 0.7;
-                            const baseAngle = Math.atan2(-dirY, -dirX) + spread;
-                            const spd = 2.2 + Math.random() * 3.8;
-                            const life = 180 + Math.random() * 160;
-                            const cols = ['#59efff', '#ffffff', '#ff79ae', palette.edge];
-                            const col = cols[Math.floor(Math.random() * cols.length)];
+                            const spread = (Math.random() - 0.5) * Math.PI * 0.55;
+                            const spd = 1.8 + Math.random() * 4.2;
+                            const life = 160 + Math.random() * 200;
+                            const cols = ['#ffffff', palette.edge, palette.core, '#59efff'];
                             (this.juiceParticles = this.juiceParticles || []).push({
                                 x: currentX, y: currentY,
-                                vx: Math.cos(baseAngle) * spd,
-                                vy: Math.sin(baseAngle) * spd,
+                                vx: Math.cos(baseAngle + spread) * spd,
+                                vy: Math.sin(baseAngle + spread) * spd,
                                 life, lifeMax: life,
-                                size: 2 + Math.random() * 3,
-                                color: col,
+                                size: 1.5 + Math.random() * 3.5,
+                                color: cols[Math.floor(Math.random() * cols.length)],
                                 at: performance.now()
                             });
                         }
                     }
 
-                    if (note.keyboardCheckpoint && note.keyboardHit) {
-                        this.ctx.beginPath();
-                        this.ctx.arc(currentX, currentY, this.circleSize * (0.92 + Math.sin(performance.now() / 120) * 0.08), 0, Math.PI * 2);
-                        this.ctx.strokeStyle = 'rgba(255,255,255,0.34)';
-                        this.ctx.lineWidth = 3;
-                        this.ctx.stroke();
-                    }
-
-                    // Drag cursor orb with pulsing glow
-                    const cursorScale = 0.50 + Math.sin(performance.now() / 140) * 0.06;
+                    // Cursor orb — bright pulsing circle
+                    const cursorR = this.circleSize * (0.44 + Math.sin(now / 130) * 0.07);
+                    this.ctx.save();
                     this.ctx.beginPath();
-                    this.ctx.arc(currentX, currentY, this.circleSize * cursorScale, 0, Math.PI * 2);
-                    const grad = this.ctx.createRadialGradient(currentX, currentY, 4, currentX, currentY, this.circleSize * (cursorScale + 0.08));
+                    this.ctx.arc(currentX, currentY, cursorR, 0, Math.PI * 2);
+                    const grad = this.ctx.createRadialGradient(currentX, currentY, 2, currentX, currentY, cursorR);
                     grad.addColorStop(0, '#ffffff');
-                    grad.addColorStop(0.35, palette.core);
+                    grad.addColorStop(0.4, palette.core);
                     grad.addColorStop(1, 'rgba(255,255,255,0)');
                     this.ctx.fillStyle = grad;
+                    this.ctx.shadowBlur = 18;
+                    this.ctx.shadowColor = palette.edge;
                     this.ctx.fill();
-
-                    // Outer pulse ring
-                    const pulseSize = this.circleSize * (0.85 + Math.sin(performance.now() / 180) * 0.14);
+                    this.ctx.shadowBlur = 0;
+                    // outer ring
                     this.ctx.beginPath();
-                    this.ctx.arc(currentX, currentY, pulseSize, 0, Math.PI * 2);
-                    this.ctx.strokeStyle = palette.glow.replace(/[\d.]+\)$/, '0.25)');
-                    this.ctx.lineWidth = 2.5;
+                    this.ctx.arc(currentX, currentY, cursorR * 1.55, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = 2;
+                    this.ctx.globalAlpha = 0.4 + Math.sin(now / 200) * 0.2;
                     this.ctx.stroke();
+                    this.ctx.globalAlpha = 1;
+                    this.ctx.restore();
 
-                    // Milestone burst at 25% / 50% / 75%
-                    const milestoneKeys = [0.25, 0.5, 0.75];
+                    // Milestone bursts at 25% / 50% / 75%
                     if (!note._milestonesFired) note._milestonesFired = {};
-                    for (const ms of milestoneKeys) {
+                    for (const ms of [0.25, 0.5, 0.75]) {
                         if (note.progress >= ms && !note._milestonesFired[ms]) {
                             note._milestonesFired[ms] = true;
-                            for (let mi = 0; mi < 6; mi++) {
+                            for (let mi = 0; mi < 8; mi++) {
                                 const ang = Math.random() * Math.PI * 2;
-                                const spd = 2.5 + Math.random() * 3;
+                                const spd = 2.8 + Math.random() * 4;
                                 (this.juiceParticles = this.juiceParticles || []).push({
                                     x: currentX, y: currentY,
                                     vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
-                                    life: 260, lifeMax: 260,
-                                    size: 3 + Math.random() * 3,
-                                    color: ms >= 0.75 ? '#ffe95a' : '#59efff',
+                                    life: 320, lifeMax: 320,
+                                    size: 3 + Math.random() * 4,
+                                    color: ms >= 0.75 ? '#ffe95a' : (isHeart ? palette.edge : '#59efff'),
                                     at: performance.now()
                                 });
                             }
-                            if (this.juiceShake) this.juiceShake.mag = Math.max(this.juiceShake.mag || 0, 3);
+                            if (this.juiceShake) this.juiceShake.mag = Math.max(this.juiceShake.mag || 0, 3.5);
                         }
                     }
                 }
-                
-                // Draw endpoint marker
-                this.ctx.beginPath();
-                this.ctx.arc(note.endX, note.endY, this.circleSize * 0.48, 0, Math.PI * 2);
-                this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.10)';
-                this.ctx.fill();
-                this.ctx.strokeStyle = palette.edge;
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
+
+                // Endpoint dot
+                if (!isHeart) {
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.arc(note.endX, note.endY, this.circleSize * 0.40, 0, Math.PI * 2);
+                    this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.10)';
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.shadowColor = palette.edge;
+                    this.ctx.stroke();
+                    this.ctx.shadowBlur = 0;
+                    this.ctx.restore();
+                }
             }
             
             // ── 8bit pixel tap (light) ──────────────────────────────────────
@@ -4092,14 +4109,17 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
 
     if (note.isDrag) {
-        // heart/vortex need bigger radius; scale slightly by energy so louder vocal sections get wider arcs
         const liveEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
-        const liveTemplateDist = (note.pathTemplate === 'heart' || note.pathTemplate === 'vortex')
-            ? this.circleSize * (4.8 + Math.random() * 1.4) * liveEnergyFactor
-            : this.circleSize * (3.4 + Math.random() * 1.3);
+        // For heart/vortex the "radius" drives the shape size — not start/end distance
+        const liveShapeRadius = Math.round(this.circleSize * (2.8 + Math.random() * 1.2) * liveEnergyFactor);
+        note._shapeRadius = liveShapeRadius;
+        // endX/endY: place it near enough not to clip, direction random
         const a = Math.random() * Math.PI * 2;
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * liveTemplateDist));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * liveTemplateDist));
+        const endDist = (note.pathTemplate === 'heart' || note.pathTemplate === 'vortex')
+            ? liveShapeRadius * 0.6
+            : this.circleSize * (3.4 + Math.random() * 1.3);
+        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * endDist));
+        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * endDist));
         const dx = note.endX - note.x;
         const dy = note.endY - note.y;
         const L = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -4123,16 +4143,16 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
             } else if (note.pathTemplate === 'scurve') {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'heart') {
-                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY);
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, liveShapeRadius);
             } else if (note.pathTemplate === 'vortex') {
-                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY);
+                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, liveShapeRadius);
             }
         }
         // Clamp extraPath points to canvas safe area
         if (note.extraPath && note.extraPath.points) {
-            var sa = this.safeArea, cs = this.circleSize;
-            for (var pi = 0; pi < note.extraPath.points.length; pi++) {
-                var pt = note.extraPath.points[pi];
+            const sa = this.safeArea, cs = this.circleSize;
+            for (let pi = 0; pi < note.extraPath.points.length; pi++) {
+                const pt = note.extraPath.points[pi];
                 pt.x = Math.max(sa.x + cs * 0.5, Math.min(sa.x + sa.width - cs * 0.5, pt.x));
                 pt.y = Math.max(sa.y + cs * 0.5, Math.min(sa.y + sa.height - cs * 0.5, pt.y));
             }
@@ -4321,6 +4341,9 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         note.controlY = midY + dx / L * curve;
 
         // Apply path template geometry for chart-driven notes
+        const chartEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
+        const chartShapeRadius = Math.round(this.circleSize * (2.8 + Math.random() * 1.2) * chartEnergyFactor);
+        note._shapeRadius = chartShapeRadius;
         if (window.PathTemplates && note.pathTemplate) {
             if (note.pathTemplate === 'orbit') {
                 const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
@@ -4337,9 +4360,9 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             } else if (note.pathTemplate === 'scurve') {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'heart') {
-                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY);
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, chartShapeRadius);
             } else if (note.pathTemplate === 'vortex') {
-                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY);
+                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, chartShapeRadius);
             }
         }
         // Clamp extraPath points to canvas safe area

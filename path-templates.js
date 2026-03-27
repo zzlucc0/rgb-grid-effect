@@ -107,71 +107,78 @@
     };
   }
 
-  /* ────── NEW: Heart shape ────── */
-  function sampleHeart(startX, startY, endX, endY) {
+  /* ────── RAIL NOTE: full heart outline, closed loop ────── */
+  /* The shape is a self-contained closed heart centered on the note.
+     start/endX,Y are ignored for shape geometry (they are the note
+     start/end tap points); the heart is sized by the safeRadius hint
+     stored on the note, or falls back to a sensible default.
+     We DO blend the very first few points into startX,startY so the
+     tail of the stroke visually originates from the note body. */
+  function sampleHeart(startX, startY, endX, endY, radiusPx) {
+    // midpoint is the visual center of the heart
     var midX = (startX + endX) / 2;
     var midY = (startY + endY) / 2;
-    var dist = Math.hypot(endX - startX, endY - startY) || 80;
-    // Scale the heart proportionally to the note distance but cap it so it
-    // never extends far beyond the start/end region.
-    var heartScale = Math.min(dist * 0.38, 140);
+    // radiusPx is the "half-height" of the heart.
+    // If not supplied, fall back to 80 px – still a visible shape on any
+    // canvas size; callers should pass something proportional to circleSize.
+    var R = radiusPx || 80;
+    // Normalisation constants so the parametric range fills ±R
+    // heart max |hx| = 16, max |hy| ≈ 17 → we scale to R
+    var sx = R / 16;
+    var sy = R / 17;
+    var steps = 60;
     var points = [];
-    var steps = 48;
     for (var i = 0; i <= steps; i++) {
       var t = (i / steps) * Math.PI * 2;
-      // Classic parametric heart equation
       var hx = 16 * Math.pow(Math.sin(t), 3);
       var hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
       points.push({
-        x: midX + (hx / 17) * heartScale,
-        y: midY - (hy / 17) * heartScale
+        x: midX + hx * sx,
+        y: midY - hy * sy   // flip Y so top of heart is up
       });
     }
-    // Blend start/end so the path begins at startX,startY and ends at endX,endY
-    var blend = 5;
+    // Blend first few points toward startX,startY so the stroke origin looks
+    // connected to the tap note
+    var blend = 4;
     for (var bi = 0; bi < blend; bi++) {
-      var w = 1 - bi / blend;
+      var w = (blend - bi) / (blend + 1);
       points[bi].x = startX * w + points[bi].x * (1 - w);
       points[bi].y = startY * w + points[bi].y * (1 - w);
-    }
-    for (var bj = 0; bj < blend; bj++) {
-      var idx = points.length - 1 - bj;
-      var we = 1 - bj / blend;
-      points[idx].x = endX * we + points[idx].x * (1 - we);
-      points[idx].y = endY * we + points[idx].y * (1 - we);
     }
     return { kind: 'heart', points: points };
   }
 
-  /* ────── NEW: Vortex / spiral-inward ────── */
-  function sampleVortex(startX, startY, endX, endY) {
+  /* ────── SWIPE NOTE: Archimedean outward spiral, 2.2 turns ────── */
+  /* Starts tight at center, unwinds outward then curls back to endX,endY.
+     The caller passes safeRadius for the outer ring. */
+  function sampleVortex(startX, startY, endX, endY, radiusPx) {
     var midX = (startX + endX) / 2;
     var midY = (startY + endY) / 2;
-    var dist = Math.hypot(endX - startX, endY - startY) || 80;
-    var maxRadius = Math.min(dist * 0.38, 140);
-    var turns = 2.5;
+    var R = radiusPx || 80;
+    var turns = 2.2;
     var totalAngle = Math.PI * 2 * turns;
-    var steps = 60;
+    var steps = 80;
     var points = [];
+    // Phase offset so the spiral starts pointing roughly toward startX,startY
+    var startAngle = Math.atan2(startY - midY, startX - midX);
     for (var i = 0; i <= steps; i++) {
       var t = i / steps;
-      var angle = t * totalAngle;
-      // Spiral inward
-      var radius = maxRadius * (1 - t * 0.88);
+      // Archimedean: radius grows linearly from 0 → R
+      var angle = startAngle + t * totalAngle;
+      var radius = R * t;
       points.push({
         x: midX + Math.cos(angle) * radius,
         y: midY + Math.sin(angle) * radius
       });
     }
-    var blend = 4;
-    for (var bi = 0; bi < blend; bi++) {
-      var w = 1 - bi / blend;
-      points[bi].x = startX * w + points[bi].x * (1 - w);
-      points[bi].y = startY * w + points[bi].y * (1 - w);
-    }
+    // Hard-snap first point onto startX,startY
+    points[0].x = startX;
+    points[0].y = startY;
+    // Blend last few points toward endX,endY
+    var blend = 6;
     for (var bj = 0; bj < blend; bj++) {
       var idx = points.length - 1 - bj;
-      var we = 1 - bj / blend;
+      var we = (blend - bj) / (blend + 1);
       points[idx].x = endX * we + points[idx].x * (1 - we);
       points[idx].y = endY * we + points[idx].y * (1 - we);
     }
