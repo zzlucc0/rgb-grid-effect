@@ -4189,13 +4189,13 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
             } else if (note.pathTemplate === 'scurve') {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'heart') {
-                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, liveShapeRadius);
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, liveShapeRadius, this.safeArea);
             } else if (note.pathTemplate === 'vortex') {
                 note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, liveShapeRadius);
             }
         }
-        // Clamp extraPath points to canvas safe area
-        if (note.extraPath && note.extraPath.points) {
+        // For vortex only — clamp stray points; heart is already clamped inside sampleHeart
+        if (note.extraPath && note.extraPath.points && note.pathTemplate !== 'heart') {
             const sa = this.safeArea, cs = this.circleSize;
             for (let pi = 0; pi < note.extraPath.points.length; pi++) {
                 const pt = note.extraPath.points[pi];
@@ -4418,13 +4418,13 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             } else if (note.pathTemplate === 'scurve') {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'heart') {
-                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, chartShapeRadius);
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, chartShapeRadius, this.safeArea);
             } else if (note.pathTemplate === 'vortex') {
                 note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, chartShapeRadius);
             }
         }
-        // Clamp extraPath points to canvas safe area
-        if (note.extraPath && note.extraPath.points) {
+        // Vortex only — heart already clamped inside sampleHeart
+        if (note.extraPath && note.extraPath.points && note.pathTemplate !== 'heart') {
             const sa = this.safeArea, cs = this.circleSize;
             for (let pi = 0; pi < note.extraPath.points.length; pi++) {
                 const pt = note.extraPath.points[pi];

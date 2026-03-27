@@ -113,33 +113,43 @@
      the full outline clockwise back to the same point, giving a natural
      "draw a heart" gesture.
      radiusPx: half-height of the heart; caller drives this from circleSize. */
-  function sampleHeart(startX, startY, endX, endY, radiusPx) {
-    // Center the heart on startX, startY (the tap note position).
-    // We IGNORE endX/endY for geometry; the path closes back on itself.
-    var cx = startX;
-    var cy = startY;
+  function sampleHeart(startX, startY, endX, endY, radiusPx, safeArea) {
     var R = radiusPx || 70;
     var sx = R / 16;
     var sy = R / 17;
+
+    // The top notch of the heart sits at t=0.
+    // That notch is at (cx, cy - notchOffsetY) where:
+    //   hy(0) = 13 - 5 - 2 - 1 = 5  →  notchOffsetY = 5*sy - R*0.12
+    // We want the notch to land exactly on startX, startY (the note body).
+    // So the heart geometric center must be shifted DOWN by notchOffsetY.
+    var notchOffsetY = 5 * sy - R * 0.12;
+    var cx = startX;
+    var cy = startY + notchOffsetY;  // center is below the notch point
+
+    // Clamp center so the full heart (which extends R in all directions) stays
+    // inside the supplied safe area, preventing right/left clipping.
+    if (safeArea) {
+      var margin = R * 1.05;
+      cx = Math.max(safeArea.x + margin, Math.min(safeArea.x + safeArea.width  - margin, cx));
+      cy = Math.max(safeArea.y + margin, Math.min(safeArea.y + safeArea.height - margin, cy));
+    }
+
+    // t=0: top notch (dip between two lobes) – player starts here.
+    // Path goes: notch → right lobe → bottom tip → left lobe → back to notch.
     var steps = 80;
     var points = [];
-
-    // Parametric heart: t=0 is the bottom tip, t=π/2 is the top-notch dip.
-    // We start at t=π/2 (top notch) and go full circle back to π/2.
-    var startAngle = Math.PI / 2;
     for (var i = 0; i <= steps; i++) {
-      var t = startAngle + (i / steps) * Math.PI * 2; // clockwise full loop
+      var t = (i / steps) * Math.PI * 2;   // 0 → 2π, start at notch
       var hx = 16 * Math.pow(Math.sin(t), 3);
       var hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-      // Shift center downward by R*0.15 so the notch sits near the note body
-      points.push({
-        x: cx + hx * sx,
-        y: (cy + R * 0.15) - hy * sy
-      });
+      points.push({ x: cx + hx * sx, y: cy - hy * sy });
     }
-    // First and last points are the notch — snap them exactly to cx,cy
-    points[0].x = cx; points[0].y = cy;
-    points[steps].x = cx; points[steps].y = cy;
+
+    // Snap first & last point to startX,startY so the stroke visually starts
+    // exactly at the note body, even if the center was clamped.
+    points[0].x = startX;     points[0].y = startY;
+    points[steps].x = startX; points[steps].y = startY;
     return { kind: 'heart', points: points };
   }
 
@@ -248,7 +258,7 @@
     sampleSpiral: sampleSpiral,
     sampleZigzag: sampleZigzag,
     sampleScurve: sampleScurve,
-    sampleHeart: sampleHeart,
+    sampleHeart: sampleHeart,  // sampleHeart(sx, sy, ex, ey, radiusPx, safeArea)
     sampleVortex: sampleVortex,
     chooseTemplate: chooseTemplate,
     samplePathPoints: samplePathPoints
