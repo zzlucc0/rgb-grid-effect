@@ -108,43 +108,38 @@
   }
 
   /* ────── RAIL NOTE: full heart outline, closed loop ────── */
-  /* The shape is a self-contained closed heart centered on the note.
-     start/endX,Y are ignored for shape geometry (they are the note
-     start/end tap points); the heart is sized by the safeRadius hint
-     stored on the note, or falls back to a sensible default.
-     We DO blend the very first few points into startX,startY so the
-     tail of the stroke visually originates from the note body. */
+  /* Start/end point is fixed at the TOP NOTCH of the heart (the centre dip
+     at the top, parametric angle = π/2).  The player taps there and traces
+     the full outline clockwise back to the same point, giving a natural
+     "draw a heart" gesture.
+     radiusPx: half-height of the heart; caller drives this from circleSize. */
   function sampleHeart(startX, startY, endX, endY, radiusPx) {
-    // midpoint is the visual center of the heart
-    var midX = (startX + endX) / 2;
-    var midY = (startY + endY) / 2;
-    // radiusPx is the "half-height" of the heart.
-    // If not supplied, fall back to 80 px – still a visible shape on any
-    // canvas size; callers should pass something proportional to circleSize.
-    var R = radiusPx || 80;
-    // Normalisation constants so the parametric range fills ±R
-    // heart max |hx| = 16, max |hy| ≈ 17 → we scale to R
+    // Center the heart on startX, startY (the tap note position).
+    // We IGNORE endX/endY for geometry; the path closes back on itself.
+    var cx = startX;
+    var cy = startY;
+    var R = radiusPx || 70;
     var sx = R / 16;
     var sy = R / 17;
-    var steps = 60;
+    var steps = 80;
     var points = [];
+
+    // Parametric heart: t=0 is the bottom tip, t=π/2 is the top-notch dip.
+    // We start at t=π/2 (top notch) and go full circle back to π/2.
+    var startAngle = Math.PI / 2;
     for (var i = 0; i <= steps; i++) {
-      var t = (i / steps) * Math.PI * 2;
+      var t = startAngle + (i / steps) * Math.PI * 2; // clockwise full loop
       var hx = 16 * Math.pow(Math.sin(t), 3);
       var hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      // Shift center downward by R*0.15 so the notch sits near the note body
       points.push({
-        x: midX + hx * sx,
-        y: midY - hy * sy   // flip Y so top of heart is up
+        x: cx + hx * sx,
+        y: (cy + R * 0.15) - hy * sy
       });
     }
-    // Blend first few points toward startX,startY so the stroke origin looks
-    // connected to the tap note
-    var blend = 4;
-    for (var bi = 0; bi < blend; bi++) {
-      var w = (blend - bi) / (blend + 1);
-      points[bi].x = startX * w + points[bi].x * (1 - w);
-      points[bi].y = startY * w + points[bi].y * (1 - w);
-    }
+    // First and last points are the notch — snap them exactly to cx,cy
+    points[0].x = cx; points[0].y = cy;
+    points[steps].x = cx; points[steps].y = cy;
     return { kind: 'heart', points: points };
   }
 

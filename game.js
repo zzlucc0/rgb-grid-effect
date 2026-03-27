@@ -2476,23 +2476,40 @@ class RhythmGame {
                         this.ctx.restore();
                     }
 
-                    // ── Jet exhaust: continuous trail behind cursor ──
+                    // ── Jet exhaust: dense continuous spray behind cursor ──
                     if (progressIndex >= 1) {
-                        const prev = fullPath[Math.max(0, progressIndex - 2)] || fullPath[0];
+                        const prev = fullPath[Math.max(0, progressIndex - 3)] || fullPath[0];
                         const baseAngle = Math.atan2(prev.y - currentY, prev.x - currentX);
-                        const jetCount = 4 + Math.floor(Math.random() * 4);
+                        const isHeartTmpl = (note.pathTemplate === 'heart');
+                        const jetCount = isHeartTmpl ? (10 + Math.floor(Math.random() * 6)) : (7 + Math.floor(Math.random() * 5));
+                        const heartCols = ['#ffffff', '#ff5fa0', '#ffaacc', '#ffe0f0', palette.edge];
+                        const vortexCols = ['#ffffff', '#a560ff', '#d4a0ff', '#59efff', palette.edge];
+                        const cols = isHeartTmpl ? heartCols : vortexCols;
                         for (let ji = 0; ji < jetCount; ji++) {
-                            const spread = (Math.random() - 0.5) * Math.PI * 0.55;
-                            const spd = 1.8 + Math.random() * 4.2;
-                            const life = 160 + Math.random() * 200;
-                            const cols = ['#ffffff', palette.edge, palette.core, '#59efff'];
+                            const spread = (Math.random() - 0.5) * Math.PI * 0.65;
+                            const spd = 1.5 + Math.random() * 5.5;
+                            const life = 140 + Math.random() * 260;
                             (this.juiceParticles = this.juiceParticles || []).push({
-                                x: currentX, y: currentY,
+                                x: currentX + (Math.random() - 0.5) * 4,
+                                y: currentY + (Math.random() - 0.5) * 4,
                                 vx: Math.cos(baseAngle + spread) * spd,
                                 vy: Math.sin(baseAngle + spread) * spd,
                                 life, lifeMax: life,
-                                size: 1.5 + Math.random() * 3.5,
+                                size: 1.5 + Math.random() * 4,
                                 color: cols[Math.floor(Math.random() * cols.length)],
+                                at: performance.now()
+                            });
+                        }
+                        // extra side sparkles perpendicular to direction
+                        for (let si = 0; si < 3; si++) {
+                            const sideAngle = baseAngle + Math.PI / 2 * (Math.random() > 0.5 ? 1 : -1) + (Math.random() - 0.5) * 0.4;
+                            (this.juiceParticles = this.juiceParticles || []).push({
+                                x: currentX, y: currentY,
+                                vx: Math.cos(sideAngle) * (1 + Math.random() * 2.5),
+                                vy: Math.sin(sideAngle) * (1 + Math.random() * 2.5),
+                                life: 100 + Math.random() * 120, lifeMax: 220,
+                                size: 2 + Math.random() * 2,
+                                color: '#ffffff',
                                 at: performance.now()
                             });
                         }
@@ -2760,18 +2777,27 @@ class RhythmGame {
             if (note.held) {
                 if (type === 'move') {
                     const curvePoints = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
-                    let minDist = Infinity;
-                    let closestPoint = null;
-                    curvePoints.forEach(point => {
-                        const dist = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closestPoint = point;
+                    if (curvePoints.length >= 2) {
+                        const curProg = note.progress || 0;
+                        // Only search within a forward window of the curve, not the whole thing.
+                        // This prevents "jump to end" by moving the mouse near a far point.
+                        const windowSize = 0.18; // max allowed advance per search pass
+                        const searchStart = Math.max(0, curProg - 0.02);
+                        const searchEnd = Math.min(1, curProg + windowSize);
+                        const startIdx = Math.floor(searchStart * (curvePoints.length - 1));
+                        const endIdx = Math.ceil(searchEnd * (curvePoints.length - 1));
+                        let minDist = Infinity;
+                        let closestPoint = null;
+                        for (let ci = startIdx; ci <= endIdx; ci++) {
+                            const pt = curvePoints[ci];
+                            if (!pt) continue;
+                            const dist = Math.hypot(x - pt.x, y - pt.y);
+                            if (dist < minDist) { minDist = dist; closestPoint = pt; }
                         }
-                    });
-                    const tolerance = note.extraPath?.points?.length ? this.circleSize * 1.4 : this.circleSize * 0.95;
-                    if (closestPoint && minDist <= tolerance) {
-                        note.progress = Math.max(note.progress || 0, closestPoint.t);
+                        const tolerance = note.extraPath?.points?.length ? this.circleSize * 1.2 : this.circleSize * 0.95;
+                        if (closestPoint && minDist <= tolerance && closestPoint.t > curProg) {
+                            note.progress = closestPoint.t;
+                        }
                     }
                 } else if (type === 'end') {
                     if (note.keyboardCheckpoint && !note.keyboardHit) {
@@ -4120,17 +4146,26 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
             note.pathTemplate = (this.globalNoteSeq % 2 === 0) ? 'heart' : 'vortex';
             note.pathVariant = note.pathTemplate;
         }
-        const liveEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
-        // For heart/vortex the "radius" drives the shape size — not start/end distance
-        const liveShapeRadius = Math.round(this.circleSize * (2.8 + Math.random() * 1.2) * liveEnergyFactor);
+        const liveEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.35;
+        // Heart: small enough to trace quickly solo; vortex can be a bit larger
+        const heartRadius = Math.round(this.circleSize * (1.6 + Math.random() * 0.5) * liveEnergyFactor);
+        const vortexRadius = Math.round(this.circleSize * (2.2 + Math.random() * 0.8) * liveEnergyFactor);
+        const liveShapeRadius = (note.pathTemplate === 'heart') ? heartRadius : vortexRadius;
         note._shapeRadius = liveShapeRadius;
-        // endX/endY: place it near enough not to clip, direction random
-        const a = Math.random() * Math.PI * 2;
-        const endDist = (note.pathTemplate === 'heart' || note.pathTemplate === 'vortex')
-            ? liveShapeRadius * 0.6
-            : this.circleSize * (3.4 + Math.random() * 1.3);
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * endDist));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * endDist));
+        // Heart closes back on the tap note — end == start
+        // Vortex spirals outward, place end away from center
+        let note_endX, note_endY;
+        if (note.pathTemplate === 'heart') {
+            note_endX = note.x;
+            note_endY = note.y;
+        } else {
+            const a = Math.random() * Math.PI * 2;
+            const endDist = note.pathTemplate === 'vortex' ? liveShapeRadius * 0.7 : this.circleSize * (3.4 + Math.random() * 1.3);
+            note_endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * endDist));
+            note_endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * endDist));
+        }
+        note.endX = note_endX;
+        note.endY = note_endY;
         const dx = note.endX - note.x;
         const dy = note.endY - note.y;
         const L = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -4318,16 +4353,20 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
                 break;
             }
         }
-        // heart/vortex need more radius to look good — scale by note energy (vocal strength)
-        const energyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
-        const localTravel = note.openingCalmWindow ? 1.1
-            : note.pathTemplate === 'heart'    ? 3.4 * energyFactor
-            : note.pathTemplate === 'vortex'   ? 3.0 * energyFactor
-            : note.pathTemplate === 'starTrace' ? 1.9
-            : note.pathTemplate === 'diamondLoop' ? 1.55
-            : 1.35;
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
+        // Heart: closes back to note origin; vortex/others: standard lane-based end
+        if (note.pathTemplate === 'heart') {
+            note.endX = note.x;
+            note.endY = note.y;
+        } else {
+            const energyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.35;
+            const localTravel = note.openingCalmWindow ? 1.1
+                : note.pathTemplate === 'vortex' ? 2.0 * energyFactor
+                : note.pathTemplate === 'starTrace' ? 1.9
+                : note.pathTemplate === 'diamondLoop' ? 1.55
+                : 1.35;
+            note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
+            note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
+        }
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
         const endMinDist = this.circleSize * 2.6;
         for (const existing of active) {
@@ -4352,8 +4391,10 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         note.controlY = midY + dx / L * curve;
 
         // Apply path template geometry for chart-driven notes
-        const chartEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
-        const chartShapeRadius = Math.round(this.circleSize * (2.8 + Math.random() * 1.2) * chartEnergyFactor);
+        const chartEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.35;
+        const chartHeartR = Math.round(this.circleSize * (1.6 + Math.random() * 0.5) * chartEnergyFactor);
+        const chartVortexR = Math.round(this.circleSize * (2.2 + Math.random() * 0.8) * chartEnergyFactor);
+        const chartShapeRadius = (note.pathTemplate === 'heart') ? chartHeartR : chartVortexR;
         note._shapeRadius = chartShapeRadius;
         // Force-remap legacy templates to the two new visual shapes BEFORE extraPath is generated
         const _chartDragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
