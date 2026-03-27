@@ -2353,34 +2353,30 @@ class RhythmGame {
 
             // If it's a drag button, draw the track
             if (note.isDrag) {
-                // Draw curved track
                 const palette = this.getNotePalette(note);
-                if (note.noteType === 'drag' && note.pathVariant === 'starTrace') {
-                    const ribbonPts = [];
-                    for (let i = 0; i <= 40; i++) {
-                        const t = i / 40;
-                        const px = Math.pow(1-t, 2) * note.x + 2 * (1-t) * t * note.controlX + Math.pow(t, 2) * note.endX;
-                        const py = Math.pow(1-t, 2) * note.y + 2 * (1-t) * t * note.controlY + Math.pow(t, 2) * note.endY;
-                        ribbonPts.push({ x: px, y: py, wobble: Math.sin(t * Math.PI * 4 + performance.now() / 220) * this.circleSize * 0.08, flow: Math.sin(performance.now() / 160 + t * 9) * this.circleSize * 0.035 });
-                    }
-                    this.ctx.beginPath();
-                    ribbonPts.forEach((pt, idx) => {
-                        const y = pt.y + pt.wobble;
-                        const x = pt.x + pt.flow;
-                        if (idx === 0) this.ctx.moveTo(x, y);
-                        else this.ctx.lineTo(x, y);
-                    });
-                    this.ctx.strokeStyle = palette.glow.replace('.38', '.20').replace('.36', '.20').replace('.34', '.20');
-                    this.ctx.lineWidth = this.circleSize * 0.92;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.stroke();
-                }
                 const dragSamples = note.extraPath?.points?.length
                     ? note.extraPath.points
-                    : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 22) : []);
+                    : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 40) : []);
+
+                // ── Soft glow underlay along the full track ──
                 if (dragSamples.length >= 2) {
                     this.ctx.save();
-                    for (let i = 0; i < dragSamples.length - 1; i += 1) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
+                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
+                    this.ctx.strokeStyle = palette.glow.replace(/[\d.]+\)$/, '0.10)');
+                    this.ctx.lineWidth = this.circleSize * 0.72;
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineJoin = 'round';
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                }
+
+                // ── Ribbon segments with breathing width ──
+                if (dragSamples.length >= 2) {
+                    this.ctx.save();
+                    const now = performance.now();
+                    for (let i = 0; i < dragSamples.length - 1; i++) {
                         const a = dragSamples[i];
                         const b = dragSamples[i + 1];
                         const t = i / Math.max(1, dragSamples.length - 2);
@@ -2389,23 +2385,28 @@ class RhythmGame {
                         const segLen = Math.max(1, Math.hypot(dx, dy));
                         const nx = -dy / segLen;
                         const ny = dx / segLen;
-                        const halfW = this.circleSize * (0.16 + 0.08 * Math.sin(t * Math.PI));
+                        const breathe = 1 + Math.sin(now / 320 + t * Math.PI * 3) * 0.18;
+                        const halfW = this.circleSize * (0.10 + 0.06 * Math.sin(t * Math.PI)) * breathe;
                         this.ctx.beginPath();
                         this.ctx.moveTo(a.x + nx * halfW, a.y + ny * halfW);
                         this.ctx.lineTo(b.x + nx * halfW, b.y + ny * halfW);
                         this.ctx.lineTo(b.x - nx * halfW, b.y - ny * halfW);
                         this.ctx.lineTo(a.x - nx * halfW, a.y - ny * halfW);
                         this.ctx.closePath();
-                        this.ctx.fillStyle = `rgba(89,239,255,${(0.08 + 0.14 * (1 - Math.abs(t - 0.5) * 1.6)).toFixed(3)})`;
+                        const alpha = 0.06 + 0.12 * (1 - Math.abs(t - 0.5) * 1.6);
+                        this.ctx.fillStyle = `rgba(89,239,255,${Math.max(0, alpha).toFixed(3)})`;
                         this.ctx.fill();
                     }
                     this.ctx.restore();
                 }
+
+                // ── Main stroke ──
                 this.ctx.beginPath();
                 this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.62 : 0.38);
-                this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '#ffcc00' : palette.edge;
-                this.ctx.shadowBlur = 24;
+                this.ctx.lineJoin = 'round';
+                this.ctx.lineWidth = this.circleSize * 0.22;
+                this.ctx.strokeStyle = palette.edge;
+                this.ctx.shadowBlur = 18;
                 this.ctx.shadowColor = palette.edge;
                 if (dragSamples.length) {
                     this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
@@ -2416,62 +2417,73 @@ class RhythmGame {
                 }
                 this.ctx.stroke();
                 this.ctx.shadowBlur = 0;
-                // Pixel particle effect along drag track
+
+                // ── Ambient sparkles drifting along the track ──
                 if (dragSamples.length >= 2) {
                     const now = performance.now();
-                    const particleCount = Math.min(18, Math.floor(dragSamples.length * 0.7));
-                    for (let pi = 0; pi < particleCount; pi++) {
-                        const sampleIdx = Math.floor((pi / particleCount) * (dragSamples.length - 1));
+                    const sparkleCount = Math.min(14, Math.floor(dragSamples.length * 0.4));
+                    for (let pi = 0; pi < sparkleCount; pi++) {
+                        const sampleIdx = Math.floor((pi / sparkleCount) * (dragSamples.length - 1));
                         const pt = dragSamples[sampleIdx];
                         if (!pt) continue;
                         const seed = (pi * 137 + (note.noteNumber || 0) * 31) % 1000;
-                        const drift = Math.sin(now / 600 + seed * 0.1) * 8 + Math.cos(now / 400 + seed * 0.07) * 5;
-                        const driftY = Math.cos(now / 500 + seed * 0.13) * 6;
-                        const alpha = 0.25 + (seed % 200) / 400;
-                        const size = 3 + (seed % 3);
+                        const drift = Math.sin(now / 600 + seed * 0.1) * 6 + Math.cos(now / 400 + seed * 0.07) * 4;
+                        const driftY = Math.cos(now / 500 + seed * 0.13) * 5;
+                        const alpha = 0.18 + (seed % 200) / 500;
+                        const size = 2 + (seed % 3);
                         this.ctx.fillStyle = `rgba(90,246,255,${alpha.toFixed(2)})`;
-                        this.ctx.shadowBlur = 6;
-                        this.ctx.shadowColor = '#5af6ff';
                         this.ctx.fillRect(Math.round(pt.x + drift - size / 2), Math.round(pt.y + driftY - size / 2), size, size);
                     }
-                    this.ctx.shadowBlur = 0;
                 }
-                if (dragSamples.length >= 3) {
-                    const mid = dragSamples[Math.floor(dragSamples.length * 0.5)];
-                    this.ctx.fillStyle = palette.edge;
-                    this.ctx.fillRect(mid.x - 4, mid.y - 4, 8, 8);
-                }
-                
-                // If currently dragging, draw progress track
+
+                // ── While held: progress highlight + jet trail particles ──
                 if (note.held) {
-                    // Calculate current point position on the curve
-                    const t = note.progress;
-                    const currentX = Math.pow(1-t, 2) * note.x + 
-                                   2 * (1-t) * t * note.controlX + 
-                                   Math.pow(t, 2) * note.endX;
-                    const currentY = Math.pow(1-t, 2) * note.y + 
-                                   2 * (1-t) * t * note.controlY + 
-                                   Math.pow(t, 2) * note.endY;
-                    
-                    // Draw completed track
                     const fullPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
                     const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
-                    
-                    // Draw partial path up to current progress
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(fullPath[0]?.x || note.x, fullPath[0]?.y || note.y);
-                    this.ctx.lineCap = 'round';
-                    this.ctx.lineWidth = this.circleSize * 0.26;
-                    this.ctx.strokeStyle = palette.edge;
-                    this.ctx.shadowBlur = 18;
-                    this.ctx.shadowColor = palette.edge;
-                    
-                    for (let i = 1; i <= progressIndex; i++) {
-                        this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
+                    const currentX = fullPath[progressIndex]?.x ?? (Math.pow(1 - note.progress, 2) * note.x + 2 * (1 - note.progress) * note.progress * note.controlX + Math.pow(note.progress, 2) * note.endX);
+                    const currentY = fullPath[progressIndex]?.y ?? (Math.pow(1 - note.progress, 2) * note.y + 2 * (1 - note.progress) * note.progress * note.controlY + Math.pow(note.progress, 2) * note.endY);
+
+                    // Completed portion glow
+                    if (fullPath.length) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(fullPath[0]?.x || note.x, fullPath[0]?.y || note.y);
+                        this.ctx.lineCap = 'round';
+                        this.ctx.lineJoin = 'round';
+                        this.ctx.lineWidth = this.circleSize * 0.26;
+                        this.ctx.strokeStyle = palette.edge;
+                        this.ctx.shadowBlur = 16;
+                        this.ctx.shadowColor = palette.edge;
+                        for (let i = 1; i <= progressIndex; i++) this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
+                        this.ctx.stroke();
+                        this.ctx.shadowBlur = 0;
                     }
-                    
-                    this.ctx.stroke();
-                    this.ctx.shadowBlur = 0;
+
+                    // ── Jet trail: spray particles behind the drag cursor ──
+                    if (progressIndex >= 2) {
+                        const prev = fullPath[Math.max(0, progressIndex - 2)];
+                        const dirX = currentX - prev.x;
+                        const dirY = currentY - prev.y;
+                        const dirLen = Math.hypot(dirX, dirY) || 1;
+                        const jetCount = 3 + Math.floor(Math.random() * 3);
+                        for (let ji = 0; ji < jetCount; ji++) {
+                            const spread = (Math.random() - 0.5) * Math.PI * 0.7;
+                            const baseAngle = Math.atan2(-dirY, -dirX) + spread;
+                            const spd = 2.2 + Math.random() * 3.8;
+                            const life = 180 + Math.random() * 160;
+                            const cols = ['#59efff', '#ffffff', '#ff79ae', palette.edge];
+                            const col = cols[Math.floor(Math.random() * cols.length)];
+                            (this.juiceParticles = this.juiceParticles || []).push({
+                                x: currentX, y: currentY,
+                                vx: Math.cos(baseAngle) * spd,
+                                vy: Math.sin(baseAngle) * spd,
+                                life, lifeMax: life,
+                                size: 2 + Math.random() * 3,
+                                color: col,
+                                at: performance.now()
+                            });
+                        }
+                    }
+
                     if (note.keyboardCheckpoint && note.keyboardHit) {
                         this.ctx.beginPath();
                         this.ctx.arc(currentX, currentY, this.circleSize * (0.92 + Math.sin(performance.now() / 120) * 0.08), 0, Math.PI * 2);
@@ -2479,30 +2491,53 @@ class RhythmGame {
                         this.ctx.lineWidth = 3;
                         this.ctx.stroke();
                     }
-                    
-                    // Draw drag point
+
+                    // Drag cursor orb with pulsing glow
+                    const cursorScale = 0.50 + Math.sin(performance.now() / 140) * 0.06;
                     this.ctx.beginPath();
-                    this.ctx.arc(currentX, currentY, this.circleSize * 0.55, 0, Math.PI * 2);
-                    const grad = this.ctx.createRadialGradient(currentX, currentY, 4, currentX, currentY, this.circleSize * 0.6);
+                    this.ctx.arc(currentX, currentY, this.circleSize * cursorScale, 0, Math.PI * 2);
+                    const grad = this.ctx.createRadialGradient(currentX, currentY, 4, currentX, currentY, this.circleSize * (cursorScale + 0.08));
                     grad.addColorStop(0, '#ffffff');
-                    grad.addColorStop(.35, palette.core);
+                    grad.addColorStop(0.35, palette.core);
                     grad.addColorStop(1, 'rgba(255,255,255,0)');
                     this.ctx.fillStyle = grad;
                     this.ctx.fill();
-                    
-                    // Glow effect
-                    const pulseSize = this.circleSize * (0.9 + Math.sin(Date.now() / 180) * 0.12);
+
+                    // Outer pulse ring
+                    const pulseSize = this.circleSize * (0.85 + Math.sin(performance.now() / 180) * 0.14);
                     this.ctx.beginPath();
                     this.ctx.arc(currentX, currentY, pulseSize, 0, Math.PI * 2);
-                    this.ctx.strokeStyle = palette.glow.replace('.45', '.34').replace('.4', '.3').replace('.36', '.28').replace('.26', '.22');
-                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeStyle = palette.glow.replace(/[\d.]+\)$/, '0.25)');
+                    this.ctx.lineWidth = 2.5;
                     this.ctx.stroke();
+
+                    // Milestone burst at 25% / 50% / 75%
+                    const milestoneKeys = [0.25, 0.5, 0.75];
+                    if (!note._milestonesFired) note._milestonesFired = {};
+                    for (const ms of milestoneKeys) {
+                        if (note.progress >= ms && !note._milestonesFired[ms]) {
+                            note._milestonesFired[ms] = true;
+                            for (let mi = 0; mi < 6; mi++) {
+                                const ang = Math.random() * Math.PI * 2;
+                                const spd = 2.5 + Math.random() * 3;
+                                (this.juiceParticles = this.juiceParticles || []).push({
+                                    x: currentX, y: currentY,
+                                    vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+                                    life: 260, lifeMax: 260,
+                                    size: 3 + Math.random() * 3,
+                                    color: ms >= 0.75 ? '#ffe95a' : '#59efff',
+                                    at: performance.now()
+                                });
+                            }
+                            if (this.juiceShake) this.juiceShake.mag = Math.max(this.juiceShake.mag || 0, 3);
+                        }
+                    }
                 }
                 
-                // Draw endpoint circle
+                // Draw endpoint marker
                 this.ctx.beginPath();
-                this.ctx.arc(note.endX, note.endY, this.circleSize * 0.52, 0, Math.PI * 2);
-                this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.12)';
+                this.ctx.arc(note.endX, note.endY, this.circleSize * 0.48, 0, Math.PI * 2);
+                this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.10)';
                 this.ctx.fill();
                 this.ctx.strokeStyle = palette.edge;
                 this.ctx.lineWidth = 2;
@@ -2738,12 +2773,14 @@ class RhythmGame {
                     if (note.progress > finishThreshold) {
                         note.completed = true;
                         note.score = 'perfect';
-                        this.score += (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 1850 : 1500) * (1 + this.combo * 0.1);
+                        const _tmpl = note.pathTemplate || note.pathVariant || '';
+                        const _geomBonus = (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') ? 1850 : 1500;
+                        this.score += _geomBonus * (1 + this.combo * 0.1);
                         this.combo++;
                         this.recordJudgement('perfect');
                         this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'perfect');
-                        if (note.noteType === 'drag' && note.pathVariant === 'starTrace') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
+                        if (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
                     } else if (note.progress > goodThreshold) {
                         note.completed = true;
                         note.score = 'good';
@@ -3090,10 +3127,19 @@ RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
         palette.glow = mechanic.glow;
     }
     if (note && note.isDrag) {
-        if (note.pathVariant === 'starTrace') {
+        const tmpl = note.pathTemplate || note.pathVariant || '';
+        if (tmpl === 'starTrace') {
             palette.core = '#fff5a0';
             palette.edge = '#ffcc00';
             palette.glow = 'rgba(255,204,0,.52)';
+        } else if (tmpl === 'heart') {
+            palette.core = '#ffd0e8';
+            palette.edge = '#ff5fa0';
+            palette.glow = 'rgba(255,95,160,.54)';
+        } else if (tmpl === 'vortex') {
+            palette.core = '#d8c4ff';
+            palette.edge = '#a560ff';
+            palette.glow = 'rgba(165,96,255,.52)';
         }
         palette.glow = palette.glow.replace('.42', '.46').replace('.38', '.44').replace('.36', '.42').replace('.34', '.4');
     }
@@ -4046,10 +4092,14 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
 
     if (note.isDrag) {
-        const d = this.circleSize * (3.4 + Math.random() * 1.3);
+        // heart/vortex need bigger radius; scale slightly by energy so louder vocal sections get wider arcs
+        const liveEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
+        const liveTemplateDist = (note.pathTemplate === 'heart' || note.pathTemplate === 'vortex')
+            ? this.circleSize * (4.8 + Math.random() * 1.4) * liveEnergyFactor
+            : this.circleSize * (3.4 + Math.random() * 1.3);
         const a = Math.random() * Math.PI * 2;
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * d));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * d));
+        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * liveTemplateDist));
+        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * liveTemplateDist));
         const dx = note.endX - note.x;
         const dy = note.endY - note.y;
         const L = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -4072,6 +4122,19 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
                 note.extraPath = window.PathTemplates.sampleZigzag(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'scurve') {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'heart') {
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'vortex') {
+                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY);
+            }
+        }
+        // Clamp extraPath points to canvas safe area
+        if (note.extraPath && note.extraPath.points) {
+            var sa = this.safeArea, cs = this.circleSize;
+            for (var pi = 0; pi < note.extraPath.points.length; pi++) {
+                var pt = note.extraPath.points[pi];
+                pt.x = Math.max(sa.x + cs * 0.5, Math.min(sa.x + sa.width - cs * 0.5, pt.x));
+                pt.y = Math.max(sa.y + cs * 0.5, Math.min(sa.y + sa.height - cs * 0.5, pt.y));
             }
         }
     }
@@ -4215,7 +4278,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     this.applyGroupMechanics([note], { pattern: basePos.pattern, groupIndex: phrase, segmentLabel: note.segmentLabel || 'verse' });
 
     if (note.isDrag) {
-        const templateBias = note.pathTemplate === 'starTrace' ? 2 : (note.pathTemplate === 'diamondLoop' ? 1 : 0);
+        const templateBias = (note.pathTemplate === 'starTrace' || note.pathTemplate === 'heart') ? 2 : (note.pathTemplate === 'diamondLoop' || note.pathTemplate === 'vortex') ? 1 : 0;
         const dragLanes = [chosenLane + templateBias, chosenLane - templateBias, chosenLane + 1, chosenLane - 1, chosenLane];
         let endLane = chosenLane;
         for (const candidate of dragLanes) {
@@ -4224,7 +4287,14 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
                 break;
             }
         }
-        const localTravel = note.openingCalmWindow ? 1.1 : (note.pathTemplate === 'starTrace' ? 1.9 : (note.pathTemplate === 'diamondLoop' ? 1.55 : 1.35));
+        // heart/vortex need more radius to look good — scale by note energy (vocal strength)
+        const energyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
+        const localTravel = note.openingCalmWindow ? 1.1
+            : note.pathTemplate === 'heart'    ? 3.4 * energyFactor
+            : note.pathTemplate === 'vortex'   ? 3.0 * energyFactor
+            : note.pathTemplate === 'starTrace' ? 1.9
+            : note.pathTemplate === 'diamondLoop' ? 1.55
+            : 1.35;
         note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
         note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
@@ -4266,6 +4336,19 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
                 note.extraPath = window.PathTemplates.sampleZigzag(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'scurve') {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'heart') {
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'vortex') {
+                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY);
+            }
+        }
+        // Clamp extraPath points to canvas safe area
+        if (note.extraPath && note.extraPath.points) {
+            const sa = this.safeArea, cs = this.circleSize;
+            for (let pi = 0; pi < note.extraPath.points.length; pi++) {
+                const pt = note.extraPath.points[pi];
+                pt.x = Math.max(sa.x + cs * 0.5, Math.min(sa.x + sa.width - cs * 0.5, pt.x));
+                pt.y = Math.max(sa.y + cs * 0.5, Math.min(sa.y + sa.height - cs * 0.5, pt.y));
             }
         }
     }
