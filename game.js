@@ -4109,6 +4109,17 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
     this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
 
     if (note.isDrag) {
+        // Force-remap to heart/vortex before extraPath is generated
+        const _liveDragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
+        if (note.pathTemplate && _liveDragRemap[note.pathTemplate]) {
+            note.pathTemplate = _liveDragRemap[note.pathTemplate];
+            note.pathVariant = note.pathTemplate;
+        }
+        // If no template yet, assign one: alternate heart/vortex based on note sequence
+        if (!note.pathTemplate) {
+            note.pathTemplate = (this.globalNoteSeq % 2 === 0) ? 'heart' : 'vortex';
+            note.pathVariant = note.pathTemplate;
+        }
         const liveEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
         // For heart/vortex the "radius" drives the shape size — not start/end distance
         const liveShapeRadius = Math.round(this.circleSize * (2.8 + Math.random() * 1.2) * liveEnergyFactor);
@@ -4344,6 +4355,12 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         const chartEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.45;
         const chartShapeRadius = Math.round(this.circleSize * (2.8 + Math.random() * 1.2) * chartEnergyFactor);
         note._shapeRadius = chartShapeRadius;
+        // Force-remap legacy templates to the two new visual shapes BEFORE extraPath is generated
+        const _chartDragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
+        if (note.pathTemplate && _chartDragRemap[note.pathTemplate]) {
+            note.pathTemplate = _chartDragRemap[note.pathTemplate];
+            note.pathVariant = note.pathTemplate;
+        }
         if (window.PathTemplates && note.pathTemplate) {
             if (note.pathTemplate === 'orbit') {
                 const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
@@ -4722,6 +4739,15 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
             forceGeometryFloor: geometryFloor,
             geometryBiasBoost: Number(tuning.geometryBiasBoost || 0)
         });
+        // ── Force-remap all legacy drag templates to the two new visual shapes ──
+        // Server-side charts may emit 'starTrace', 'zigzag', 'diamondLoop', etc.
+        // We replace them here, before extraPath is generated, so the new
+        // renderers (heart / vortex) are guaranteed to be used.
+        const _dragRemap = {
+            starTrace: 'heart', diamondLoop: 'heart',
+            zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex'
+        };
+        note.pathTemplate = _dragRemap[note.pathTemplate] || note.pathTemplate;
         note.pathVariant = note.pathTemplate;
     }
     note.keyboardCheckpoint = false;
