@@ -2359,18 +2359,25 @@ class RhythmGame {
                 const isVortex = tmpl === 'vortex';
                 const isGeometry = isHeart || isVortex;
 
-                const dragSamples = note.extraPath?.points?.length
-                    ? note.extraPath.points
-                    : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 60) : []);
+                // Use cached + direction-resolved path if available; fall back to extraPath
+                const dragSamples = note._cachedPath?.length
+                    ? note._cachedPath
+                    : (note.extraPath?.points?.length
+                        ? note.extraPath.points
+                        : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 60) : []));
 
                 const now = performance.now();
 
                 if (dragSamples.length >= 2) {
-                    // Build path once into a Path2D for cheap multi-stroke reuse
-                    const trackPath = new Path2D();
-                    trackPath.moveTo(dragSamples[0].x, dragSamples[0].y);
-                    for (let i = 1; i < dragSamples.length; i++) trackPath.lineTo(dragSamples[i].x, dragSamples[i].y);
-                    if (isHeart) trackPath.closePath();
+                    // Build Path2D once per note life; direction-lock happens on first move
+                    if (!note._cachedPath2D) {
+                        const p = new Path2D();
+                        p.moveTo(dragSamples[0].x, dragSamples[0].y);
+                        for (let i = 1; i < dragSamples.length; i++) p.lineTo(dragSamples[i].x, dragSamples[i].y);
+                        if (isHeart) p.closePath();
+                        note._cachedPath2D = p;
+                    }
+                    const trackPath = note._cachedPath2D;
 
                     this.ctx.save();
                     this.ctx.lineCap = 'round';
@@ -2743,20 +2750,12 @@ class RhythmGame {
             const note = this.currentDragNote;
             if (note.held) {
                 if (type === 'move') {
-                    // Build & cache path once on first move — avoids re-allocating every frame.
-                    // For heart notes, detect initial drag direction and reverse path if needed
-                    // so the player can trace either lobe first.
+                    // Build cache if not already done (non-heart notes, or fallback)
                     if (!note._cachedPath) {
                         const rawPts = note.extraPath?.points;
                         if (rawPts && rawPts.length >= 2) {
-                            let orderedPts = rawPts;
-                            if (note.pathTemplate === 'heart') {
-                                const dx = x - note.x;
-                                if (dx < -8) orderedPts = rawPts.slice().reverse(); // left lobe first
-                                // else right lobe first (default)
-                            }
-                            const segs = Math.max(1, orderedPts.length - 1);
-                            note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                            const segs = Math.max(1, rawPts.length - 1);
+                            note._cachedPath = rawPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
                         } else {
                             note._cachedPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 80) : [];
                         }
@@ -2892,6 +2891,22 @@ class RhythmGame {
                     if (note.inputChannel !== 'mouse') return;
                     note.held = true;
                     note.progress = 0;
+                    note._cachedPath = null;
+                    note._cachedPath2D = null;
+                    note._milestonesFired = null;
+                    // Determine drag direction NOW at tap time using initial pointer position.
+                    // For heart: bottom-tip start → left lobe first if player is to the RIGHT of the note
+                    // (they'll sweep left), right lobe first if player is to the LEFT.
+                    // dx = pointerX - note.x: positive = right side tap → left-lobe first (reversed path)
+                    if (note.pathTemplate === 'heart' && note.extraPath?.points?.length) {
+                        const rawPts = note.extraPath.points;
+                        const dx = x - note.x;
+                        const orderedPts = dx > 0 ? rawPts.slice().reverse() : rawPts;
+                        const segs = Math.max(1, orderedPts.length - 1);
+                        note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                        // Snap first point to tap position so progress starts at 0 correctly
+                        if (note._cachedPath[0]) { note._cachedPath[0].t = 0; }
+                    }
                     this.currentDragNote = note;
                     return;
                 }
