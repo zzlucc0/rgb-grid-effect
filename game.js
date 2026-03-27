@@ -2366,93 +2366,60 @@ class RhythmGame {
                 const now = performance.now();
 
                 if (dragSamples.length >= 2) {
-                    this.ctx.save();
+                    // Build path once into a Path2D for cheap multi-stroke reuse
+                    const trackPath = new Path2D();
+                    trackPath.moveTo(dragSamples[0].x, dragSamples[0].y);
+                    for (let i = 1; i < dragSamples.length; i++) trackPath.lineTo(dragSamples[i].x, dragSamples[i].y);
+                    if (isHeart) trackPath.closePath();
 
-                    // ── Layer 1: fat outer glow (reference: thick luminous aura) ──
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
-                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                    if (isHeart) this.ctx.closePath();
-                    this.ctx.strokeStyle = palette.edge;
-                    this.ctx.lineWidth = this.circleSize * 0.55;
+                    this.ctx.save();
                     this.ctx.lineCap = 'round';
                     this.ctx.lineJoin = 'round';
-                    this.ctx.globalAlpha = 0.08;
-                    this.ctx.stroke();
-                    this.ctx.globalAlpha = 1;
 
-                    // ── Layer 2: medium glow ──
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
-                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                    if (isHeart) this.ctx.closePath();
+                    // ── Outer glow (one layer only to save GPU) ──
                     this.ctx.strokeStyle = palette.edge;
-                    this.ctx.lineWidth = this.circleSize * 0.28;
-                    this.ctx.globalAlpha = 0.18;
-                    this.ctx.stroke();
+                    this.ctx.lineWidth = this.circleSize * 0.38;
+                    this.ctx.globalAlpha = 0.09;
+                    this.ctx.stroke(trackPath);
                     this.ctx.globalAlpha = 1;
 
-                    // ── Layer 3: bright core neon line (the main visible stroke) ──
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
-                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                    if (isHeart) this.ctx.closePath();
+                    // ── Core neon line ──
                     this.ctx.strokeStyle = palette.edge;
                     this.ctx.lineWidth = this.circleSize * 0.10;
-                    this.ctx.shadowBlur = 22;
+                    this.ctx.shadowBlur = 18;
                     this.ctx.shadowColor = palette.edge;
-                    this.ctx.globalAlpha = 0.9;
-                    this.ctx.stroke();
+                    this.ctx.stroke(trackPath);
                     this.ctx.shadowBlur = 0;
-                    this.ctx.globalAlpha = 1;
 
-                    // ── Layer 4: white hot center ──
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
-                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                    if (isHeart) this.ctx.closePath();
+                    // ── White hot center ──
                     this.ctx.strokeStyle = '#ffffff';
-                    this.ctx.lineWidth = this.circleSize * 0.035;
-                    this.ctx.globalAlpha = 0.55;
-                    this.ctx.stroke();
+                    this.ctx.lineWidth = this.circleSize * 0.032;
+                    this.ctx.globalAlpha = 0.50;
+                    this.ctx.stroke(trackPath);
                     this.ctx.globalAlpha = 1;
 
-                    // ── Layer 5: sparkle dots scattered along the track ──
-                    const sparkleCount = isGeometry ? Math.min(38, dragSamples.length) : Math.min(18, dragSamples.length);
-                    for (let pi = 0; pi < sparkleCount; pi++) {
-                        const sIdx = Math.floor((pi / sparkleCount) * (dragSamples.length - 1));
-                        const pt = dragSamples[sIdx];
+                    // ── Sparkle dots (reduced count, no per-dot shadowBlur) ──
+                    const sparkleCount = isGeometry ? 16 : 10;
+                    const step = Math.max(1, Math.floor(dragSamples.length / sparkleCount));
+                    for (let pi = 0; pi < dragSamples.length; pi += step) {
+                        const pt = dragSamples[pi];
                         if (!pt) continue;
                         const seed = (pi * 173 + (note.noteNumber || 0) * 37) % 1000;
-                        // Two types: tiny floating stars that drift, and static bright dots
-                        const isDrift = seed % 3 !== 0;
-                        const drift = isDrift ? (Math.sin(now / 700 + seed * 0.09) * 7 + Math.cos(now / 430 + seed * 0.06) * 5) : 0;
-                        const driftY = isDrift ? (Math.cos(now / 550 + seed * 0.11) * 6) : 0;
-                        const alpha = isDrift ? (0.35 + Math.sin(now / 380 + seed * 0.2) * 0.25) : (0.7 + (seed % 100) / 250);
-                        const size = isDrift ? (2 + (seed % 3)) : (3 + (seed % 4));
-                        const col = seed % 5 === 0 ? '#ffffff' : palette.edge;
-                        this.ctx.fillStyle = col;
+                        const drift = Math.sin(now / 700 + seed * 0.09) * 5;
+                        const driftY = Math.cos(now / 550 + seed * 0.11) * 4;
+                        const alpha = 0.3 + Math.sin(now / 380 + seed * 0.2) * 0.2;
+                        const size = 2 + (seed % 3);
+                        this.ctx.fillStyle = seed % 4 === 0 ? '#ffffff' : palette.edge;
                         this.ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-                        if (!isDrift && size >= 4) {
-                            // bright dot with mini glow
-                            this.ctx.shadowBlur = 8;
-                            this.ctx.shadowColor = palette.edge;
-                        }
-                        this.ctx.fillRect(
-                            Math.round(pt.x + drift - size / 2),
-                            Math.round(pt.y + driftY - size / 2),
-                            size, size
-                        );
-                        this.ctx.shadowBlur = 0;
-                        this.ctx.globalAlpha = 1;
+                        this.ctx.fillRect(Math.round(pt.x + drift - size / 2), Math.round(pt.y + driftY - size / 2), size, size);
                     }
-
+                    this.ctx.globalAlpha = 1;
                     this.ctx.restore();
                 }
 
                 // ── While held: bright progress trail + jet exhaust ──
                 if (note.held) {
-                    const fullPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
+                    const fullPath = note._cachedPath || (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 80) : []);
                     const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
                     const currentX = fullPath[progressIndex]?.x ?? note.x;
                     const currentY = fullPath[progressIndex]?.y ?? note.y;
@@ -2776,16 +2743,31 @@ class RhythmGame {
             const note = this.currentDragNote;
             if (note.held) {
                 if (type === 'move') {
-                    const curvePoints = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
-                    if (curvePoints.length >= 2) {
+                    // Build & cache path once on first move — avoids re-allocating every frame.
+                    // For heart notes, detect initial drag direction and reverse path if needed
+                    // so the player can trace either lobe first.
+                    if (!note._cachedPath) {
+                        const rawPts = note.extraPath?.points;
+                        if (rawPts && rawPts.length >= 2) {
+                            let orderedPts = rawPts;
+                            if (note.pathTemplate === 'heart') {
+                                const dx = x - note.x;
+                                if (dx < -8) orderedPts = rawPts.slice().reverse(); // left lobe first
+                                // else right lobe first (default)
+                            }
+                            const segs = Math.max(1, orderedPts.length - 1);
+                            note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                        } else {
+                            note._cachedPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 80) : [];
+                        }
+                    }
+                    const curvePoints = note._cachedPath;
+                    if (curvePoints && curvePoints.length >= 2) {
                         const curProg = note.progress || 0;
-                        // Only search within a forward window of the curve, not the whole thing.
-                        // This prevents "jump to end" by moving the mouse near a far point.
-                        const windowSize = 0.18; // max allowed advance per search pass
-                        const searchStart = Math.max(0, curProg - 0.02);
-                        const searchEnd = Math.min(1, curProg + windowSize);
-                        const startIdx = Math.floor(searchStart * (curvePoints.length - 1));
-                        const endIdx = Math.ceil(searchEnd * (curvePoints.length - 1));
+                        // Windowed search: only look ahead by windowSize, prevents jumping to end
+                        const windowSize = 0.18;
+                        const startIdx = Math.floor(Math.max(0, curProg - 0.02) * (curvePoints.length - 1));
+                        const endIdx = Math.ceil(Math.min(1, curProg + windowSize) * (curvePoints.length - 1));
                         let minDist = Infinity;
                         let closestPoint = null;
                         for (let ci = startIdx; ci <= endIdx; ci++) {
@@ -2794,7 +2776,7 @@ class RhythmGame {
                             const dist = Math.hypot(x - pt.x, y - pt.y);
                             if (dist < minDist) { minDist = dist; closestPoint = pt; }
                         }
-                        const tolerance = note.extraPath?.points?.length ? this.circleSize * 1.2 : this.circleSize * 0.95;
+                        const tolerance = this.circleSize * 1.2;
                         if (closestPoint && minDist <= tolerance && closestPoint.t > curProg) {
                             note.progress = closestPoint.t;
                         }
@@ -2840,6 +2822,8 @@ class RhythmGame {
                     }
                     note.held = false;
                     note.hit = true;
+                    note._cachedPath = null;
+                    note._milestonesFired = null;
                     this.currentDragNote = null;
                     this.updateHUD();
                 }
