@@ -722,6 +722,37 @@ class RhythmGame {
                     this.chartData.notes = window.ChartPolicy.resolvePathConflicts(this.chartData.notes, this.circleSize);
                 }
             }
+            // ── Lane shuffle: randomise laneHint within each phrase group ──
+            // This makes the same song feel different each play-through while
+            // preserving rhythmic structure (timing / mechanics / segments untouched).
+            (function shuffleLanes(notes) {
+                const LANES = 4;
+                // Group note indices by phrase
+                const phraseMap = {};
+                notes.forEach((n, i) => {
+                    const key = String(n.phrase ?? i);
+                    if (!phraseMap[key]) phraseMap[key] = [];
+                    phraseMap[key].push(i);
+                });
+                // For each phrase, generate a random lane permutation and apply it
+                Object.values(phraseMap).forEach(indices => {
+                    if (indices.length < 2) return; // single note — nothing to shuffle
+                    // Collect the current lane sequence for this phrase
+                    const origLanes = indices.map(i => notes[i].laneHint ?? (i % LANES));
+                    // Shuffle with a seeded Knuth/Fisher-Yates using Math.random()
+                    const shuffled = origLanes.slice();
+                    for (let j = shuffled.length - 1; j > 0; j--) {
+                        const k = Math.floor(Math.random() * (j + 1));
+                        [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+                    }
+                    // Apply shuffled lanes back; also update phraseAnchor consistently
+                    indices.forEach((noteIdx, pos) => {
+                        notes[noteIdx].laneHint = shuffled[pos];
+                        notes[noteIdx].phraseAnchor = shuffled[0]; // anchor = first lane of phrase
+                    });
+                });
+            })(this.chartData.notes);
+
             const layoutIssues = this.getLayoutAudit(this.chartData.notes.map((n, idx) => ({
                 x: this.safeArea.x + (this.safeArea.width / 4) * (((n.laneHint ?? idx % 4) + 0.5)),
                 y: this.safeArea.y + this.safeArea.height * ((n.segmentLabel || 'verse') === 'chorus' ? 0.34 : ((n.segmentLabel || 'verse') === 'verse' ? 0.52 : 0.42)),
