@@ -2353,140 +2353,203 @@ class RhythmGame {
 
             // If it's a drag button, draw the track
             if (note.isDrag) {
-                // Draw curved track
                 const palette = this.getNotePalette(note);
-                if (note.noteType === 'drag' && note.pathVariant === 'starTrace') {
-                    const ribbonPts = [];
-                    for (let i = 0; i <= 40; i++) {
-                        const t = i / 40;
-                        const px = Math.pow(1-t, 2) * note.x + 2 * (1-t) * t * note.controlX + Math.pow(t, 2) * note.endX;
-                        const py = Math.pow(1-t, 2) * note.y + 2 * (1-t) * t * note.controlY + Math.pow(t, 2) * note.endY;
-                        ribbonPts.push({ x: px, y: py, wobble: Math.sin(t * Math.PI * 4 + performance.now() / 220) * this.circleSize * 0.08, flow: Math.sin(performance.now() / 160 + t * 9) * this.circleSize * 0.035 });
-                    }
-                    this.ctx.beginPath();
-                    ribbonPts.forEach((pt, idx) => {
-                        const y = pt.y + pt.wobble;
-                        const x = pt.x + pt.flow;
-                        if (idx === 0) this.ctx.moveTo(x, y);
-                        else this.ctx.lineTo(x, y);
-                    });
-                    this.ctx.strokeStyle = palette.glow.replace('.38', '.20').replace('.36', '.20').replace('.34', '.20');
-                    this.ctx.lineWidth = this.circleSize * 0.92;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.stroke();
-                }
-                const dragSamples = note.extraPath?.points?.length
-                    ? note.extraPath.points
-                    : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 22) : []);
+                const tmpl = note.pathTemplate || note.pathVariant || '';
+                const isHeart = tmpl === 'heart';
+                const isVortex = tmpl === 'vortex';
+                const isGeometry = isHeart || isVortex;
+
+                // Use cached + direction-resolved path if available; fall back to extraPath
+                const dragSamples = note._cachedPath?.length
+                    ? note._cachedPath
+                    : (note.extraPath?.points?.length
+                        ? note.extraPath.points
+                        : (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 60) : []));
+
+                const now = performance.now();
+
                 if (dragSamples.length >= 2) {
-                    this.ctx.save();
-                    for (let i = 0; i < dragSamples.length - 1; i += 1) {
-                        const a = dragSamples[i];
-                        const b = dragSamples[i + 1];
-                        const t = i / Math.max(1, dragSamples.length - 2);
-                        const dx = b.x - a.x;
-                        const dy = b.y - a.y;
-                        const segLen = Math.max(1, Math.hypot(dx, dy));
-                        const nx = -dy / segLen;
-                        const ny = dx / segLen;
-                        const halfW = this.circleSize * (0.16 + 0.08 * Math.sin(t * Math.PI));
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(a.x + nx * halfW, a.y + ny * halfW);
-                        this.ctx.lineTo(b.x + nx * halfW, b.y + ny * halfW);
-                        this.ctx.lineTo(b.x - nx * halfW, b.y - ny * halfW);
-                        this.ctx.lineTo(a.x - nx * halfW, a.y - ny * halfW);
-                        this.ctx.closePath();
-                        this.ctx.fillStyle = `rgba(89,239,255,${(0.08 + 0.14 * (1 - Math.abs(t - 0.5) * 1.6)).toFixed(3)})`;
-                        this.ctx.fill();
+                    // Build Path2D once per note life; direction-lock happens on first move
+                    if (!note._cachedPath2D) {
+                        const p = new Path2D();
+                        p.moveTo(dragSamples[0].x, dragSamples[0].y);
+                        for (let i = 1; i < dragSamples.length; i++) p.lineTo(dragSamples[i].x, dragSamples[i].y);
+                        if (isHeart) p.closePath();
+                        note._cachedPath2D = p;
                     }
-                    this.ctx.restore();
-                }
-                this.ctx.beginPath();
-                this.ctx.lineCap = 'round';
-                this.ctx.lineWidth = this.circleSize * (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 0.5 : 0.38);
-                this.ctx.strokeStyle = note.noteType === 'drag' && note.pathVariant === 'starTrace' ? '#bffaf4' : palette.edge;
-                this.ctx.shadowBlur = 24;
-                this.ctx.shadowColor = palette.edge;
-                if (dragSamples.length) {
-                    this.ctx.moveTo(dragSamples[0].x, dragSamples[0].y);
-                    for (let i = 1; i < dragSamples.length; i++) this.ctx.lineTo(dragSamples[i].x, dragSamples[i].y);
-                } else {
-                    this.ctx.moveTo(note.x, note.y);
-                    this.ctx.quadraticCurveTo(note.controlX, note.controlY, note.endX, note.endY);
-                }
-                this.ctx.stroke();
-                this.ctx.shadowBlur = 0;
-                if (dragSamples.length >= 3) {
-                    const mid = dragSamples[Math.floor(dragSamples.length * 0.5)];
-                    this.ctx.fillStyle = palette.edge;
-                    this.ctx.fillRect(mid.x - 4, mid.y - 4, 8, 8);
-                }
-                
-                // If currently dragging, draw progress track
-                if (note.held) {
-                    // Calculate current point position on the curve
-                    const t = note.progress;
-                    const currentX = Math.pow(1-t, 2) * note.x + 
-                                   2 * (1-t) * t * note.controlX + 
-                                   Math.pow(t, 2) * note.endX;
-                    const currentY = Math.pow(1-t, 2) * note.y + 
-                                   2 * (1-t) * t * note.controlY + 
-                                   Math.pow(t, 2) * note.endY;
-                    
-                    // Draw completed track
-                    const fullPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
-                    const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
-                    
-                    // Draw partial path up to current progress
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(fullPath[0]?.x || note.x, fullPath[0]?.y || note.y);
+                    const trackPath = note._cachedPath2D;
+
+                    this.ctx.save();
                     this.ctx.lineCap = 'round';
-                    this.ctx.lineWidth = this.circleSize * 0.26;
+                    this.ctx.lineJoin = 'round';
+
+                    // ── Outer glow (one layer only to save GPU) ──
                     this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = this.circleSize * 0.38;
+                    this.ctx.globalAlpha = 0.09;
+                    this.ctx.stroke(trackPath);
+                    this.ctx.globalAlpha = 1;
+
+                    // ── Core neon line ──
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = this.circleSize * 0.10;
                     this.ctx.shadowBlur = 18;
                     this.ctx.shadowColor = palette.edge;
-                    
-                    for (let i = 1; i <= progressIndex; i++) {
-                        this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
-                    }
-                    
-                    this.ctx.stroke();
+                    this.ctx.stroke(trackPath);
                     this.ctx.shadowBlur = 0;
-                    if (note.keyboardCheckpoint && note.keyboardHit) {
-                        this.ctx.beginPath();
-                        this.ctx.arc(currentX, currentY, this.circleSize * (0.92 + Math.sin(performance.now() / 120) * 0.08), 0, Math.PI * 2);
-                        this.ctx.strokeStyle = 'rgba(255,255,255,0.34)';
-                        this.ctx.lineWidth = 3;
-                        this.ctx.stroke();
+
+                    // ── White hot center ──
+                    this.ctx.strokeStyle = '#ffffff';
+                    this.ctx.lineWidth = this.circleSize * 0.032;
+                    this.ctx.globalAlpha = 0.50;
+                    this.ctx.stroke(trackPath);
+                    this.ctx.globalAlpha = 1;
+
+                    // ── Sparkle dots (reduced count, no per-dot shadowBlur) ──
+                    const sparkleCount = isGeometry ? 16 : 10;
+                    const step = Math.max(1, Math.floor(dragSamples.length / sparkleCount));
+                    for (let pi = 0; pi < dragSamples.length; pi += step) {
+                        const pt = dragSamples[pi];
+                        if (!pt) continue;
+                        const seed = (pi * 173 + (note.noteNumber || 0) * 37) % 1000;
+                        const drift = Math.sin(now / 700 + seed * 0.09) * 5;
+                        const driftY = Math.cos(now / 550 + seed * 0.11) * 4;
+                        const alpha = 0.3 + Math.sin(now / 380 + seed * 0.2) * 0.2;
+                        const size = 2 + (seed % 3);
+                        this.ctx.fillStyle = seed % 4 === 0 ? '#ffffff' : palette.edge;
+                        this.ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+                        this.ctx.fillRect(Math.round(pt.x + drift - size / 2), Math.round(pt.y + driftY - size / 2), size, size);
                     }
-                    
-                    // Draw drag point
+                    this.ctx.globalAlpha = 1;
+                    this.ctx.restore();
+                }
+
+                // ── While held: bright progress trail + jet exhaust ──
+                if (note.held) {
+                    const fullPath = note._cachedPath || (window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 80) : []);
+                    const progressIndex = Math.min(fullPath.length - 1, Math.floor(note.progress * Math.max(1, fullPath.length - 1)));
+                    const currentX = fullPath[progressIndex]?.x ?? note.x;
+                    const currentY = fullPath[progressIndex]?.y ?? note.y;
+
+                    // Bright completed-portion overlay
+                    if (fullPath.length > 1) {
+                        this.ctx.save();
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(fullPath[0].x, fullPath[0].y);
+                        for (let i = 1; i <= progressIndex; i++) this.ctx.lineTo(fullPath[i].x, fullPath[i].y);
+                        this.ctx.strokeStyle = '#ffffff';
+                        this.ctx.lineWidth = this.circleSize * 0.13;
+                        this.ctx.lineCap = 'round';
+                        this.ctx.lineJoin = 'round';
+                        this.ctx.shadowBlur = 14;
+                        this.ctx.shadowColor = palette.edge;
+                        this.ctx.globalAlpha = 0.75;
+                        this.ctx.stroke();
+                        this.ctx.shadowBlur = 0;
+                        this.ctx.globalAlpha = 1;
+                        this.ctx.restore();
+                    }
+
+                    // ── Jet exhaust: dense continuous spray behind cursor ──
+                    if (progressIndex >= 1) {
+                        const prev = fullPath[Math.max(0, progressIndex - 3)] || fullPath[0];
+                        const baseAngle = Math.atan2(prev.y - currentY, prev.x - currentX);
+                        const isHeartTmpl = (note.pathTemplate === 'heart');
+                        const jetCount = isHeartTmpl ? (10 + Math.floor(Math.random() * 6)) : (7 + Math.floor(Math.random() * 5));
+                        const heartCols = ['#ffffff', '#ff5fa0', '#ffaacc', '#ffe0f0', palette.edge];
+                        const vortexCols = ['#ffffff', '#a560ff', '#d4a0ff', '#59efff', palette.edge];
+                        const cols = isHeartTmpl ? heartCols : vortexCols;
+                        for (let ji = 0; ji < jetCount; ji++) {
+                            const spread = (Math.random() - 0.5) * Math.PI * 0.65;
+                            const spd = 1.5 + Math.random() * 5.5;
+                            const life = 140 + Math.random() * 260;
+                            (this.juiceParticles = this.juiceParticles || []).push({
+                                x: currentX + (Math.random() - 0.5) * 4,
+                                y: currentY + (Math.random() - 0.5) * 4,
+                                vx: Math.cos(baseAngle + spread) * spd,
+                                vy: Math.sin(baseAngle + spread) * spd,
+                                life, lifeMax: life,
+                                size: 1.5 + Math.random() * 4,
+                                color: cols[Math.floor(Math.random() * cols.length)],
+                                at: performance.now()
+                            });
+                        }
+                        // extra side sparkles perpendicular to direction
+                        for (let si = 0; si < 3; si++) {
+                            const sideAngle = baseAngle + Math.PI / 2 * (Math.random() > 0.5 ? 1 : -1) + (Math.random() - 0.5) * 0.4;
+                            (this.juiceParticles = this.juiceParticles || []).push({
+                                x: currentX, y: currentY,
+                                vx: Math.cos(sideAngle) * (1 + Math.random() * 2.5),
+                                vy: Math.sin(sideAngle) * (1 + Math.random() * 2.5),
+                                life: 100 + Math.random() * 120, lifeMax: 220,
+                                size: 2 + Math.random() * 2,
+                                color: '#ffffff',
+                                at: performance.now()
+                            });
+                        }
+                    }
+
+                    // Cursor orb — bright pulsing circle
+                    const cursorR = this.circleSize * (0.44 + Math.sin(now / 130) * 0.07);
+                    this.ctx.save();
                     this.ctx.beginPath();
-                    this.ctx.arc(currentX, currentY, this.circleSize * 0.55, 0, Math.PI * 2);
-                    const grad = this.ctx.createRadialGradient(currentX, currentY, 4, currentX, currentY, this.circleSize * 0.6);
+                    this.ctx.arc(currentX, currentY, cursorR, 0, Math.PI * 2);
+                    const grad = this.ctx.createRadialGradient(currentX, currentY, 2, currentX, currentY, cursorR);
                     grad.addColorStop(0, '#ffffff');
-                    grad.addColorStop(.35, palette.core);
+                    grad.addColorStop(0.4, palette.core);
                     grad.addColorStop(1, 'rgba(255,255,255,0)');
                     this.ctx.fillStyle = grad;
+                    this.ctx.shadowBlur = 18;
+                    this.ctx.shadowColor = palette.edge;
                     this.ctx.fill();
-                    
-                    // Glow effect
-                    const pulseSize = this.circleSize * (0.9 + Math.sin(Date.now() / 180) * 0.12);
+                    this.ctx.shadowBlur = 0;
+                    // outer ring
                     this.ctx.beginPath();
-                    this.ctx.arc(currentX, currentY, pulseSize, 0, Math.PI * 2);
-                    this.ctx.strokeStyle = palette.glow.replace('.45', '.34').replace('.4', '.3').replace('.36', '.28').replace('.26', '.22');
+                    this.ctx.arc(currentX, currentY, cursorR * 1.55, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = palette.edge;
                     this.ctx.lineWidth = 2;
+                    this.ctx.globalAlpha = 0.4 + Math.sin(now / 200) * 0.2;
                     this.ctx.stroke();
+                    this.ctx.globalAlpha = 1;
+                    this.ctx.restore();
+
+                    // Milestone bursts at 25% / 50% / 75%
+                    if (!note._milestonesFired) note._milestonesFired = {};
+                    for (const ms of [0.25, 0.5, 0.75]) {
+                        if (note.progress >= ms && !note._milestonesFired[ms]) {
+                            note._milestonesFired[ms] = true;
+                            for (let mi = 0; mi < 8; mi++) {
+                                const ang = Math.random() * Math.PI * 2;
+                                const spd = 2.8 + Math.random() * 4;
+                                (this.juiceParticles = this.juiceParticles || []).push({
+                                    x: currentX, y: currentY,
+                                    vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+                                    life: 320, lifeMax: 320,
+                                    size: 3 + Math.random() * 4,
+                                    color: ms >= 0.75 ? '#ffe95a' : (isHeart ? palette.edge : '#59efff'),
+                                    at: performance.now()
+                                });
+                            }
+                            if (this.juiceShake) this.juiceShake.mag = Math.max(this.juiceShake.mag || 0, 3.5);
+                        }
+                    }
                 }
-                
-                // Draw endpoint circle
-                this.ctx.beginPath();
-                this.ctx.arc(note.endX, note.endY, this.circleSize * 0.52, 0, Math.PI * 2);
-                this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.12)';
-                this.ctx.fill();
-                this.ctx.strokeStyle = palette.edge;
-                this.ctx.lineWidth = 2;
-                this.ctx.stroke();
+
+                // Endpoint dot
+                if (!isHeart) {
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.arc(note.endX, note.endY, this.circleSize * 0.40, 0, Math.PI * 2);
+                    this.ctx.fillStyle = note.completed ? palette.core : 'rgba(255,255,255,.10)';
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = palette.edge;
+                    this.ctx.lineWidth = 2.5;
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.shadowColor = palette.edge;
+                    this.ctx.stroke();
+                    this.ctx.shadowBlur = 0;
+                    this.ctx.restore();
+                }
             }
             
             // ── 8bit pixel tap (light) ──────────────────────────────────────
@@ -2687,19 +2750,35 @@ class RhythmGame {
             const note = this.currentDragNote;
             if (note.held) {
                 if (type === 'move') {
-                    const curvePoints = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 100) : [];
-                    let minDist = Infinity;
-                    let closestPoint = null;
-                    curvePoints.forEach(point => {
-                        const dist = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closestPoint = point;
+                    // Build cache if not already done (non-heart notes, or fallback)
+                    if (!note._cachedPath) {
+                        const rawPts = note.extraPath?.points;
+                        if (rawPts && rawPts.length >= 2) {
+                            const segs = Math.max(1, rawPts.length - 1);
+                            note._cachedPath = rawPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                        } else {
+                            note._cachedPath = window.PathTemplates?.samplePathPoints ? window.PathTemplates.samplePathPoints(note, 80) : [];
                         }
-                    });
-                    const tolerance = note.extraPath?.points?.length ? this.circleSize * 1.4 : this.circleSize * 0.95;
-                    if (closestPoint && minDist <= tolerance) {
-                        note.progress = Math.max(note.progress || 0, closestPoint.t);
+                    }
+                    const curvePoints = note._cachedPath;
+                    if (curvePoints && curvePoints.length >= 2) {
+                        const curProg = note.progress || 0;
+                        // Windowed search: only look ahead by windowSize, prevents jumping to end
+                        const windowSize = 0.18;
+                        const startIdx = Math.floor(Math.max(0, curProg - 0.02) * (curvePoints.length - 1));
+                        const endIdx = Math.ceil(Math.min(1, curProg + windowSize) * (curvePoints.length - 1));
+                        let minDist = Infinity;
+                        let closestPoint = null;
+                        for (let ci = startIdx; ci <= endIdx; ci++) {
+                            const pt = curvePoints[ci];
+                            if (!pt) continue;
+                            const dist = Math.hypot(x - pt.x, y - pt.y);
+                            if (dist < minDist) { minDist = dist; closestPoint = pt; }
+                        }
+                        const tolerance = this.circleSize * 1.2;
+                        if (closestPoint && minDist <= tolerance && closestPoint.t > curProg) {
+                            note.progress = closestPoint.t;
+                        }
                     }
                 } else if (type === 'end') {
                     if (note.keyboardCheckpoint && !note.keyboardHit) {
@@ -2718,12 +2797,14 @@ class RhythmGame {
                     if (note.progress > finishThreshold) {
                         note.completed = true;
                         note.score = 'perfect';
-                        this.score += (note.noteType === 'drag' && note.pathVariant === 'starTrace' ? 1850 : 1500) * (1 + this.combo * 0.1);
+                        const _tmpl = note.pathTemplate || note.pathVariant || '';
+                        const _geomBonus = (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') ? 1850 : 1500;
+                        this.score += _geomBonus * (1 + this.combo * 0.1);
                         this.combo++;
                         this.recordJudgement('perfect');
                         this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'perfect');
-                        if (note.noteType === 'drag' && note.pathVariant === 'starTrace') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
+                        if (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
                     } else if (note.progress > goodThreshold) {
                         note.completed = true;
                         note.score = 'good';
@@ -2740,6 +2821,8 @@ class RhythmGame {
                     }
                     note.held = false;
                     note.hit = true;
+                    note._cachedPath = null;
+                    note._milestonesFired = null;
                     this.currentDragNote = null;
                     this.updateHUD();
                 }
@@ -2791,7 +2874,9 @@ class RhythmGame {
             this.notes.forEach(note => {
                 if (note.hit || note.completed) return;
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
-                if (distance > this.circleSize) return;
+                // Drag notes get a larger tap radius — they're harder to start
+                const hitRadius = note.isDrag ? this.circleSize * 1.5 : this.circleSize;
+                if (distance > hitRadius) return;
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
 
                 if (note.isSpin) {
@@ -2808,6 +2893,20 @@ class RhythmGame {
                     if (note.inputChannel !== 'mouse') return;
                     note.held = true;
                     note.progress = 0;
+                    note._cachedPath = null;
+                    note._cachedPath2D = null;
+                    note._milestonesFired = null;
+                    // Determine drag direction NOW at tap time using initial pointer position.
+                    // Heart: bottom-tip start.
+                    //   tap to the RIGHT of note → player sweeps left → reverse path (left lobe first)
+                    //   tap to the LEFT          → player sweeps right → default (right lobe first)
+                    if (note.pathTemplate === 'heart' && note.extraPath?.points?.length) {
+                        const rawPts = note.extraPath.points;
+                        const dx = x - note.x;
+                        const orderedPts = dx > 0 ? rawPts.slice().reverse() : rawPts;
+                        const segs = Math.max(1, orderedPts.length - 1);
+                        note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                    }
                     this.currentDragNote = note;
                     return;
                 }
@@ -3070,10 +3169,19 @@ RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
         palette.glow = mechanic.glow;
     }
     if (note && note.isDrag) {
-        if (note.pathVariant === 'starTrace') {
-            palette.core = '#fff1c7';
-            palette.edge = '#ffd36a';
-            palette.glow = 'rgba(255,211,106,.42)';
+        const tmpl = note.pathTemplate || note.pathVariant || '';
+        if (tmpl === 'starTrace') {
+            palette.core = '#fff5a0';
+            palette.edge = '#ffcc00';
+            palette.glow = 'rgba(255,204,0,.52)';
+        } else if (tmpl === 'heart') {
+            palette.core = '#ffd0e8';
+            palette.edge = '#ff5fa0';
+            palette.glow = 'rgba(255,95,160,.54)';
+        } else if (tmpl === 'vortex') {
+            palette.core = '#d8c4ff';
+            palette.edge = '#a560ff';
+            palette.glow = 'rgba(165,96,255,.52)';
         }
         palette.glow = palette.glow.replace('.42', '.46').replace('.38', '.44').replace('.36', '.42').replace('.34', '.4');
     }
@@ -3279,6 +3387,48 @@ RhythmGame.prototype.drawNoteLinks = function () {
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.shadowBlur = 0;
+
+            // Pixel chevron arrows along connection line
+            const lineDx = b.x - a.x;
+            const lineDy = b.y - a.y;
+            const lineLen = Math.hypot(lineDx, lineDy);
+            if (lineLen > 20) {
+                const dirX = lineDx / lineLen;
+                const dirY = lineDy / lineLen;
+                const perpX = -dirY;
+                const perpY = dirX;
+                const chevronCount = Math.max(1, Math.floor(lineLen / (this.circleSize * 1.8)));
+                for (let ci = 1; ci <= chevronCount; ci++) {
+                    const ct = ci / (chevronCount + 1);
+                    const cx = a.x + lineDx * ct;
+                    const cy = a.y + lineDy * ct;
+                    const ps = 3; // pixel size
+                    ctx.fillStyle = `rgba(89,239,255,${(alpha * 0.8).toFixed(3)})`;
+                    // Draw chevron: two angled lines forming >>>
+                    for (let chevOff = -1; chevOff <= 1; chevOff += 2) {
+                        for (let seg = 0; seg < 3; seg++) {
+                            const px = cx - dirX * (seg * ps * 0.7) + perpX * chevOff * (ps + seg * ps * 0.5);
+                            const py = cy - dirY * (seg * ps * 0.7) + perpY * chevOff * (ps + seg * ps * 0.5);
+                            ctx.fillRect(Math.round(px - ps / 2), Math.round(py - ps / 2), ps, ps);
+                        }
+                    }
+                }
+            }
+
+            // Floating particle trail along connection line
+            const particleTrailCount = Math.max(2, Math.floor(lineLen / 30));
+            for (let pi = 0; pi < particleTrailCount; pi++) {
+                const pt = ((now / 800 + pi * 0.15 + i * 0.3) % 1);
+                const px = a.x + lineDx * pt;
+                const py = a.y + lineDy * pt;
+                const driftAmt = Math.sin(now / 350 + pi * 2.1) * 4;
+                const perpDx = -(lineDy / (lineLen || 1));
+                const perpDyN = (lineDx / (lineLen || 1));
+                const pSize = 2 + (pi % 2);
+                ctx.fillStyle = `rgba(89,239,255,${(alpha * 0.5 + (pi % 3) * 0.08).toFixed(3)})`;
+                ctx.fillRect(Math.round(px + perpDx * driftAmt - pSize / 2), Math.round(py + perpDyN * driftAmt - pSize / 2), pSize, pSize);
+            }
+
             // traveling spark
             const sparkT = ((now / 400) + i * 0.4) % 1;
             const sx = a.x + (b.x - a.x) * sparkT;
@@ -3981,13 +4131,41 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'live', note.groupIndex);
     note.groupPattern = this.pickGroupPattern(note.groupIndex, note.segmentLabel || 'live');
-    this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
+    // NOTE: applyGroupMechanics moved to AFTER drag block so pathTemplate is finalized first
+    // (applyNoteMechanicProfile inside it must see the final heart/vortex value)
 
     if (note.isDrag) {
-        const d = this.circleSize * (3.4 + Math.random() * 1.3);
-        const a = Math.random() * Math.PI * 2;
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * d));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * d));
+        // Force-remap to heart/vortex before extraPath is generated
+        const _liveDragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
+        if (note.pathTemplate && _liveDragRemap[note.pathTemplate]) {
+            note.pathTemplate = _liveDragRemap[note.pathTemplate];
+            note.pathVariant = note.pathTemplate;
+        }
+        // If no template yet, assign one: alternate heart/vortex based on note sequence
+        if (!note.pathTemplate) {
+            note.pathTemplate = (this.globalNoteSeq % 2 === 0) ? 'heart' : 'vortex';
+            note.pathVariant = note.pathTemplate;
+        }
+        const liveEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.35;
+        // Heart: small enough to trace quickly solo; vortex can be a bit larger
+        const heartRadius = Math.round(this.circleSize * (1.6 + Math.random() * 0.5) * liveEnergyFactor);
+        const vortexRadius = Math.round(this.circleSize * (2.2 + Math.random() * 0.8) * liveEnergyFactor);
+        const liveShapeRadius = (note.pathTemplate === 'heart') ? heartRadius : vortexRadius;
+        note._shapeRadius = liveShapeRadius;
+        // Heart closes back on the tap note — end == start
+        // Vortex spirals outward, place end away from center
+        let note_endX, note_endY;
+        if (note.pathTemplate === 'heart') {
+            note_endX = note.x;
+            note_endY = note.y;
+        } else {
+            const a = Math.random() * Math.PI * 2;
+            const endDist = note.pathTemplate === 'vortex' ? liveShapeRadius * 0.7 : this.circleSize * (3.4 + Math.random() * 1.3);
+            note_endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, note.x + Math.cos(a) * endDist));
+            note_endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, note.y + Math.sin(a) * endDist));
+        }
+        note.endX = note_endX;
+        note.endY = note_endY;
         const dx = note.endX - note.x;
         const dy = note.endY - note.y;
         const L = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -4004,9 +4182,38 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
                 note.extraPath = window.PathTemplates.sampleDiamondLoop(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'starTrace') {
                 note.extraPath = window.PathTemplates.sampleStarTrace(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'spiral') {
+                note.extraPath = window.PathTemplates.sampleSpiral(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'zigzag') {
+                note.extraPath = window.PathTemplates.sampleZigzag(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'scurve') {
+                note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'heart') {
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, liveShapeRadius, this.safeArea);
+                // Reposition note to actual tip (may shift if center was clamped)
+                if (note.extraPath.tipX !== undefined) {
+                    note.x = note.extraPath.tipX;
+                    note.y = note.extraPath.tipY;
+                    note.endX = note.x;
+                    note.endY = note.y;
+                }
+            } else if (note.pathTemplate === 'vortex') {
+                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, liveShapeRadius);
+            }
+        }
+        // For vortex only — clamp stray points; heart is already clamped inside sampleHeart
+        if (note.extraPath && note.extraPath.points && note.pathTemplate !== 'heart') {
+            const sa = this.safeArea, cs = this.circleSize;
+            for (let pi = 0; pi < note.extraPath.points.length; pi++) {
+                const pt = note.extraPath.points[pi];
+                pt.x = Math.max(sa.x + cs * 0.5, Math.min(sa.x + sa.width - cs * 0.5, pt.x));
+                pt.y = Math.max(sa.y + cs * 0.5, Math.min(sa.y + sa.height - cs * 0.5, pt.y));
             }
         }
     }
+
+    // Apply group mechanics AFTER drag/path setup so applyNoteMechanicProfile sees final pathTemplate
+    this.applyGroupMechanics([note], { pattern: note.groupPattern, groupIndex: note.groupIndex, segmentLabel: note.segmentLabel || 'live' });
 
     this.liveEngine.lastSpawnX = note.x;
     this.liveEngine.lastSpawnY = note.y;
@@ -4147,7 +4354,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
     this.applyGroupMechanics([note], { pattern: basePos.pattern, groupIndex: phrase, segmentLabel: note.segmentLabel || 'verse' });
 
     if (note.isDrag) {
-        const templateBias = note.pathTemplate === 'starTrace' ? 2 : (note.pathTemplate === 'diamondLoop' ? 1 : 0);
+        const templateBias = (note.pathTemplate === 'starTrace' || note.pathTemplate === 'heart') ? 2 : (note.pathTemplate === 'diamondLoop' || note.pathTemplate === 'vortex') ? 1 : 0;
         const dragLanes = [chosenLane + templateBias, chosenLane - templateBias, chosenLane + 1, chosenLane - 1, chosenLane];
         let endLane = chosenLane;
         for (const candidate of dragLanes) {
@@ -4156,9 +4363,20 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
                 break;
             }
         }
-        const localTravel = note.openingCalmWindow ? 1.1 : (note.pathTemplate === 'starTrace' ? 1.9 : (note.pathTemplate === 'diamondLoop' ? 1.55 : 1.35));
-        note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
-        note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
+        // Heart: closes back to note origin; vortex/others: standard lane-based end
+        if (note.pathTemplate === 'heart') {
+            note.endX = note.x;
+            note.endY = note.y;
+        } else {
+            const energyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.35;
+            const localTravel = note.openingCalmWindow ? 1.1
+                : note.pathTemplate === 'vortex' ? 2.0 * energyFactor
+                : note.pathTemplate === 'starTrace' ? 1.9
+                : note.pathTemplate === 'diamondLoop' ? 1.55
+                : 1.35;
+            note.endX = Math.max(this.safeArea.x + this.circleSize, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize, this.safeArea.x + laneWidth * (endLane + 0.5)));
+            note.endY = Math.max(this.safeArea.y + this.circleSize, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize, y + ((chartIndex % 2 === 0 ? 1 : -1) * this.circleSize * localTravel)));
+        }
         const active = (this.notes || []).filter(n => !n.hit && !n.completed);
         const endMinDist = this.circleSize * 2.6;
         for (const existing of active) {
@@ -4181,6 +4399,55 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         const curve = Math.min(this.circleSize * 1.6, L * 0.24);
         note.controlX = midX - dy / L * curve;
         note.controlY = midY + dx / L * curve;
+
+        // Apply path template geometry for chart-driven notes
+        const chartEnergyFactor = 0.85 + Math.min(1, note.energy || 0.65) * 0.35;
+        const chartHeartR = Math.round(this.circleSize * (1.6 + Math.random() * 0.5) * chartEnergyFactor);
+        const chartVortexR = Math.round(this.circleSize * (2.2 + Math.random() * 0.8) * chartEnergyFactor);
+        const chartShapeRadius = (note.pathTemplate === 'heart') ? chartHeartR : chartVortexR;
+        note._shapeRadius = chartShapeRadius;
+        // Force-remap legacy templates to the two new visual shapes BEFORE extraPath is generated
+        const _chartDragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
+        if (note.pathTemplate && _chartDragRemap[note.pathTemplate]) {
+            note.pathTemplate = _chartDragRemap[note.pathTemplate];
+            note.pathVariant = note.pathTemplate;
+        }
+        if (window.PathTemplates && note.pathTemplate) {
+            if (note.pathTemplate === 'orbit') {
+                const orbit = window.PathTemplates.sampleOrbit(note.x, note.y, note.endX, note.endY, 1.0);
+                note.controlX = orbit.controlX;
+                note.controlY = orbit.controlY;
+            } else if (note.pathTemplate === 'diamondLoop') {
+                note.extraPath = window.PathTemplates.sampleDiamondLoop(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'starTrace') {
+                note.extraPath = window.PathTemplates.sampleStarTrace(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'spiral') {
+                note.extraPath = window.PathTemplates.sampleSpiral(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'zigzag') {
+                note.extraPath = window.PathTemplates.sampleZigzag(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'scurve') {
+                note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
+            } else if (note.pathTemplate === 'heart') {
+                note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, chartShapeRadius, this.safeArea);
+                if (note.extraPath.tipX !== undefined) {
+                    note.x = note.extraPath.tipX;
+                    note.y = note.extraPath.tipY;
+                    note.endX = note.x;
+                    note.endY = note.y;
+                }
+            } else if (note.pathTemplate === 'vortex') {
+                note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, chartShapeRadius);
+            }
+        }
+        // Vortex only — heart already clamped inside sampleHeart
+        if (note.extraPath && note.extraPath.points && note.pathTemplate !== 'heart') {
+            const sa = this.safeArea, cs = this.circleSize;
+            for (let pi = 0; pi < note.extraPath.points.length; pi++) {
+                const pt = note.extraPath.points[pi];
+                pt.x = Math.max(sa.x + cs * 0.5, Math.min(sa.x + sa.width - cs * 0.5, pt.x));
+                pt.y = Math.max(sa.y + cs * 0.5, Math.min(sa.y + sa.height - cs * 0.5, pt.y));
+            }
+        }
     }
 
     return note;
@@ -4518,23 +4785,41 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         note.traceStrictness = 0.2;
     }
     if (note.noteType === 'drag' && window.PathTemplates?.chooseTemplate) {
-        const activeTemplates = (this.notes || []).filter(n => !n.hit && !n.completed).map(n => n.pathTemplate).filter(Boolean).slice(-4);
-        const geometrySeenCount = (this.notes || []).filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate)).length;
-        const tuning = this.runtimeTuning || {};
-        const geometryFloor = Number(tuning.forceGeometryFloor || 2);
-        const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < geometryFloor;
-        note.pathTemplate = note.pathTemplate || note.pathVariant || window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal', {
-            recentTemplates: activeTemplates,
-            forceGeometry: shouldForceGeometry,
-            forceGeometryFloor: geometryFloor,
-            geometryBiasBoost: Number(tuning.geometryBiasBoost || 0)
-        });
-        note.pathVariant = note.pathTemplate;
+        // If already set to a final shape by the note-creation remap, do NOT override.
+        const _finalShapes = { heart: true, vortex: true };
+        if (!_finalShapes[note.pathTemplate]) {
+            const activeTemplates = (this.notes || []).filter(n => !n.hit && !n.completed).map(n => n.pathTemplate).filter(Boolean).slice(-4);
+            const tuning = this.runtimeTuning || {};
+            const geometryFloor = Number(tuning.forceGeometryFloor || 2);
+            const geometrySeenCount = (this.notes || []).filter(n => ['diamondLoop', 'starTrace'].includes(n.pathTemplate)).length;
+            const shouldForceGeometry = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') && geometrySeenCount < geometryFloor;
+            const chosen = note.pathTemplate || note.pathVariant || window.PathTemplates.chooseTemplate(note, document.getElementById('difficultySelect')?.value || 'normal', {
+                recentTemplates: activeTemplates,
+                forceGeometry: shouldForceGeometry,
+                forceGeometryFloor: geometryFloor,
+                geometryBiasBoost: Number(tuning.geometryBiasBoost || 0)
+            });
+            const _dragRemap = { starTrace: 'heart', diamondLoop: 'heart', zigzag: 'vortex', spiral: 'vortex', scurve: 'vortex', orbit: 'vortex' };
+            note.pathTemplate = _dragRemap[chosen] || chosen || 'heart';
+            note.pathVariant = note.pathTemplate;
+        }
     }
     note.keyboardCheckpoint = false;
     note.keyboardKey = null;
     note.keyboardHint = null;
     note.keyboardHit = false;
+
+    // Re-assign keyboard keys for shared/keyboard actionable notes based on lane
+    const actionableTypes = ['tap', 'flick', 'cut', 'gate'];
+    if ((note.inputChannel === 'shared' || note.inputChannel === 'keyboard') && actionableTypes.includes(note.noteType)) {
+        const laneKeyMap = ['a', 's', 'd', 'f'];
+        const lane = Math.max(0, Math.min(3, note.laneHint || 0));
+        const assignedKey = laneKeyMap[lane];
+        note.keyboardKey = assignedKey;
+        note.keyboardHint = assignedKey;
+        note.keyHint = assignedKey;
+    }
+
     return note;
 };
 

@@ -319,7 +319,7 @@
 
   function tutorialLabelForType(type, note = null) {
     const modern = legacyToModern(type, note || {}).mechanic;
-    if (modern === 'drag') return 'DRAG';
+    if (modern === 'drag') return (note?.pathVariant === 'starTrace') ? 'SWIPE' : 'DRAG';
     if (modern === 'hold') return note?.inputChannel === 'keyboard' ? 'KEY HOLD' : 'HOLD';
     if (modern === 'spin') return 'SPIN';
     return 'TAP';
