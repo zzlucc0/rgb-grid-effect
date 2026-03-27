@@ -118,36 +118,36 @@
     var sx = R / 16;
     var sy = R / 17;
 
-    // Bottom tip of heart is at t=π: hx=0, hy = -13-5+2-1 = -17 → screen y = cy + 17*sy
-    // We want the bottom tip to land at startX,startY.
-    // So the geometric center cy = startY - 17*sy  (tip is below center)
-    var tipOffsetY = 17 * sy;   // distance from center to bottom tip
+    // At t=π: hx=0, hy = 13*cos(π)-5*cos(2π)-2*cos(3π)-cos(4π) = -13-5+2-1 = -17
+    // Screen y = cy - hy*sy = cy + 17*sy = cy + R
+    // We want this tip at (startX, startY), so cy = startY - R
     var cx = startX;
-    var cy = startY - tipOffsetY;   // center is ABOVE the tap point
+    var cy = startY - R;
 
-    // Clamp center so full heart stays in safe area
+    // Clamp center so full heart stays in safe area.
+    // Heart extends ~R in every direction from center.
     if (safeArea) {
-      var margin = R * 1.1;
+      var margin = R * 1.08;
       cx = Math.max(safeArea.x + margin, Math.min(safeArea.x + safeArea.width  - margin, cx));
       cy = Math.max(safeArea.y + margin, Math.min(safeArea.y + safeArea.height - margin, cy));
     }
 
-    // Start at bottom tip (t=π), go counterclockwise:
-    //   bottom tip → LEFT lobe up → top notch → RIGHT lobe down → bottom tip
-    // (default; caller can reverse for right-first)
+    // After clamping, recompute where the actual bottom tip lands.
+    // At t=π: hx=0 → tipX = cx; tipY = cy + R
+    var tipX = cx;
+    var tipY = cy + R;
+
     var steps = 80;
     var points = [];
     for (var i = 0; i <= steps; i++) {
-      var t = Math.PI + (i / steps) * Math.PI * 2;   // π → 3π
+      var t = Math.PI + (i / steps) * Math.PI * 2;  // π → 3π, starts at bottom tip
       var hx = 16 * Math.pow(Math.sin(t), 3);
       var hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
       points.push({ x: cx + hx * sx, y: cy - hy * sy });
     }
 
-    // Snap first & last to exact tap position
-    points[0].x = startX;     points[0].y = startY;
-    points[steps].x = startX; points[steps].y = startY;
-    return { kind: 'heart', points: points };
+    // Return actual tip coordinates so caller can reposition note.x/y
+    return { kind: 'heart', points: points, tipX: tipX, tipY: tipY };
   }
 
   /* ────── SWIPE NOTE: Archimedean outward spiral, 2.2 turns ────── */

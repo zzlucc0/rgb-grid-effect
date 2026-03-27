@@ -4190,6 +4190,13 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'heart') {
                 note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, liveShapeRadius, this.safeArea);
+                // Reposition note to actual tip (may shift if center was clamped)
+                if (note.extraPath.tipX !== undefined) {
+                    note.x = note.extraPath.tipX;
+                    note.y = note.extraPath.tipY;
+                    note.endX = note.x;
+                    note.endY = note.y;
+                }
             } else if (note.pathTemplate === 'vortex') {
                 note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, liveShapeRadius);
             }
@@ -4422,6 +4429,12 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
                 note.extraPath = window.PathTemplates.sampleScurve(note.x, note.y, note.endX, note.endY);
             } else if (note.pathTemplate === 'heart') {
                 note.extraPath = window.PathTemplates.sampleHeart(note.x, note.y, note.endX, note.endY, chartShapeRadius, this.safeArea);
+                if (note.extraPath.tipX !== undefined) {
+                    note.x = note.extraPath.tipX;
+                    note.y = note.extraPath.tipY;
+                    note.endX = note.x;
+                    note.endY = note.y;
+                }
             } else if (note.pathTemplate === 'vortex') {
                 note.extraPath = window.PathTemplates.sampleVortex(note.x, note.y, note.endX, note.endY, chartShapeRadius);
             }
