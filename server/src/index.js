@@ -327,7 +327,7 @@ async function processOnlineAnalyzedJob(job) {
   saveJob(job);
 
   let meta = { title: '', duration: 0, extractor: 'unknown', webpageUrl: job.url };
-  if (isYouTubeUrl(job.url)) {
+  if (isYouTubeUrl(job.url) || isBilibiliUrl(job.url)) {
     try { meta = await ytProbe(job.url); } catch {}
   }
 
@@ -425,10 +425,33 @@ async function processOnlineAnalyzedJob(job) {
   });
   const bpm = Number(analysis.bpm || estimateBpmFromChart(chart));
   fs.writeFileSync(analysisFile, JSON.stringify({ chart, analysis }, null, 2));
-  tryDeleteFile(wavPath); // free disk: WAV no longer needed once chart is cached
 
   job.status = 'done';
   job.step = 'analysis ready';
+  if (isBilibiliUrl(job.url)) {
+    const hlsDir = path.join(cacheDir, 'hls');
+    let hlsUrl = null;
+    try {
+      if (HLS_ENABLED) {
+        await buildHlsFromWav(wavPath, hlsDir);
+        if (fs.existsSync(path.join(hlsDir, 'index.m3u8'))) hlsUrl = `/media/${sourceId}/hls/index.m3u8`;
+      }
+    } catch {}
+    job.result = {
+      mode: 'offline',
+      sourceId,
+      chart,
+      analysis,
+      audioUrl: `/media/${sourceId}/analysis.wav`,
+      hlsUrl,
+      chartSeed: { bpm, density: 1.0, pattern: 'analyzed' },
+      difficulty: job.difficulty || 'normal'
+    };
+    saveJob(job);
+    return;
+  }
+
+  tryDeleteFile(wavPath); // free disk: WAV no longer needed once chart is cached
   job.result = {
     mode: 'online-analyzed',
     player: buildOnlinePlayerFromUrl(job.url),
@@ -1039,7 +1062,9 @@ async function tryDownloadToWav(url, workDir, jobId = null) {
   }
   const downloaded = fs.readdirSync(workDir).find(f => f.startsWith("source."));
   if (!downloaded) throw new Error("media download failed");
-  await run("ffmpeg", ["-y", "-i", path.join(workDir, downloaded), "-ac", "1", "-ar", "44100", "-t", "360", wavPath], workDir, 120000, jobId);
+  const downloadedPath = path.join(workDir, downloaded);
+  await run("ffmpeg", ["-y", "-i", downloadedPath, "-ac", "1", "-ar", "44100", "-t", "360", wavPath], workDir, 120000, jobId);
+  tryDeleteFile(downloadedPath); // keep cache small: source.* is only an intermediate
   return wavPath;
 }
 
@@ -1572,7 +1597,7 @@ app.post("/api/analyze-link", async (req, res) => {
   // In link-play-only mode, analyze temporary preview audio first, then start online player with analyzed chart.
   // Keep Bilibili on the offline/download path so playback uses backend-produced media,
   // not a raw page URL fed into the browser player.
-  if ((LINK_PLAY_ONLY && !isBilibiliUrl(url)) || isYouTubeUrl(url)) {
+  if (LINK_PLAY_ONLY || isYouTubeUrl(url) || isBilibiliUrl(url)) {
     try {
       await processOnlineAnalyzedJob({ ...job, captureSec: Number(captureSec || 0), attempts: [] });
       return;
