@@ -307,13 +307,13 @@
     try {
       var url = (el("youtubeUrl") && el("youtubeUrl").value || "").trim();
       if (!url) {
-        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Please paste a YouTube/media link");
-        else setStatus("error", "Please paste a YouTube/media link");
+        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Please paste a YouTube link");
+        else setStatus("error", "Please paste a YouTube link");
         return;
       }
-      if (/\b(bilibili\.com|b23\.tv)\b/i.test(url)) {
-        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Bilibili support has been removed from the UI for now. Please use a YouTube link.");
-        else setStatus("error", "Bilibili support has been removed from the UI for now. Please use a YouTube link.");
+      if (!/(youtube\.com|youtu\.be)/i.test(url)) {
+        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Only YouTube links are supported right now.");
+        else setStatus("error", "Only YouTube links are supported right now.");
         return;
       }
       await analyzeUrl(url);
