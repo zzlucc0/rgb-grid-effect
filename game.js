@@ -2631,7 +2631,8 @@ class RhythmGame {
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
                 const marker = ''; // no number labels on notes
-                const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
+                // Keyboard notes ALWAYS show their key hint — never hide after tutorial
+                const isKbd = (note.inputChannel === 'keyboard' || note.inputChannel === 'shared') && (note.keyHint || note.keyboardHint);
                 if (isKbd || seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
                     // Tutorial label CENTERED on note
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit
