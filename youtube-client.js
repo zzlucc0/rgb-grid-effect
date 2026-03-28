@@ -152,22 +152,7 @@
     if (el("densityBadge")) el("densityBadge").textContent = density ? humanDensityLabel(density) : '-';
   }
 
-  function ensureSearchPanel() {
-    var panel = el("searchPanel");
-    if (panel) return panel;
-    panel = document.createElement("div");
-    panel.id = "searchPanel";
-    panel.style.marginTop = "10px";
-    panel.style.display = "none";
-    panel.innerHTML = '' +
-      '<div class="info-message" style="margin-bottom:8px;">Can\'t fetch this link. Search song on Bilibili:</div>' +
-      '<input id="songQuery" type="text" placeholder="Song name" style="width:220px; padding:6px; border-radius:4px; border:1px solid #19A336; background:#111; color:#fff;">' +
-      '<button id="searchBiliBtn" style="margin-left:8px;">Search</button>' +
-      '<div id="searchResults" style="margin-top:8px; max-height:220px; overflow:auto;"></div>';
-    var upload = el("uploadContainer");
-    if (upload) upload.appendChild(panel);
-    return panel;
-  }
+  function ensureSearchPanel() { return null; }
 
   async function waitForGame() {
     for (var i = 0; i < 120; i++) {
@@ -263,16 +248,9 @@
     else setReady("online", true, "live", null);
     if (game.setStatusMessage) game.setStatusMessage("success", "Link-play ready (" + job.result.player.type + ")");
     else setStatus("success", "Link-play ready (" + job.result.player.type + ")");
-    if (job.result.player.type === "web" || job.result.player.type === "bilibili") {
+    if (job.result.player.type === "web") {
       if (game.setStatusMessage) game.setStatusMessage("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
       else setStatus("error", "This link type may not support hidden autoplay in browser yet. Prefer YouTube/direct audio URL.");
-    }
-
-    if (job.error) {
-      var panel = ensureSearchPanel();
-      panel.style.display = "block";
-      var q = el("songQuery");
-      if (q && !q.value) q.value = (el("youtubeUrl") && el("youtubeUrl").value) || "";
     }
   }
 
@@ -329,8 +307,13 @@
     try {
       var url = (el("youtubeUrl") && el("youtubeUrl").value || "").trim();
       if (!url) {
-        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Please paste a media link");
-        else setStatus("error", "Please paste a media link");
+        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Please paste a YouTube/media link");
+        else setStatus("error", "Please paste a YouTube/media link");
+        return;
+      }
+      if (/\b(bilibili\.com|b23\.tv)\b/i.test(url)) {
+        if (window.game && window.game.setStatusMessage) window.game.setStatusMessage("error", "Bilibili support has been removed from the UI for now. Please use a YouTube link.");
+        else setStatus("error", "Bilibili support has been removed from the UI for now. Please use a YouTube link.");
         return;
       }
       await analyzeUrl(url);
