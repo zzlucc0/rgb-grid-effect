@@ -36,7 +36,13 @@
 
       if (player.type === 'youtube') return this.startYouTube(player);
       if (player.type === 'hls') return this.startHls(player, liveConfig?.fallbackAudioUrl || '');
-      if (player.type === 'audio' || player.type === 'bilibili' || player.type === 'web') return this.startAudio(player.url);
+      if (player.type === 'audio' || player.type === 'web') return this.startAudio(player.url);
+      if (player.type === 'bilibili') {
+        // A Bilibili page URL is not a direct media URL. Do not feed it into <audio>.
+        // Bilibili should be played from downloaded/offline media or HLS produced by the backend.
+        this.emitState('unsupported-bilibili-page');
+        return;
+      }
     }
 
     startYouTube(player) {

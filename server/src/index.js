@@ -113,7 +113,12 @@ function isYouTubeUrl(url) {
   try { const h = new URL(url).hostname; return h.includes("youtube.com") || h === "youtu.be"; } catch { return false; }
 }
 function looksLikeDirectMedia(url) { return /\.(mp3|wav|m4a|ogg|webm|mp4)(\?|$)/i.test(url); }
-function isBilibiliUrl(url) { try { return new URL(url).hostname.includes("bilibili.com"); } catch { return false; } }
+function isBilibiliUrl(url) {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.includes("bilibili.com") || h === "b23.tv" || h.endsWith(".b23.tv");
+  } catch { return false; }
+}
 function makeSourceId(url) {
   if (isYouTubeUrl(url)) return extractVideoId(url) || "yt_unknown";
   return "u_" + createHash("sha256").update(url).digest("hex").slice(0, 24);
