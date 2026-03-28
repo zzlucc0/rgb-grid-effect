@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Zpulse — rhythm stage experience">
     <title>Zpulse — Rhythm Stage</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23070b14'/%3E%3Cstop offset='100%25' stop-color='%23111b2e'/%3E%3C/linearGradient%3E%3ClinearGradient id='p' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0%25' stop-color='%235af6ff'/%3E%3Cstop offset='100%25' stop-color='%23ff4fae'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='4' y='4' width='56' height='56' rx='10' fill='url(%23g)' stroke='%23253b58'/%3E%3Cpath d='M14 34h11l5-10 7 18 5-8h8' fill='none' stroke='url(%23p)' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M14 20h36' stroke='%235af6ff' stroke-opacity='.18'/%3E%3C/svg%3E">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;600;700&display=swap');
 
@@ -417,13 +418,41 @@
             padding-bottom: 14px;
         }
         .setup-emblem {
-            width: 38px; height: 38px;
-            display: grid; place-items: center;
-            font: 700 12px 'Press Start 2P', monospace;
-            color: var(--cyan);
-            background: linear-gradient(180deg, rgba(90,246,255,.12), rgba(255,79,174,.1));
+            width: 42px; height: 42px;
+            position: relative;
             border: 1px solid rgba(90,246,255,.22);
+            background:
+                linear-gradient(180deg, rgba(90,246,255,.12), rgba(255,79,174,.08)),
+                linear-gradient(135deg, rgba(7,11,20,.98), rgba(14,20,34,.98));
             box-shadow: inset 0 0 14px rgba(90,246,255,.08), 0 0 16px rgba(90,246,255,.12);
+            overflow: hidden;
+        }
+        .setup-emblem::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+              linear-gradient(90deg, transparent 0 14%, rgba(90,246,255,.08) 14% 16%, transparent 16% 100%),
+              linear-gradient(0deg, transparent 0 14%, rgba(255,79,174,.07) 14% 16%, transparent 16% 100%);
+            opacity: .65;
+        }
+        .setup-emblem::after {
+            content: '';
+            position: absolute;
+            left: 7px; right: 7px; top: 50%; height: 12px;
+            transform: translateY(-50%);
+            background: linear-gradient(90deg,
+              rgba(90,246,255,.0) 0%,
+              rgba(90,246,255,.0) 8%,
+              rgba(90,246,255,1) 8% 26%,
+              rgba(90,246,255,1) 26% 29%,
+              rgba(255,79,174,1) 29% 44%,
+              rgba(255,79,174,1) 44% 47%,
+              rgba(90,246,255,1) 47% 66%,
+              rgba(90,246,255,1) 66% 69%,
+              rgba(255,79,174,1) 69% 100%);
+            clip-path: polygon(0 58%, 18% 58%, 26% 28%, 44% 82%, 56% 42%, 100% 42%, 100% 58%, 62% 58%, 54% 72%, 43% 26%, 28% 70%, 0 70%);
+            filter: drop-shadow(0 0 8px rgba(90,246,255,.45));
         }
         .setup-title-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
         .setup-title-text {
@@ -763,7 +792,7 @@
     <div id="uploadContainer">
         <div class="cyber-setup">
             <div class="setup-title">
-                <div class="setup-emblem">ZP</div>
+                <div class="setup-emblem" aria-label="Zpulse pulse mark"></div>
                 <div class="setup-title-copy">
                     <div class="setup-title-text">Zpulse</div>
                     <div class="setup-title-sub">Arcade rhythm pulse / neon velocity interface</div>
