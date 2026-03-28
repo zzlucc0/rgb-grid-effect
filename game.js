@@ -2914,26 +2914,33 @@ class RhythmGame {
         }
 
         if (type === 'start') {
-            this.notes.forEach(note => {
-                if (note.hit || note.completed) return;
+            // Use for-of so we can break after the first tap hit (forEach can't break)
+            for (const note of this.notes) {
+                if (note.hit || note.completed) continue;
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
                 // Drag notes get a larger tap radius — they're harder to start
                 const hitRadius = note.isDrag ? this.circleSize * 1.5 : this.circleSize;
-                if (distance > hitRadius) return;
+                if (distance > hitRadius) continue;
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
 
+                // ── CRITICAL FIX: skip notes outside the timing window ──
+                // Without this guard, clicking a visible-but-too-early note
+                // would fall through to the else branch and mark it as 'miss',
+                // permanently destroying it before the player can actually hit it.
+                if (timingDiff > this.goodRange) continue;
+
                 if (note.isSpin) {
-                    if (note.inputChannel === 'keyboard') return;
+                    if (note.inputChannel === 'keyboard') continue;
                     note.held = true;
                     note.spinStartedAt = currentTime;
                     note.spinLastAngle = Math.atan2(y - note.y, x - note.x);
                     note.spinAccum = 0;
                     this.currentSpinNote = note;
-                    return;
+                    break;
                 }
 
                 if (note.isDrag) {
-                    if (note.inputChannel === 'keyboard') return;
+                    if (note.inputChannel === 'keyboard') continue;
                     note.held = true;
                     note.progress = 0;
                     note._cachedPath = null;
@@ -2951,16 +2958,16 @@ class RhythmGame {
                         note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
                     }
                     this.currentDragNote = note;
-                    return;
+                    break;
                 }
 
                 if (note.noteType === 'hold') {
-                    if (note.inputChannel === 'keyboard') return;
+                    if (note.inputChannel === 'keyboard') continue;
                     note.held = true;
                     note.holdStartTime = currentTime;
                     note.holdProgress = 0;
                     this.currentHoldNote = note;
-                    return;
+                    break;
                 }
 
                 if (note.noteType === 'gate') {
@@ -2969,34 +2976,31 @@ class RhythmGame {
                         note.held = true;
                         note.completed = true;
                         note.hit = true;
-                        note.score = timingDiff <= this.perfectRange ? 'perfect' : (timingDiff <= this.goodRange ? 'good' : 'miss');
-                        if (note.score === 'miss') {
-                            this.combo = 0;
-                            this.recordJudgement('miss');
-                        } else {
-                            this.score += (note.score === 'perfect' ? 1450 : 900) * (1 + this.combo * 0.1);
-                            this.recordJudgement(note.score);
-                            this.combo++;
-                            this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
-                            this.createHitEffect(note.x, note.y, note.score);
-                            this.pushSignatureBurst(note.x, note.y, 'gate');
-                        }
+                        note.score = timingDiff <= this.perfectRange ? 'perfect' : 'good';
+                        this.score += (note.score === 'perfect' ? 1450 : 900) * (1 + this.combo * 0.1);
+                        this.recordJudgement(note.score);
+                        this.combo++;
+                        this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
+                        this.createHitEffect(note.x, note.y, note.score);
+                        this.pushSignatureBurst(note.x, note.y, 'gate');
                         this.currentGateNote = null;
                         this.updateHUD();
-                        return;
+                        break;
                     }
+                    continue;
                 }
 
                 if (note.noteType === 'flick' || note.noteType === 'cut') {
                     note.held = true;
                     note.swipeStartX = x;
                     note.swipeStartY = y;
-                    return;
+                    break;
                 }
 
                 // Keyboard-exclusive notes can ONLY be hit by their assigned key, not mouse.
-                if (note.inputChannel === 'keyboard') return;
+                if (note.inputChannel === 'keyboard') continue;
 
+                // ── Tap note hit ──
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';
                     this.score += 1000 * (1 + this.combo * 0.1);
@@ -3005,7 +3009,8 @@ class RhythmGame {
                     note.hit = true;
                     this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                     this.createHitEffect(note.x, note.y, note.score);
-                } else if (timingDiff <= this.goodRange) {
+                } else {
+                    // Within goodRange (guaranteed by guard above)
                     note.score = 'good';
                     this.score += 500 * (1 + this.combo * 0.1);
                     this.recordJudgement('good');
@@ -3013,15 +3018,11 @@ class RhythmGame {
                     note.hit = true;
                     this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                     this.createHitEffect(note.x, note.y, note.score);
-                } else {
-                    note.score = 'miss';
-                    this.combo = 0;
-                    this.recordJudgement('miss');
-                    note.hit = true;
                 }
                     
                 this.updateHUD();
-            });
+                break;
+            }
         }
 
         if (type === 'end') {
