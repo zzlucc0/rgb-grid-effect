@@ -203,6 +203,31 @@
     var startBtn = el("startGame");
     var game = await waitForGame();
 
+    if (job.result.mode === "offline" || job.result.mode === "capture-poc" || job.result.mode === "offline-capture-fallback") {
+      var liveAudio = el("liveAudio");
+      if (liveAudio) {
+        liveAudio.src = job.result.hlsUrl || job.result.audioUrl || '';
+        liveAudio.load();
+      }
+      if (game.loadOfflineStreamChartRuntime) {
+        game.loadOfflineStreamChartRuntime(job.result.chart, {
+          audioUrl: job.result.audioUrl || '',
+          hlsUrl: job.result.hlsUrl || '',
+          analysis: { duration: job.result.captureSec || 0 },
+          player: job.result.hlsUrl ? { type: 'hls', url: job.result.hlsUrl } : { type: 'audio', url: job.result.audioUrl }
+        });
+      } else if (game.loadOfflineChartRuntime) {
+        game.loadOfflineChartRuntime(job.result.chart, null);
+      }
+      startBtn.disabled = false;
+      var offlineNotes = (job.result.chart && job.result.chart.notes && job.result.chart.notes.length) || '-';
+      if (game.setReadySummary) game.setReadySummary("offline", true, offlineNotes, '-');
+      else setReady("offline", true, offlineNotes, null);
+      if (game.setStatusMessage) game.setStatusMessage("success", "Offline media ready · notes: " + offlineNotes, job.result.hlsUrl ? 'HLS playback prepared' : 'Local audio playback prepared');
+      else setStatus("success", "Offline media ready · notes: " + offlineNotes);
+      return;
+    }
+
     if (job.result.mode === "online-analyzed") {
       var analyzedConfig = {
         bpm: (job.result.analysis && job.result.analysis.bpm) || 122,

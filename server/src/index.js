@@ -1570,7 +1570,9 @@ app.post("/api/analyze-link", async (req, res) => {
   res.status(202).json({ jobId: id, status: job.status });
 
   // In link-play-only mode, analyze temporary preview audio first, then start online player with analyzed chart.
-  if (LINK_PLAY_ONLY || isYouTubeUrl(url)) {
+  // Keep Bilibili on the offline/download path so playback uses backend-produced media,
+  // not a raw page URL fed into the browser player.
+  if ((LINK_PLAY_ONLY && !isBilibiliUrl(url)) || isYouTubeUrl(url)) {
     try {
       await processOnlineAnalyzedJob({ ...job, captureSec: Number(captureSec || 0), attempts: [] });
       return;
