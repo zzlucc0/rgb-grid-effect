@@ -2923,6 +2923,7 @@ class RhythmGame {
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
 
                 if (note.isSpin) {
+                    if (note.inputChannel === 'keyboard') return;
                     note.held = true;
                     note.spinStartedAt = currentTime;
                     note.spinLastAngle = Math.atan2(y - note.y, x - note.x);
@@ -2932,6 +2933,7 @@ class RhythmGame {
                 }
 
                 if (note.isDrag) {
+                    if (note.inputChannel === 'keyboard') return;
                     note.held = true;
                     note.progress = 0;
                     note._cachedPath = null;
@@ -2953,6 +2955,7 @@ class RhythmGame {
                 }
 
                 if (note.noteType === 'hold') {
+                    if (note.inputChannel === 'keyboard') return;
                     note.held = true;
                     note.holdStartTime = currentTime;
                     note.holdProgress = 0;
@@ -2991,8 +2994,9 @@ class RhythmGame {
                     return;
                 }
 
-                // Mouse can hit any tap note regardless of inputChannel.
-                // Keyboard-channel notes show key hints but mouse is always valid.
+                // Keyboard-exclusive notes can ONLY be hit by their assigned key, not mouse.
+                if (note.inputChannel === 'keyboard') return;
+
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';
                     this.score += 1000 * (1 + this.combo * 0.1);
