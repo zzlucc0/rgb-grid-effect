@@ -722,6 +722,37 @@ class RhythmGame {
                     this.chartData.notes = window.ChartPolicy.resolvePathConflicts(this.chartData.notes, this.circleSize);
                 }
             }
+            // ── Lane shuffle: randomise laneHint within each phrase group ──
+            // This makes the same song feel different each play-through while
+            // preserving rhythmic structure (timing / mechanics / segments untouched).
+            (function shuffleLanes(notes) {
+                const LANES = 4;
+                // Group note indices by phrase
+                const phraseMap = {};
+                notes.forEach((n, i) => {
+                    const key = String(n.phrase ?? i);
+                    if (!phraseMap[key]) phraseMap[key] = [];
+                    phraseMap[key].push(i);
+                });
+                // For each phrase, generate a random lane permutation and apply it
+                Object.values(phraseMap).forEach(indices => {
+                    if (indices.length < 2) return; // single note — nothing to shuffle
+                    // Collect the current lane sequence for this phrase
+                    const origLanes = indices.map(i => notes[i].laneHint ?? (i % LANES));
+                    // Shuffle with a seeded Knuth/Fisher-Yates using Math.random()
+                    const shuffled = origLanes.slice();
+                    for (let j = shuffled.length - 1; j > 0; j--) {
+                        const k = Math.floor(Math.random() * (j + 1));
+                        [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+                    }
+                    // Apply shuffled lanes back; also update phraseAnchor consistently
+                    indices.forEach((noteIdx, pos) => {
+                        notes[noteIdx].laneHint = shuffled[pos];
+                        notes[noteIdx].phraseAnchor = shuffled[0]; // anchor = first lane of phrase
+                    });
+                });
+            })(this.chartData.notes);
+
             const layoutIssues = this.getLayoutAudit(this.chartData.notes.map((n, idx) => ({
                 x: this.safeArea.x + (this.safeArea.width / 4) * (((n.laneHint ?? idx % 4) + 0.5)),
                 y: this.safeArea.y + this.safeArea.height * ((n.segmentLabel || 'verse') === 'chorus' ? 0.34 : ((n.segmentLabel || 'verse') === 'verse' ? 0.52 : 0.42)),
@@ -2600,6 +2631,7 @@ class RhythmGame {
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
                 const marker = ''; // no number labels on notes
+                // Keyboard notes always show their key — no tutorial limit
                 const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
                 if (isKbd || seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
                     // Tutorial label CENTERED on note
@@ -2688,9 +2720,8 @@ class RhythmGame {
                 return;
             }
 
-            if ((note.inputChannel === 'keyboard' || note.inputChannel === 'shared') && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === String(key || '').toLowerCase()) {
+            if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === String(key || '').toLowerCase()) {
                 if (note.noteType === 'hold') {
-                    if (note.inputChannel !== 'keyboard') continue;
                     note.held = true;
                     note.holdStartTime = currentTime;
                     note.holdProgress = 0;
@@ -2730,25 +2761,33 @@ class RhythmGame {
         
         if (this.currentSpinNote) {
             const note = this.currentSpinNote;
-            if (type === 'move' && note.held) {
-                const angle = Math.atan2(y - note.y, x - note.x);
-                if (note.spinLastAngle != null) {
-                    let delta = angle - note.spinLastAngle;
-                    while (delta > Math.PI) delta -= Math.PI * 2;
-                    while (delta < -Math.PI) delta += Math.PI * 2;
-                    note.spinAccum += Math.abs(delta);
-                }
-                note.spinLastAngle = angle;
-            }
-            if (type === 'end') {
-                note.held = false;
+            if (!note.held || note.hit || note.completed) {
                 this.currentSpinNote = null;
+            } else {
+                if (type === 'move' && note.held) {
+                    const angle = Math.atan2(y - note.y, x - note.x);
+                    if (note.spinLastAngle != null) {
+                        let delta = angle - note.spinLastAngle;
+                        while (delta > Math.PI) delta -= Math.PI * 2;
+                        while (delta < -Math.PI) delta += Math.PI * 2;
+                        note.spinAccum += Math.abs(delta);
+                    }
+                    note.spinLastAngle = angle;
+                }
+                if (type === 'end') {
+                    note.held = false;
+                    this.currentSpinNote = null;
+                }
             }
         }
 
         if (this.currentDragNote) {
             const note = this.currentDragNote;
-            if (note.held) {
+            // If the drag note is no longer held (timed out / completed), clean up
+            // and fall through so other notes can be tapped.
+            if (!note.held || note.hit || note.completed) {
+                this.currentDragNote = null;
+            } else if (note.held) {
                 if (type === 'move') {
                     // Build cache if not already done (non-heart notes, or fallback)
                     if (!note._cachedPath) {
@@ -2830,19 +2869,23 @@ class RhythmGame {
             }
         }
 
-        if (this.currentHoldNote && this.currentHoldNote.held && type === 'end') {
+        if (this.currentHoldNote) {
             const note = this.currentHoldNote;
-            if ((note.holdProgress || 0) < 0.92) {
-                note.hit = true;
-                note.completed = true;
-                note.held = false;
-                note.score = 'miss';
-                this.combo = 0;
-                this.recordJudgement('miss');
+            if (!note.held || note.hit || note.completed) {
+                this.currentHoldNote = null;
+            } else if (type === 'end') {
+                if ((note.holdProgress || 0) < 0.92) {
+                    note.hit = true;
+                    note.completed = true;
+                    note.held = false;
+                    note.score = 'miss';
+                    this.combo = 0;
+                    this.recordJudgement('miss');
+                }
+                this.currentHoldNote = null;
+                this.updateHUD();
+                return;
             }
-            this.currentHoldNote = null;
-            this.updateHUD();
-            return;
         }
 
         if (type === 'move') {
@@ -2871,26 +2914,33 @@ class RhythmGame {
         }
 
         if (type === 'start') {
-            this.notes.forEach(note => {
-                if (note.hit || note.completed) return;
+            // Use for-of so we can break after the first tap hit (forEach can't break)
+            for (const note of this.notes) {
+                if (note.hit || note.completed) continue;
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
                 // Drag notes get a larger tap radius — they're harder to start
                 const hitRadius = note.isDrag ? this.circleSize * 1.5 : this.circleSize;
-                if (distance > hitRadius) return;
+                if (distance > hitRadius) continue;
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
 
+                // ── CRITICAL FIX: skip notes outside the timing window ──
+                // Without this guard, clicking a visible-but-too-early note
+                // would fall through to the else branch and mark it as 'miss',
+                // permanently destroying it before the player can actually hit it.
+                if (timingDiff > this.goodRange) continue;
+
                 if (note.isSpin) {
-                    if (note.inputChannel !== 'mouse') return;
+                    if (note.inputChannel === 'keyboard') continue;
                     note.held = true;
                     note.spinStartedAt = currentTime;
                     note.spinLastAngle = Math.atan2(y - note.y, x - note.x);
                     note.spinAccum = 0;
                     this.currentSpinNote = note;
-                    return;
+                    break;
                 }
 
                 if (note.isDrag) {
-                    if (note.inputChannel !== 'mouse') return;
+                    if (note.inputChannel === 'keyboard') continue;
                     note.held = true;
                     note.progress = 0;
                     note._cachedPath = null;
@@ -2908,16 +2958,16 @@ class RhythmGame {
                         note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
                     }
                     this.currentDragNote = note;
-                    return;
+                    break;
                 }
 
                 if (note.noteType === 'hold') {
-                    if (note.inputChannel !== 'mouse') return;
+                    if (note.inputChannel === 'keyboard') continue;
                     note.held = true;
                     note.holdStartTime = currentTime;
                     note.holdProgress = 0;
                     this.currentHoldNote = note;
-                    return;
+                    break;
                 }
 
                 if (note.noteType === 'gate') {
@@ -2926,34 +2976,31 @@ class RhythmGame {
                         note.held = true;
                         note.completed = true;
                         note.hit = true;
-                        note.score = timingDiff <= this.perfectRange ? 'perfect' : (timingDiff <= this.goodRange ? 'good' : 'miss');
-                        if (note.score === 'miss') {
-                            this.combo = 0;
-                            this.recordJudgement('miss');
-                        } else {
-                            this.score += (note.score === 'perfect' ? 1450 : 900) * (1 + this.combo * 0.1);
-                            this.recordJudgement(note.score);
-                            this.combo++;
-                            this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
-                            this.createHitEffect(note.x, note.y, note.score);
-                            this.pushSignatureBurst(note.x, note.y, 'gate');
-                        }
+                        note.score = timingDiff <= this.perfectRange ? 'perfect' : 'good';
+                        this.score += (note.score === 'perfect' ? 1450 : 900) * (1 + this.combo * 0.1);
+                        this.recordJudgement(note.score);
+                        this.combo++;
+                        this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
+                        this.createHitEffect(note.x, note.y, note.score);
+                        this.pushSignatureBurst(note.x, note.y, 'gate');
                         this.currentGateNote = null;
                         this.updateHUD();
-                        return;
+                        break;
                     }
+                    continue;
                 }
 
                 if (note.noteType === 'flick' || note.noteType === 'cut') {
                     note.held = true;
                     note.swipeStartX = x;
                     note.swipeStartY = y;
-                    return;
+                    break;
                 }
 
-                // Keyboard-exclusive taps must not be triggered by mouse click
-                if (note.inputChannel === 'keyboard') return;
-                    
+                // Keyboard-exclusive notes can ONLY be hit by their assigned key, not mouse.
+                if (note.inputChannel === 'keyboard') continue;
+
+                // ── Tap note hit ──
                 if (timingDiff <= this.perfectRange) {
                     note.score = 'perfect';
                     this.score += 1000 * (1 + this.combo * 0.1);
@@ -2962,7 +3009,8 @@ class RhythmGame {
                     note.hit = true;
                     this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                     this.createHitEffect(note.x, note.y, note.score);
-                } else if (timingDiff <= this.goodRange) {
+                } else {
+                    // Within goodRange (guaranteed by guard above)
                     note.score = 'good';
                     this.score += 500 * (1 + this.combo * 0.1);
                     this.recordJudgement('good');
@@ -2970,15 +3018,11 @@ class RhythmGame {
                     note.hit = true;
                     this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
                     this.createHitEffect(note.x, note.y, note.score);
-                } else {
-                    note.score = 'miss';
-                    this.combo = 0;
-                    this.recordJudgement('miss');
-                    note.hit = true;
                 }
                     
                 this.updateHUD();
-            });
+                break;
+            }
         }
 
         if (type === 'end') {
@@ -4805,20 +4849,11 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         }
     }
     note.keyboardCheckpoint = false;
-    note.keyboardKey = null;
-    note.keyboardHint = null;
     note.keyboardHit = false;
 
-    // Re-assign keyboard keys for shared/keyboard actionable notes based on lane
-    const actionableTypes = ['tap', 'flick', 'cut', 'gate'];
-    if ((note.inputChannel === 'shared' || note.inputChannel === 'keyboard') && actionableTypes.includes(note.noteType)) {
-        const laneKeyMap = ['a', 's', 'd', 'f'];
-        const lane = Math.max(0, Math.min(3, note.laneHint || 0));
-        const assignedKey = laneKeyMap[lane];
-        note.keyboardKey = assignedKey;
-        note.keyboardHint = assignedKey;
-        note.keyHint = assignedKey;
-    }
+    // Sync keyboardHint from keyHint — keyHint is the authoritative source set by chart-policy.
+    // Do NOT override keyHint/keyboardKey here — chart-policy already set them correctly.
+    note.keyboardHint = note.keyHint || null;
 
     return note;
 };

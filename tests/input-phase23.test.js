@@ -6,7 +6,7 @@ describe('phase 2/3 input features', () => {
     const game = fs.readFileSync(new URL('../game.js', import.meta.url), 'utf8');
     expect(game).toContain("['a','s','d','f','g','h','j','k','l']");
     expect(game).toContain("note.keyboardHint || note.keyHint || 'SPACE'");
-    expect(game).toContain("note.inputChannel === 'keyboard' || note.inputChannel === 'shared'");
+    expect(game).toContain("note.inputChannel === 'keyboard'");
   });
 
   it('adds spin proposal generation and runtime handling', () => {

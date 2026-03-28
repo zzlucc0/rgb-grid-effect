@@ -175,12 +175,12 @@
     const keyset = keyboardLayoutForDifficulty(difficulty);
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
     const total = seq.length || 1;
+
     seq.forEach((note, idx) => {
       const progress = idx / total;
       const mechanic = note.mechanic || note.type || note.noteType || 'tap';
-      const key = keyset[Math.abs(Number(note.laneHint || idx)) % keyset.length] || null;
-      note.keyHint = key;
-      note.keyboardKey = key ? String(key).toLowerCase() : null;
+
+      // drag/spin are always mouse-only, no keyboard hint
       if (mechanic === 'drag' || mechanic === 'spin') {
         note.inputChannel = 'mouse';
         note.keyHint = null;
@@ -188,19 +188,24 @@
         note.exclusivity = mechanic === 'spin' ? 'solo-mouse' : 'normal';
         return;
       }
-      if (mechanic === 'hold') {
-        note.inputChannel = progress < 0.42 ? ((idx % 4 === 0 || idx % 4 === 1) ? 'keyboard' : 'mouse') : ((idx + Math.round(Number(note.phrase || 0))) % 2 === 0 ? 'keyboard' : 'mouse');
+
+      // Decide: keyboard or mouse. No "shared" — every note is one or the other.
+      // Rule: ~40% keyboard (spread evenly), rest mouse.
+      // Keyboard notes get their key from keyset[laneHint]; mouse notes get nothing.
+      const wantKeyboard = (idx % 5 === 0 || idx % 5 === 2); // ~40%
+
+      if (wantKeyboard) {
+        const lane = Math.max(0, Math.min(keyset.length - 1, Math.abs(Number(note.laneHint || 0)) % keyset.length));
+        const key = keyset[lane] || keyset[0];
+        note.inputChannel = 'keyboard';
+        note.keyHint = key;
+        note.keyboardKey = String(key).toLowerCase();
         note.exclusivity = 'normal';
-        return;
-      }
-      if (progress < 0.35) note.inputChannel = idx % 2 === 0 ? 'keyboard' : 'mouse';
-      else if (progress < 0.7) note.inputChannel = idx % 3 === 0 ? 'shared' : ((idx % 2 === 0) ? 'keyboard' : 'mouse');
-      else note.inputChannel = idx % 2 === 0 ? 'shared' : ((idx + 1) % 3 === 0 ? 'mouse' : 'keyboard');
-      note.exclusivity = 'normal';
-      // Mouse-channel taps must never show a keyboard hint — clear it so the keyboard handler doesn't try to match
-      if (note.inputChannel === 'mouse') {
+      } else {
+        note.inputChannel = 'mouse';
         note.keyHint = null;
         note.keyboardKey = null;
+        note.exclusivity = 'normal';
       }
     });
     return seq;
@@ -1026,13 +1031,15 @@
     const arranged = arrangeBars(seq, barPlan, options);
     seq = materializeBarPlan(arranged, options);
     seq = layerBMechanicPlanner(seq, options);
-    seq = layerCInputChannelPlanner(seq, options);
+    // layerD/E may downgrade drag/hold/spin → tap, changing noteType but NOT inputChannel.
+    // Run layerC AFTER all downgrades so inputChannel always matches final noteType.
     seq = layerDOpeningGuard(seq, options);
     seq = layerEPlayabilityGuard(seq, options);
     seq = layerFGeometryPrep(seq, options);
     seq = enforcePlannerConstraints(seq, arranged.bars, options);
     const result = layerGRuntimeAudit(seq, options);
-    return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    seq = layerCInputChannelPlanner([...result.notes], options);
+    return seq.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
   const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, buildMicroWindows, noteInGapRange, calculateWindowStrainForNotes, windowStrainStats, summarizeStage, pipelineSnapshots, enforcePlannerConstraints };
