@@ -1031,13 +1031,15 @@
     const arranged = arrangeBars(seq, barPlan, options);
     seq = materializeBarPlan(arranged, options);
     seq = layerBMechanicPlanner(seq, options);
-    seq = layerCInputChannelPlanner(seq, options);
+    // layerD/E may downgrade drag/hold/spin → tap, changing noteType but NOT inputChannel.
+    // Run layerC AFTER all downgrades so inputChannel always matches final noteType.
     seq = layerDOpeningGuard(seq, options);
     seq = layerEPlayabilityGuard(seq, options);
     seq = layerFGeometryPrep(seq, options);
     seq = enforcePlannerConstraints(seq, arranged.bars, options);
     const result = layerGRuntimeAudit(seq, options);
-    return [...result.notes].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+    seq = layerCInputChannelPlanner([...result.notes], options);
+    return seq.sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   }
 
   const api = { spreadQuotaPromotions, assignMechanics, applyMousePlayabilityFilter, applyOpeningWindowPolicy, enforceChartPlayability, tutorialLabelForType, assignKeyboardCheckpoints, makeFootprint, footprintsOverlap, auditFootprints, sortByLayoutPriority, footprintSeverity, resolvePathConflicts, finalizePlayableChartPipeline, densityStats, enforceDensityFloor, mechanicMixStats, spatialFlowStats, geometryTemplateStats, auditChartShape, keyboardLayoutForDifficulty, layerABaseChartProposal, layerBMechanicPlanner, layerCInputChannelPlanner, layerDOpeningGuard, layerEPlayabilityGuard, layerFGeometryPrep, layerGRuntimeAudit, downgradeType, isSustainedType, normalizeNoteSchema, stripComplexPath, estimateBarLengthSec, estimateNoteCost, buildBarPlan, arrangeBars, materializeBarPlan, buildMicroWindows, noteInGapRange, calculateWindowStrainForNotes, windowStrainStats, summarizeStage, pipelineSnapshots, enforcePlannerConstraints };
