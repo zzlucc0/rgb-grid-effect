@@ -351,55 +351,11 @@
     }
   }
 
-  async function onSearchBiliClick() {
-    var query = (el("songQuery") && el("songQuery").value || "").trim();
-    if (!query) return setStatus("error", "Enter song name first");
-    setStatus("loading", "Searching Bilibili...");
-    var r = await fetch(API_BASE + "/api/search-bilibili", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: query, limit: 6 })
-    });
-    var data = await r.json();
-    if (!r.ok) return setStatus("error", data.error || "search failed");
-
-    var box = el("searchResults");
-    box.innerHTML = "";
-    if (!data.results || !data.results.length) {
-      box.innerHTML = '<div class="error-message">No candidates found. Try Chinese title or artist + song name.</div>';
-      return;
-    }
-
-    data.results.forEach(function (it, idx) {
-      var row = document.createElement("div");
-      row.style.padding = "6px";
-      row.style.border = "1px solid rgba(255,255,255,0.2)";
-      row.style.marginBottom = "6px";
-      row.style.borderRadius = "6px";
-      var dur = it.duration ? (Math.floor(it.duration/60) + ":" + String(it.duration%60).padStart(2,"0")) : "--";
-      row.innerHTML = '<div style="font-size:13px;margin-bottom:4px;">' + (idx+1) + '. ' + it.title + ' · ' + dur + '</div>' +
-        '<button data-url="' + it.url.replace(/"/g, '&quot;') + '">Use this</button>';
-      row.querySelector("button").addEventListener("click", async function () {
-        try {
-          await analyzeUrl(it.url);
-        } catch (e) {
-          setStatus("error", e.message || "analyze failed");
-        }
-      });
-      box.appendChild(row);
-    });
-
-    setStatus("success", "Select one result to continue");
-  }
-
   window.addEventListener("load", function () {
     ensureReadyPanel();
-    ensureSearchPanel();
     var btn = el("analyzeYoutube");
     if (btn) btn.addEventListener("click", onAnalyzeClick);
     var cbtn = el("cancelAnalyze");
     if (cbtn) cbtn.addEventListener("click", function () { onCancelAnalyze().catch(function(){}); });
-    var sbtn = el("searchBiliBtn");
-    if (sbtn) sbtn.addEventListener("click", onSearchBiliClick);
   });
 })();
