@@ -2761,25 +2761,33 @@ class RhythmGame {
         
         if (this.currentSpinNote) {
             const note = this.currentSpinNote;
-            if (type === 'move' && note.held) {
-                const angle = Math.atan2(y - note.y, x - note.x);
-                if (note.spinLastAngle != null) {
-                    let delta = angle - note.spinLastAngle;
-                    while (delta > Math.PI) delta -= Math.PI * 2;
-                    while (delta < -Math.PI) delta += Math.PI * 2;
-                    note.spinAccum += Math.abs(delta);
-                }
-                note.spinLastAngle = angle;
-            }
-            if (type === 'end') {
-                note.held = false;
+            if (!note.held || note.hit || note.completed) {
                 this.currentSpinNote = null;
+            } else {
+                if (type === 'move' && note.held) {
+                    const angle = Math.atan2(y - note.y, x - note.x);
+                    if (note.spinLastAngle != null) {
+                        let delta = angle - note.spinLastAngle;
+                        while (delta > Math.PI) delta -= Math.PI * 2;
+                        while (delta < -Math.PI) delta += Math.PI * 2;
+                        note.spinAccum += Math.abs(delta);
+                    }
+                    note.spinLastAngle = angle;
+                }
+                if (type === 'end') {
+                    note.held = false;
+                    this.currentSpinNote = null;
+                }
             }
         }
 
         if (this.currentDragNote) {
             const note = this.currentDragNote;
-            if (note.held) {
+            // If the drag note is no longer held (timed out / completed), clean up
+            // and fall through so other notes can be tapped.
+            if (!note.held || note.hit || note.completed) {
+                this.currentDragNote = null;
+            } else if (note.held) {
                 if (type === 'move') {
                     // Build cache if not already done (non-heart notes, or fallback)
                     if (!note._cachedPath) {
@@ -2861,19 +2869,23 @@ class RhythmGame {
             }
         }
 
-        if (this.currentHoldNote && this.currentHoldNote.held && type === 'end') {
+        if (this.currentHoldNote) {
             const note = this.currentHoldNote;
-            if ((note.holdProgress || 0) < 0.92) {
-                note.hit = true;
-                note.completed = true;
-                note.held = false;
-                note.score = 'miss';
-                this.combo = 0;
-                this.recordJudgement('miss');
+            if (!note.held || note.hit || note.completed) {
+                this.currentHoldNote = null;
+            } else if (type === 'end') {
+                if ((note.holdProgress || 0) < 0.92) {
+                    note.hit = true;
+                    note.completed = true;
+                    note.held = false;
+                    note.score = 'miss';
+                    this.combo = 0;
+                    this.recordJudgement('miss');
+                }
+                this.currentHoldNote = null;
+                this.updateHUD();
+                return;
             }
-            this.currentHoldNote = null;
-            this.updateHUD();
-            return;
         }
 
         if (type === 'move') {
