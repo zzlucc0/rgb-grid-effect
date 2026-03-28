@@ -10,6 +10,17 @@ assets/obj_wo3DlMOGwrbDjj7DisKw_58034750452_3281_c5cd_4d04_2f43e5a7c21a151300292
 .DS_Store
 Thumbs.db
 
+# local dependencies / build output
+node_modules/
+coverage/
+dist/
+test-results/
+playwright-report/
+
+# backup / scratch files
+*.bak
+*~
+
 # server runtime data
 server/data/cache/
 server/data/jobs/
