@@ -2802,21 +2802,37 @@ class RhythmGame {
                     const curvePoints = note._cachedPath;
                     if (curvePoints && curvePoints.length >= 2) {
                         const curProg = note.progress || 0;
-                        // Windowed search: only look ahead by windowSize, prevents jumping to end
-                        const windowSize = 0.18;
-                        const startIdx = Math.floor(Math.max(0, curProg - 0.02) * (curvePoints.length - 1));
+                        const isHeartTrack = note.pathTemplate === 'heart';
+                        // Heart tracks need a wider forward search and more forgiveness around
+                        // the upper lobes / center notch. Keep the exact same geometry; only
+                        // make the tracking logic less brittle.
+                        const windowSize = isHeartTrack ? 0.34 : 0.18;
+                        const backtrackAllowance = isHeartTrack ? 0.045 : 0.02;
+                        const startIdx = Math.floor(Math.max(0, curProg - backtrackAllowance) * (curvePoints.length - 1));
                         const endIdx = Math.ceil(Math.min(1, curProg + windowSize) * (curvePoints.length - 1));
                         let minDist = Infinity;
                         let closestPoint = null;
+                        let bestForwardPoint = null;
+                        let bestForwardDist = Infinity;
                         for (let ci = startIdx; ci <= endIdx; ci++) {
                             const pt = curvePoints[ci];
                             if (!pt) continue;
                             const dist = Math.hypot(x - pt.x, y - pt.y);
                             if (dist < minDist) { minDist = dist; closestPoint = pt; }
+                            if (pt.t >= curProg - backtrackAllowance && dist < bestForwardDist) {
+                                bestForwardDist = dist;
+                                bestForwardPoint = pt;
+                            }
                         }
-                        const tolerance = this.circleSize * 1.2;
-                        if (closestPoint && minDist <= tolerance && closestPoint.t > curProg) {
-                            note.progress = closestPoint.t;
+                        const tolerance = this.circleSize * (isHeartTrack ? 1.75 : 1.2);
+                        const chosenPoint = bestForwardPoint || closestPoint;
+                        if (chosenPoint && ((bestForwardPoint && bestForwardDist <= tolerance) || minDist <= tolerance)) {
+                            // Never snap backwards hard; allow tiny local correction only, while
+                            // making forward progress feel continuous instead of sticky.
+                            const nextProg = Math.max(curProg - (isHeartTrack ? 0.012 : 0), chosenPoint.t);
+                            if (nextProg > curProg || (isHeartTrack && Math.abs(nextProg - curProg) <= 0.012)) {
+                                note.progress = Math.max(note.progress || 0, nextProg);
+                            }
                         }
                     }
                 } else if (type === 'end') {
