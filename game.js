@@ -2631,8 +2631,8 @@ class RhythmGame {
                 const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
                 const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
                 const marker = ''; // no number labels on notes
-                // Keyboard notes ALWAYS show their key hint — never hide after tutorial
-                const isKbd = (note.inputChannel === 'keyboard' || note.inputChannel === 'shared') && (note.keyHint || note.keyboardHint);
+                // Keyboard notes always show their key — no tutorial limit
+                const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
                 if (isKbd || seenCount < tutorialLimit || (note.keyboardCheckpoint && !note.keyboardHit)) {
                     // Tutorial label CENTERED on note
                     const displayLabel = note.keyboardCheckpoint && !note.keyboardHit
@@ -2720,9 +2720,8 @@ class RhythmGame {
                 return;
             }
 
-            if ((note.inputChannel === 'keyboard' || note.inputChannel === 'shared') && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === String(key || '').toLowerCase()) {
+            if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === String(key || '').toLowerCase()) {
                 if (note.noteType === 'hold') {
-                    if (note.inputChannel !== 'keyboard') continue;
                     note.held = true;
                     note.holdStartTime = currentTime;
                     note.holdProgress = 0;
@@ -4849,20 +4848,11 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         }
     }
     note.keyboardCheckpoint = false;
-    note.keyboardKey = null;
-    note.keyboardHint = null;
     note.keyboardHit = false;
 
-    // Re-assign keyboard keys for shared/keyboard actionable notes based on lane
-    const actionableTypes = ['tap', 'flick', 'cut', 'gate'];
-    if ((note.inputChannel === 'shared' || note.inputChannel === 'keyboard') && actionableTypes.includes(note.noteType)) {
-        const laneKeyMap = ['a', 's', 'd', 'f'];
-        const lane = Math.max(0, Math.min(3, note.laneHint || 0));
-        const assignedKey = laneKeyMap[lane];
-        note.keyboardKey = assignedKey;
-        note.keyboardHint = assignedKey;
-        note.keyHint = assignedKey;
-    }
+    // Sync keyboardHint from keyHint — keyHint is the authoritative source set by chart-policy.
+    // Do NOT override keyHint/keyboardKey here — chart-policy already set them correctly.
+    note.keyboardHint = note.keyHint || null;
 
     return note;
 };

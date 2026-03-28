@@ -61,6 +61,7 @@ describe('phase 1 input schema migration', () => {
     expect(notes[2].inputChannel).toBe('mouse');
     expect(notes[2].keyHint).toBeNull();
     expect(['keyboard', 'mouse']).toContain(notes[1].inputChannel);
-    expect(notes.slice(4).some(note => note.inputChannel === 'shared')).toBe(true);
+    // shared channel removed — all notes are either keyboard or mouse
+    expect(notes.slice(4).every(note => ['keyboard', 'mouse'].includes(note.inputChannel))).toBe(true);
   });
 });
