@@ -23,10 +23,10 @@ describe('opening policy', () => {
     ];
     const out = p.applyOpeningWindowPolicy(notes, { openingSeconds: 12, openingCalmWindowSec: 2.4, openingHeavyStartSec: 4.8, openingPreviewBoostSec: 1.1 });
     expect(out[0].spawnLeadBiasSec).toBeGreaterThan(0.5);
-    expect(out[0].type).toBe('tap');
-    expect(out[1].type).toBe('tap');
-    expect(['tap', 'drag']).toContain(out[2].type);
-    expect(['tap', 'drag']).toContain(out[3].type);
+    expect(out[0].type).toBe('click');
+    expect(out[1].type).toBe('click');
+    expect(['click', 'drag']).toContain(out[2].type);
+    expect(['click', 'drag']).toContain(out[3].type);
   });
 
   it('enforces sustained cooldown for drag-only sustained notes', () => {
@@ -56,7 +56,7 @@ describe('opening policy', () => {
     const out = p.applyOpeningWindowPolicy(notes, { openingCalmWindowSec: 2.4, openingHeavyStartSec: 5.4, openingSustainConcurrencyCap: 1, minOpeningDragGapSec: 1.8 });
     const openingSustained = out.filter(n => Number(n.time) <= 8 && p.isSustainedType(n.type || n.noteType));
     expect(openingSustained.length).toBeLessThanOrEqual(2);
-    expect(out[1].type).toBe('tap');
-    expect(out[2].type).toBe('tap');
+    expect(out[1].type).toBe('click');
+    expect(out[2].type).toBe('click');
   });
 });

@@ -68,8 +68,8 @@ describe('chart policy quotas', () => {
       { time: 20.9, type: 'hold', laneHint: 2, segmentLabel: 'bridge' }
     ];
     policy.enforceChartPlayability(notes);
-    expect(notes[1].type).toBe('tap');
-    expect(notes[2].type).toBe('tap');
+    expect(notes[1].type).toBe('click');
+    expect(notes[2].type).toBe('click');
   });
 
   it('provides tutorial labels for supported modern mechanics', () => {

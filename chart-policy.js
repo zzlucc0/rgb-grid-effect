@@ -221,20 +221,23 @@
     const spinRadius = Number(options.spinIsolationSec || 2.4);
     let lastDragTime = -Infinity;
     for (const note of seq) {
-      const type = note.type || note.noteType || 'tap';
+      const type = note.type || note.noteType || 'click';
       const t = Number(note.time || 0);
       if (type === 'spin') continue;
       const nearbySpin = seq.some(other => other !== note && (other.type || other.noteType) === 'spin' && Math.abs(Number(other.time || 0) - t) < spinRadius);
       if (nearbySpin) {
-        note.type = 'tap';
-        note.noteType = 'tap';
+        note.type = 'click';
+        note.noteType = 'click';
         note.mechanic = 'click';
+        note.inputChannel = 'mouse';
+        note.keyHint = null;
+        note.keyboardKey = null;
         stripComplexPath(note);
         continue;
       }
       if (type === 'drag') {
         if (t - lastDragTime < dragCooldown) {
-          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; stripComplexPath(note); continue;
+          note.type = 'click'; note.noteType = 'click'; note.mechanic = 'click'; note.inputChannel = 'mouse'; note.keyHint = null; note.keyboardKey = null; stripComplexPath(note); continue;
         }
         lastDragTime = t;
       }
@@ -255,14 +258,14 @@
       note.openingCalmWindow = profile.inCalmWindow;
       if (!profile.inOpening) continue;
       if (note.type === 'spin') {
-        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; continue;
+        note.type = 'click'; note.noteType = 'click'; note.mechanic = 'click'; note.inputChannel = 'mouse'; note.keyHint = null; note.keyboardKey = null; continue;
       }
       if (profile.inCalmWindow && note.type !== 'tap') {
-        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; stripComplexPath(note); continue;
+        note.type = 'click'; note.noteType = 'click'; note.mechanic = 'click'; note.inputChannel = 'mouse'; note.keyHint = null; note.keyboardKey = null; stripComplexPath(note); continue;
       }
       if (note.type === 'drag') {
         if (t - lastOpeningDrag < 1.8) {
-          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; stripComplexPath(note); continue;
+          note.type = 'click'; note.noteType = 'click'; note.mechanic = 'click'; note.inputChannel = 'mouse'; note.keyHint = null; note.keyboardKey = null; stripComplexPath(note); continue;
         }
         note.minCompletionWindowSec = Number(options.openingDragCompletionWindowSec || 1.35);
         lastOpeningDrag = t;
@@ -273,7 +276,7 @@
     while (firstHalf.length && drags.length / firstHalf.length > firstHalfDragRatioCap) {
       const candidate = drags.pop();
       if (!candidate) break;
-      candidate.type = 'tap'; candidate.noteType = 'tap'; candidate.mechanic = 'click'; stripComplexPath(candidate);
+      candidate.type = 'click'; candidate.noteType = 'click'; candidate.mechanic = 'click'; candidate.inputChannel = 'mouse'; candidate.keyHint = null; candidate.keyboardKey = null; stripComplexPath(candidate);
     }
     return seq;
   }
@@ -289,21 +292,21 @@
     if (!Array.isArray(notes) || !notes.length) return notes || [];
     for (let i = 0; i < notes.length; i += 1) {
       const note = notes[i];
-      const type = note.type || note.noteType || 'tap';
+      const type = note.type || note.noteType || 'click';
       const lane = Number.isFinite(note.laneHint) ? Number(note.laneHint) : 0;
       for (let j = i + 1; j < notes.length; j += 1) {
         const next = notes[j];
         const dt = Number(next.time || 0) - Number(note.time || 0);
         if (dt > 2.5) break;
-        const nextType = next.type || next.noteType || 'tap';
+        const nextType = next.type || next.noteType || 'click';
         const nextLane = Number.isFinite(next.laneHint) ? Number(next.laneHint) : lane;
         const laneClose = Math.abs(nextLane - lane) <= 1;
         if (type === 'spin' && dt < 2.4) {
-          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'click'; stripComplexPath(next);
+          next.type = 'click'; next.noteType = 'click'; next.mechanic = 'click'; next.inputChannel = 'mouse'; next.keyHint = null; next.keyboardKey = null; stripComplexPath(next);
           continue;
         }
         if (type === 'drag' && nextType === 'drag' && dt < 1.2) {
-          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'click'; stripComplexPath(next);
+          next.type = 'click'; next.noteType = 'click'; next.mechanic = 'click'; next.inputChannel = 'mouse'; next.keyHint = null; next.keyboardKey = null; stripComplexPath(next);
         }
       }
     }
@@ -499,7 +502,7 @@
     const spins = seq.filter(n => (n.type || n.noteType) === 'spin');
     while (spins.length > 2) {
       const victim = spins.pop();
-      victim.type = 'tap'; victim.noteType = 'tap'; victim.mechanic = 'click';
+      victim.type = 'click'; victim.noteType = 'click'; victim.mechanic = 'click'; victim.inputChannel = 'mouse'; victim.keyHint = null; victim.keyboardKey = null;
     }
     return seq;
   }
@@ -1005,7 +1008,7 @@
     const arranged = arrangeBars(seq, barPlan, options);
     seq = materializeBarPlan(arranged, options);
     seq = layerBMechanicPlanner(seq, options);
-    // layerD/E may downgrade drag/spin → tap, changing noteType but NOT inputChannel.
+    // layerD/E may downgrade drag/spin → click, changing noteType but NOT inputChannel.
     // Run layerC AFTER all downgrades so inputChannel always matches final noteType.
     seq = layerDOpeningGuard(seq, options);
     seq = layerEPlayabilityGuard(seq, options);
