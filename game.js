@@ -2235,10 +2235,11 @@ class RhythmGame {
                     this.ctx.save();
                     this.ctx.translate(note.x, note.y);
                     this.ctx.rotate(shellRotation);
-                    this.ctx.strokeStyle = palette.glow.replace('.45', '.24').replace('.42', '.24').replace('.4', '.24').replace('.38', '.24').replace('.36', '.22').replace('.34', '.2').replace('.26', '.18');
-                    this.ctx.lineWidth = note.isDrag ? 3.2 : 2.4;
-                    this.ctx.shadowBlur = 18;
-                    this.ctx.shadowColor = palette.edge;
+                    const shellAlpha = 0.36 + (1 - rotateT) * 0.26 + dangerPulse * 0.16;
+                    this.ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.8, shellAlpha).toFixed(3)})`;
+                    this.ctx.lineWidth = note.isDrag ? 4.6 : 3.6;
+                    this.ctx.shadowBlur = 26;
+                    this.ctx.shadowColor = 'rgba(255,255,255,0.7)';
                     if (note.noteType === 'flick' || note.noteType === 'cut') {
                         const vec = note.flickVector || { x: 1, y: 0 };
                         const px = -vec.y;
@@ -2250,13 +2251,12 @@ class RhythmGame {
                         this.ctx.lineTo(vec.x * shell * 0.35 + px * shell * 0.18, vec.y * shell * 0.35 + py * shell * 0.18);
                         this.ctx.stroke();
                     } else {
-                        // Light corner brackets only
                         const size = shell * 1.38;
                         const hf = size / 2;
-                        const arm = Math.max(6, size * 0.20);
-                        const th = 2;
-                        const alpha = (0.18 + rotateT * 0.35) * (0.5 + 0.5 * Math.sin(performance.now() / 280));
-                        this.ctx.fillStyle = `rgba(89,239,255,${alpha.toFixed(3)})`;
+                        const arm = Math.max(8, size * 0.22);
+                        const th = 3;
+                        const alpha = Math.min(0.92, shellAlpha * (0.78 + 0.22 * Math.sin(performance.now() / 240)));
+                        this.ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
                         this.ctx.fillRect(-hf, -hf, arm, th);
                         this.ctx.fillRect(-hf, -hf, th, arm);
                         this.ctx.fillRect(hf - arm, -hf, arm, th);
@@ -2265,6 +2265,18 @@ class RhythmGame {
                         this.ctx.fillRect(-hf, hf - arm, th, arm);
                         this.ctx.fillRect(hf - arm, hf - th, arm, th);
                         this.ctx.fillRect(hf - th, hf - arm, th, arm);
+
+                        this.ctx.fillStyle = `rgba(90,246,255,${Math.min(0.48, alpha * 0.55).toFixed(3)})`;
+                        const inner = size * 0.74;
+                        const ih = inner / 2;
+                        this.ctx.fillRect(-ih, -ih, Math.max(6, inner * 0.14), 2);
+                        this.ctx.fillRect(-ih, -ih, 2, Math.max(6, inner * 0.14));
+                        this.ctx.fillRect(ih - Math.max(6, inner * 0.14), -ih, Math.max(6, inner * 0.14), 2);
+                        this.ctx.fillRect(ih - 2, -ih, 2, Math.max(6, inner * 0.14));
+                        this.ctx.fillRect(-ih, ih - 2, Math.max(6, inner * 0.14), 2);
+                        this.ctx.fillRect(-ih, ih - Math.max(6, inner * 0.14), 2, Math.max(6, inner * 0.14));
+                        this.ctx.fillRect(ih - Math.max(6, inner * 0.14), ih - 2, Math.max(6, inner * 0.14), 2);
+                        this.ctx.fillRect(ih - 2, ih - Math.max(6, inner * 0.14), 2, Math.max(6, inner * 0.14));
                     }
                     this.ctx.restore();
                 }
@@ -3429,21 +3441,26 @@ RhythmGame.prototype.drawNoteLinks = function () {
             const dist = Math.hypot(b.x - a.x, b.y - a.y);
             if (dist > this.circleSize * 12) continue; // skip if too far apart
             const pct = Math.max(a.approachProgress || 0, b.approachProgress || 0);
-            const flow = 0.5 + 0.5 * Math.sin(now / 200 + i * 1.3);
-            const alpha = Math.min(0.55, pct * 0.75) * flow;
-            if (alpha < 0.04) continue;
+            const flow = 0.5 + 0.5 * Math.sin(now / 220 + i * 1.3);
+            const alpha = Math.min(0.62, 0.12 + pct * 0.62) * flow;
+            if (alpha < 0.06) continue;
             const grd = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-            grd.addColorStop(0, `rgba(89,239,255,${alpha.toFixed(3)})`);
-            grd.addColorStop(0.5, `rgba(255,255,255,${(alpha * 0.7).toFixed(3)})`);
-            grd.addColorStop(1, `rgba(89,239,255,${alpha.toFixed(3)})`);
+            grd.addColorStop(0, `rgba(76,238,255,${(alpha * 0.92).toFixed(3)})`);
+            grd.addColorStop(0.48, `rgba(255,255,255,${(alpha * 0.95).toFixed(3)})`);
+            grd.addColorStop(0.52, `rgba(255,100,180,${(alpha * 0.72).toFixed(3)})`);
+            grd.addColorStop(1, `rgba(76,238,255,${(alpha * 0.92).toFixed(3)})`);
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
             ctx.strokeStyle = grd;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([6, 5]);
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = '#59efff';
+            ctx.lineWidth = 2.8;
+            ctx.setLineDash([10, 8]);
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(76,238,255,0.55)';
+            ctx.stroke();
+            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.42).toFixed(3)})`;
+            ctx.setLineDash([2, 14]);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.shadowBlur = 0;
@@ -3463,7 +3480,7 @@ RhythmGame.prototype.drawNoteLinks = function () {
                     const cx = a.x + lineDx * ct;
                     const cy = a.y + lineDy * ct;
                     const ps = 3; // pixel size
-                    ctx.fillStyle = `rgba(89,239,255,${(alpha * 0.8).toFixed(3)})`;
+                    ctx.fillStyle = `rgba(255,255,255,${(alpha * 0.72).toFixed(3)})`;
                     // Draw chevron: two angled lines forming >>>
                     for (let chevOff = -1; chevOff <= 1; chevOff += 2) {
                         for (let seg = 0; seg < 3; seg++) {
@@ -3485,7 +3502,7 @@ RhythmGame.prototype.drawNoteLinks = function () {
                 const perpDx = -(lineDy / (lineLen || 1));
                 const perpDyN = (lineDx / (lineLen || 1));
                 const pSize = 2 + (pi % 2);
-                ctx.fillStyle = `rgba(89,239,255,${(alpha * 0.5 + (pi % 3) * 0.08).toFixed(3)})`;
+                ctx.fillStyle = `rgba(76,238,255,${Math.min(0.7, alpha * 0.44 + (pi % 3) * 0.07).toFixed(3)})`;
                 ctx.fillRect(Math.round(px + perpDx * driftAmt - pSize / 2), Math.round(py + perpDyN * driftAmt - pSize / 2), pSize, pSize);
             }
 
