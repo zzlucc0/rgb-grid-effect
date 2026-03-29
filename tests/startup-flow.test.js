@@ -26,8 +26,8 @@ describe('ChartRuntime startup scheduling', () => {
     const runtime = new win.ChartRuntime();
     runtime.load({
       notes: [
-        { time: 1.834, type: 'tap' },
-        { time: 2.717, type: 'tap' }
+        { time: 1.834, type: 'click' },
+        { time: 2.717, type: 'click' }
       ]
     });
     const conservative = runtime.spawnUntil(0.5, (currentTime, note, index) => ({ currentTime, note, index }), { openingRampSec: 2.8, visibleSustainedCap: 1, visibleSustainedCount: 0 });
@@ -40,7 +40,7 @@ describe('ChartRuntime startup scheduling', () => {
   it('lets spawn lead time diverge from visual approach duration inputs', () => {
     const win = loadBrowserScript('chart-runtime.js');
     const runtime = new win.ChartRuntime({ spawnLeadTimeMs: 1800 });
-    runtime.load({ notes: [{ time: 2.1, type: 'tap' }] }, { spawnLeadTimeMs: 1800 });
+    runtime.load({ notes: [{ time: 2.1, type: 'click' }] }, { spawnLeadTimeMs: 1800 });
     const spawned = runtime.spawnUntil(0.4, (currentTime, note, index) => ({ currentTime, note, index }), { openingRampSec: 0.2, visibleSustainedCap: 9, visibleSustainedCount: 0 });
     expect(runtime.snapshot().spawnLeadTimeMs).toBe(1800);
     expect(spawned.length).toBe(1);

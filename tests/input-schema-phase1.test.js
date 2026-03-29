@@ -20,7 +20,7 @@ describe('phase 1 input schema migration', () => {
     ]);
     expect(note.proposalMechanic).toBe('drag');
     expect(note.mechanic).toBe('tap');
-    expect(note.inputChannel).toBe('shared');
+    expect(note.inputChannel).toBe('keyboard');
     expect(note.exclusivity).toBe('normal');
     expect(note.pathVariant).toBe('starTrace');
   });
@@ -31,7 +31,7 @@ describe('phase 1 input schema migration', () => {
       { time: 8, proposalType: 'drag', type: 'tap', laneHint: 0, segmentLabel: 'chorus' },
       { time: 30, proposalType: 'spin', type: 'tap', laneHint: 1, segmentLabel: 'bridge' }
     ]), {});
-    expect(['tap', 'hold', 'drag', 'spin']).toContain(out[0].mechanic);
+    expect(['click', 'tap', 'hold', 'drag', 'spin']).toContain(out[0].mechanic);
     expect(out[1].mechanic).toBe('spin');
     expect(out[1].exclusivity).toBe('solo-mouse');
   });
@@ -44,7 +44,7 @@ describe('phase 1 input schema migration', () => {
     expect(doc).toContain('Appears **exactly twice per song**');
   });
 
-  it('assigns difficulty keyboard layouts, mouse-only drags, and late shared taps', () => {
+  it('assigns keyboard taps, mouse clicks, and mouse-only drags', () => {
     const policy = loadPolicy();
     const notes = policy.layerCInputChannelPlanner(policy.layerABaseChartProposal([
       { time: 1, type: 'tap', laneHint: 0 },
@@ -61,7 +61,7 @@ describe('phase 1 input schema migration', () => {
     expect(notes[2].inputChannel).toBe('mouse');
     expect(notes[2].keyHint).toBeNull();
     expect(['keyboard', 'mouse']).toContain(notes[1].inputChannel);
-    // shared channel removed — all notes are either keyboard or mouse
+    // click/tap split — all plain notes are either keyboard tap or mouse click
     expect(notes.slice(4).every(note => ['keyboard', 'mouse'].includes(note.inputChannel))).toBe(true);
   });
 });

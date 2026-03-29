@@ -1,12 +1,14 @@
 (function () {
   function legacyToModern(type, note = {}) {
-    const value = String(type || note?.mechanic || note?.type || note?.noteType || 'tap');
+    const value = String(type || note?.mechanic || note?.type || note?.noteType || 'click');
     if (value === 'spin') return { mechanic: 'spin', pathVariant: null };
     if (value === 'drag') return { mechanic: 'drag', pathVariant: note.pathVariant || note.pathTemplate || 'arc' };
     if (value === 'ribbon') return { mechanic: 'drag', pathVariant: note.pathVariant || note.pathTemplate || 'starTrace' };
-    if (value === 'pulseHold' || value === 'hold') return { mechanic: 'tap', pathVariant: null };
-    if (value === 'flick' || value === 'cut' || value === 'gate') return { mechanic: 'tap', pathVariant: null };
-    return { mechanic: 'tap', pathVariant: null };
+    if (value === 'tap') return { mechanic: 'tap', pathVariant: null };
+    if (value === 'click') return { mechanic: 'click', pathVariant: null };
+    if (value === 'pulseHold' || value === 'hold') return { mechanic: 'click', pathVariant: null };
+    if (value === 'flick' || value === 'cut' || value === 'gate') return { mechanic: 'click', pathVariant: null };
+    return { mechanic: 'click', pathVariant: null };
   }
 
   function stripComplexPath(note) {
@@ -32,7 +34,7 @@
     note.pathTemplate = note.pathTemplate || note.pathVariant || null;
     note.keyHint = note.keyHint || null;
     note.keyboardKey = note.keyboardKey || (note.keyHint ? String(note.keyHint).toLowerCase() : null);
-    if (!note.inputChannel) note.inputChannel = (note.mechanic === 'drag' || note.mechanic === 'spin') ? 'mouse' : 'shared';
+    if (!note.inputChannel) note.inputChannel = note.mechanic === 'tap' ? 'keyboard' : 'mouse';
     note.proposalInputChannel = note.proposalInputChannel || note.inputChannel;
     note.exclusivity = note.exclusivity || (note.mechanic === 'spin' ? 'solo-mouse' : 'normal');
     note.keyboardCheckpoint = false;
@@ -41,7 +43,7 @@
   }
 
   function isSustainedType(type) {
-    return ['drag', 'spin'].includes(String(type || 'tap'));
+    return ['drag', 'spin'].includes(String(type || 'click'));
   }
 
   function stableUnit(note, salt = 0) {
@@ -87,18 +89,18 @@
       const family = note.arrangedFamily || '';
       if (family) {
         let mechanic = proposal;
-        if (family === 'rest' || family === 'single-tap-accent' || family === 'alternating-taps') mechanic = 'tap';
-        else if (family === 'alternating-taps') mechanic = 'tap';
-        else if (family === 'drag-sweep') mechanic = proposal === 'drag' ? 'drag' : (proposal === 'spin' ? 'tap' : 'tap');
-        else if (family === 'burst-then-rest') mechanic = proposal === 'drag' ? 'tap' : proposal;
-        else if (family === 'sync-accent') mechanic = proposal === 'spin' ? 'spin' : (proposal === 'drag' ? 'drag' : 'tap');
+        if (family === 'rest' || family === 'single-tap-accent' || family === 'alternating-taps') mechanic = 'click';
+        else if (family === 'alternating-taps') mechanic = 'click';
+        else if (family === 'drag-sweep') mechanic = proposal === 'drag' ? 'drag' : (proposal === 'spin' ? 'click' : 'click');
+        else if (family === 'burst-then-rest') mechanic = proposal === 'drag' ? 'click' : proposal;
+        else if (family === 'sync-accent') mechanic = proposal === 'spin' ? 'spin' : (proposal === 'drag' ? 'drag' : 'click');
         else mechanic = proposal;
 
-        if (p.inCalmWindow && mechanic === 'drag') mechanic = 'tap';
+        if (p.inCalmWindow && mechanic === 'drag') mechanic = 'click';
         if (mechanic === 'spin') { spinCount += 1; if (spinCount > 2) mechanic = 'drag'; }
         if (mechanic === 'drag') {
           const minGap = p.beforeHeavyStart ? 1.8 : 1.35;
-          if (t - lastDragTime < minGap) mechanic = 'tap';
+          if (t - lastDragTime < minGap) mechanic = 'click';
           else lastDragTime = t;
         }
         note.mechanic = mechanic;
@@ -117,21 +119,21 @@
       }
 
       // Legacy path: no arranged family — full mechanic planning
-      let mechanic = 'tap';
+      let mechanic = 'click';
       if (proposal === 'spin' && spinCount < 2 && !p.inOpening) {
         mechanic = 'spin';
         spinCount += 1;
       } else if (proposal === 'drag') {
         const minGap = p.beforeHeavyStart ? 1.8 : 1.35;
-        mechanic = t - lastDragTime >= minGap ? 'drag' : 'tap';
-      } else if (proposal === 'tap') {
+        mechanic = t - lastDragTime >= minGap ? 'drag' : 'click';
+      } else if (proposal === 'tap' || proposal === 'click') {
         const later = i >= Math.floor(seq.length * 0.55);
         const chorusBoost = seg === 'chorus' || seg === 'bridge';
         const dragChance = (!p.beforeHeavyStart && chorusBoost) ? 0.14 : 0.04;
         const roll = stableUnit(note, i + 17);
         if (roll < dragChance && t - lastDragTime > 1.5) mechanic = 'drag';
       }
-      if (p.inCalmWindow && mechanic === 'drag') mechanic = 'tap';
+      if (p.inCalmWindow && mechanic === 'drag') mechanic = 'click';
       note.mechanic = mechanic;
       note.type = mechanic;
       note.noteType = mechanic;
@@ -185,19 +187,25 @@
         return;
       }
 
-      // Decide: keyboard or mouse. No "shared" — every note is one or the other.
-      // Rule: ~40% keyboard (spread evenly), rest mouse.
-      // Keyboard notes get their key from keyset[laneHint]; mouse notes get nothing.
+      // Plain notes are now split into two mechanics:
+      // - click: mouse-only
+      // - tap: keyboard-only
       const wantKeyboard = (idx % 5 === 0 || idx % 5 === 2); // ~40%
 
       if (wantKeyboard) {
         const lane = Math.max(0, Math.min(keyset.length - 1, Math.abs(Number(note.laneHint || 0)) % keyset.length));
         const key = keyset[lane] || keyset[0];
+        note.mechanic = 'tap';
+        note.type = 'tap';
+        note.noteType = 'tap';
         note.inputChannel = 'keyboard';
         note.keyHint = key;
         note.keyboardKey = String(key).toLowerCase();
         note.exclusivity = 'normal';
       } else {
+        note.mechanic = 'click';
+        note.type = 'click';
+        note.noteType = 'click';
         note.inputChannel = 'mouse';
         note.keyHint = null;
         note.keyboardKey = null;
@@ -220,13 +228,13 @@
       if (nearbySpin) {
         note.type = 'tap';
         note.noteType = 'tap';
-        note.mechanic = 'tap';
+        note.mechanic = 'click';
         stripComplexPath(note);
         continue;
       }
       if (type === 'drag') {
         if (t - lastDragTime < dragCooldown) {
-          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
+          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; stripComplexPath(note); continue;
         }
         lastDragTime = t;
       }
@@ -247,14 +255,14 @@
       note.openingCalmWindow = profile.inCalmWindow;
       if (!profile.inOpening) continue;
       if (note.type === 'spin') {
-        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; continue;
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; continue;
       }
       if (profile.inCalmWindow && note.type !== 'tap') {
-        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; stripComplexPath(note); continue;
       }
       if (note.type === 'drag') {
         if (t - lastOpeningDrag < 1.8) {
-          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
+          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click'; stripComplexPath(note); continue;
         }
         note.minCompletionWindowSec = Number(options.openingDragCompletionWindowSec || 1.35);
         lastOpeningDrag = t;
@@ -265,7 +273,7 @@
     while (firstHalf.length && drags.length / firstHalf.length > firstHalfDragRatioCap) {
       const candidate = drags.pop();
       if (!candidate) break;
-      candidate.type = 'tap'; candidate.noteType = 'tap'; candidate.mechanic = 'tap'; stripComplexPath(candidate);
+      candidate.type = 'tap'; candidate.noteType = 'tap'; candidate.mechanic = 'click'; stripComplexPath(candidate);
     }
     return seq;
   }
@@ -273,8 +281,8 @@
   function downgradeType(type) {
     const modern = legacyToModern(type).mechanic;
     if (modern === 'spin') return 'drag';
-    if (modern === 'drag') return 'tap';
-    return 'tap';
+    if (modern === 'drag') return 'click';
+    return 'click';
   }
 
   function enforceChartPlayability(notes) {
@@ -291,11 +299,11 @@
         const nextLane = Number.isFinite(next.laneHint) ? Number(next.laneHint) : lane;
         const laneClose = Math.abs(nextLane - lane) <= 1;
         if (type === 'spin' && dt < 2.4) {
-          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap'; stripComplexPath(next);
+          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'click'; stripComplexPath(next);
           continue;
         }
         if (type === 'drag' && nextType === 'drag' && dt < 1.2) {
-          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap'; stripComplexPath(next);
+          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'click'; stripComplexPath(next);
         }
       }
     }
@@ -306,7 +314,8 @@
     const modern = legacyToModern(type, note || {}).mechanic;
     if (modern === 'drag') return (note?.pathVariant === 'starTrace') ? 'SWIPE' : 'DRAG';
     if (modern === 'spin') return 'SPIN';
-    return 'TAP';
+    if (modern === 'tap') return 'TAP';
+    return 'CLICK';
   }
 
   function assignKeyboardCheckpoints(notes) {
@@ -319,7 +328,7 @@
   }
 
   function noteRadius(note, circleSize = 36) {
-    const type = note?.type || note?.noteType || 'tap';
+    const type = note?.type || note?.noteType || 'click';
     if (type === 'spin') return circleSize * 1.8;
     if (type === 'drag') return circleSize * 1.05;
     return circleSize * 0.95;
@@ -355,7 +364,7 @@
   }
 
   function footprintSeverity(note) {
-    const type = note?.type || note?.noteType || 'tap';
+    const type = note?.type || note?.noteType || 'click';
     if (type === 'spin') return 7;
     if (type === 'drag') return 5;
     return 1;
@@ -389,9 +398,9 @@
         note.pathVariant = note.pathVariant === 'starTrace' ? 'diamondLoop' : 'arc';
         note.pathTemplate = note.pathVariant;
       } else if ((note.type || note.noteType) === 'spin') {
-        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap';
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click';
       } else {
-        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap';
+        note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'click';
       }
       kept.push(note);
     }
@@ -413,9 +422,9 @@
   function mechanicMixStats(notes) {
     const seq = [...(notes || [])];
     const total = seq.length || 1;
-    const tapCount = seq.filter(n => (n.type || n.noteType || 'tap') === 'tap').length;
+    const tapCount = seq.filter(n => ['tap', 'click'].includes(n.type || n.noteType || 'click')).length;
     const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
-    const latterSpecial = latter.filter(n => (n.type || n.noteType || 'tap') !== 'tap').length;
+    const latterSpecial = latter.filter(n => !['tap', 'click'].includes(n.type || n.noteType || 'click')).length;
     return { tapRatio: tapCount / total, latterSpecial, latterTotal: latter.length || 1, latterSpecialRatio: latterSpecial / (latter.length || 1) };
   }
 
@@ -460,7 +469,7 @@
     if (stats.first30 < minFirst30 || stats.minWindowCount < minPer10) return seq;
     if (mechanicMixStats(seq).tapRatio > maxTapRatio) {
       for (const note of seq) {
-        if ((note.type || note.noteType) !== 'tap') continue;
+        if (!['tap', 'click'].includes(note.type || note.noteType)) continue;
         if (Number(note.time || 0) < 10) continue;
         note.type = 'drag';
         note.noteType = 'drag';
@@ -473,7 +482,7 @@
     if (mechanicMixStats(seq).latterSpecialRatio < minLatterSpecialRatio) {
       const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
       for (const note of latter) {
-        if ((note.type || note.noteType) !== 'tap') continue;
+        if (!['tap', 'click'].includes(note.type || note.noteType)) continue;
         note.type = 'drag';
         note.noteType = 'drag';
         note.mechanic = 'drag';
@@ -490,7 +499,7 @@
     const spins = seq.filter(n => (n.type || n.noteType) === 'spin');
     while (spins.length > 2) {
       const victim = spins.pop();
-      victim.type = 'tap'; victim.noteType = 'tap'; victim.mechanic = 'tap';
+      victim.type = 'tap'; victim.noteType = 'tap'; victim.mechanic = 'click';
     }
     return seq;
   }

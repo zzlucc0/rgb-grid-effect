@@ -679,7 +679,7 @@ class RhythmGame {
                 return {
                     ...n,
                     time: Number(Math.max(0.6, normalizedTime + nudge + (idx % 8 === 0 ? 0.005 : 0)).toFixed(3)),
-                    type: n.type || 'tap',
+                    type: n.type || 'click',
                     phrase: phraseKey,
                     groupSlot: inPhraseIndex
                 };
@@ -2177,11 +2177,12 @@ class RhythmGame {
             const currentTime = this.resolveChartClock();
             const timeUntilHit = note.hitTime - currentTime;
             const approachProfiles = {
+                click: { lead: 0.72, size: 0.84 },
                 tap: { lead: 0.72, size: 0.84 },
                 drag: { lead: 0.8, size: 0.88 },
                 spin: { lead: 0.78, size: 0.86 }
             };
-            const profile = approachProfiles[note.noteType || 'tap'] || approachProfiles.tap;
+            const profile = approachProfiles[note.noteType || 'click'] || approachProfiles.click || approachProfiles.tap;
             const visualApproachSec = (this.visualApproachDurationMs / 1000) * profile.lead;
             note.approachProgress = Math.max(0, Math.min(1, 1 - timeUntilHit / Math.max(0.18, visualApproachSec)));
             const palette = this.getNotePalette(note);
@@ -2507,9 +2508,9 @@ class RhythmGame {
                 this.ctx.fillStyle = '#f3fcff';
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
-                const tutorialLimit = note.noteType === 'tap' ? 2 : 3;
-                const seenCount = this.tutorialSeenCounts?.[note.noteType || 'tap'] || 0;
-                const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'tap', note) : String(note.noteType || 'tap').toUpperCase();
+                const tutorialLimit = note.noteType === 'click' ? 2 : 3;
+                const seenCount = this.tutorialSeenCounts?.[note.noteType || 'click'] || 0;
+                const tutorialLabel = window.ChartPolicy?.tutorialLabelForType ? window.ChartPolicy.tutorialLabelForType(note.noteType || 'click', note) : String(note.noteType || 'click').toUpperCase();
                 const marker = ''; // no number labels on notes
                 // Keyboard notes always show their key — no tutorial limit
                 const isKbd = note.inputChannel === 'keyboard' && (note.keyHint || note.keyboardHint);
@@ -2730,7 +2731,7 @@ class RhythmGame {
                         this.score += _geomBonus * (1 + this.combo * 0.1);
                         this.combo++;
                         this.recordJudgement('perfect');
-                        this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
+                        this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'perfect');
                         if (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
                     } else if (note.progress > goodThreshold) {
@@ -2739,7 +2740,7 @@ class RhythmGame {
                         this.score += 800 * (1 + this.combo * 0.1);
                         this.combo++;
                         this.recordJudgement('good');
-                        this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
+                        this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'good');
                     } else {
                         note.completed = true;
@@ -2817,7 +2818,7 @@ class RhythmGame {
                     this.recordJudgement('perfect');
                     this.combo++;
                     note.hit = true;
-                    this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
+                    this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
                     this.createHitEffect(note.x, note.y, note.score);
                 } else {
                     // Within goodRange (guaranteed by guard above)
@@ -2826,7 +2827,7 @@ class RhythmGame {
                     this.recordJudgement('good');
                     this.combo++;
                     note.hit = true;
-                    this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
+                    this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
                     this.createHitEffect(note.x, note.y, note.score);
                 }
                     
@@ -2993,11 +2994,12 @@ RhythmGame.prototype.getSegmentPalette = function (segmentLabel, groupIndex) {
 RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
     const palette = { ...(base || this.segmentGroupPalettes.verse[0]) };
     const mechanicPalettes = {
-        tap: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' },
+        click: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' },
+        tap: { core: '#fff0d8', edge: '#ffd166', glow: 'rgba(255,209,102,.38)' },
         drag: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' },
         spin: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' }
     };
-    const typeKey = note?.noteType || (note?.isDrag ? 'drag' : 'tap');
+    const typeKey = note?.noteType || (note?.isDrag ? 'drag' : 'click');
     const mechanic = mechanicPalettes[typeKey];
     if (mechanic) {
         palette.core = mechanic.core;
@@ -3187,7 +3189,7 @@ RhythmGame.prototype.drawFloatJudges = function () {
 RhythmGame.prototype.drawNoteLinks = function () {
     const ctx = this.ctx;
     const notes = (this.notes || [])
-        .filter(n => !n.hit && !n.completed && ['tap', 'drag'].includes(n.noteType))
+        .filter(n => !n.hit && !n.completed && ['click', 'tap', 'drag'].includes(n.noteType))
         .sort((a, b) => {
             const ta = Number.isFinite(a.hitTime) ? a.hitTime : Number.POSITIVE_INFINITY;
             const tb = Number.isFinite(b.hitTime) ? b.hitTime : Number.POSITIVE_INFINITY;
@@ -3556,7 +3558,7 @@ RhythmGame.prototype.drawCountdownFlash = function (flash, now = performance.now
     this.ctx.restore();
 };
 
-RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'tap') {
+RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'click') {
     this.signatureBursts.push({
         x,
         y,
@@ -4109,7 +4111,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         const jitterY = ((chartIndex * 53 + groupSlot * 89) % 100 - 50) / 50 * (this.safeArea.height * 0.06);
         pos.x = Math.max(this.safeArea.x + this.circleSize * 1.5, Math.min(this.safeArea.x + this.safeArea.width - this.circleSize * 1.5, pos.x + jitterX));
         pos.y = Math.max(this.safeArea.y + this.circleSize * 1.5 + hudExclusionY, Math.min(this.safeArea.y + this.safeArea.height - this.circleSize * 1.5, pos.y + jitterY));
-        const probe = { x: pos.x, y: pos.y, type: chartNote.type || 'tap' };
+        const probe = { x: pos.x, y: pos.y, type: chartNote.type || 'click' };
         const collides = active.some(existing => {
             if (Math.hypot(probe.x - (existing.x || 0), probe.y - (existing.y || 0)) < minNoteSpacing) return true;
             if (existing.endX !== undefined && Math.hypot(probe.x - (existing.endX || 0), probe.y - (existing.endY || 0)) < minNoteSpacing) return true;
@@ -4143,7 +4145,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
             basePos.y = Math.max(this.safeArea.y + this.circleSize * 1.5 + hudExclusionY, basePos.y);
         }
     }
-    const noteType = chartNote.type || 'tap';
+    const noteType = chartNote.type || 'click';
     const spinCenterX = this.safeArea.x + this.safeArea.width / 2;
     const spinCenterY = this.safeArea.y + this.safeArea.height / 2;
     const x = noteType === 'spin' ? spinCenterX : basePos.x;
@@ -4181,7 +4183,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         phraseAnchor: anchorLane,
         laneFloat: Number(basePos.laneFloat || chosenLane),
         mechanic: chartNote.mechanic || noteType,
-        inputChannel: chartNote.inputChannel || ((noteType === 'drag' || noteType === 'spin') ? 'mouse' : 'shared'),
+        inputChannel: chartNote.inputChannel || (noteType === 'tap' ? 'keyboard' : 'mouse'),
         keyHint: chartNote.keyHint || null,
         keyboardKey: chartNote.keyboardKey || (chartNote.keyHint ? String(chartNote.keyHint).toLowerCase() : null),
         exclusivity: chartNote.exclusivity || 'normal',
@@ -4310,7 +4312,7 @@ RhythmGame.prototype.spawnBurstCluster = function (anchorNote, clusterSize = 3) 
             segmentLabel: anchorNote.segmentLabel || 'chorus'
         });
         this.globalNoteSeq += 1;
-        const type = 'tap';
+        const type = 'click';
         const note = {
             ...anchorNote,
             x: pos.x,
@@ -4551,13 +4553,13 @@ RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0)
     const cycle = idx % 16;
     if (segment === 'chorus' && (cycle === 11 || cycle === 12)) return 'drag';
     if ((idx + inPhraseIndex) % 6 === 0) return 'drag';
-    return 'tap';
+    return 'click';
 };
 
 RhythmGame.prototype.pickLiveNoteType = function (seq, groupIndex, preferDrag) {
     if (groupIndex % 4 === 3 && seq % 6 === 0) return 'drag';
     if (preferDrag && seq % 6 === 0) return 'drag';
-    return preferDrag ? 'drag' : 'tap';
+    return preferDrag ? 'drag' : 'click';
 };
 
 RhythmGame.prototype.resolveGroupPatternPosition = function ({ laneIndex, laneCount, chartIndex, phrase, groupSlot, segmentLabel, phraseAnchor = null, previousLane = null, phraseIntent = null }) {
@@ -4609,11 +4611,11 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         segmentLabel: context.segmentLabel || note.segmentLabel || 'verse'
     };
 
-    // Gameplay cleanup: keep only tap / drag / spin as core mechanics.
-    // Remove gate / flick / cut, and collapse free-standing holds into tap.
+    // Gameplay cleanup: keep only click / tap / drag / spin as core mechanics.
+    // Remove gate / flick / cut, and collapse free-standing holds into click.
     if (['gate', 'flick', 'cut', 'hold', 'pulseHold'].includes(note.noteType)) {
-        note.noteType = 'tap';
-        note.type = 'tap';
+        note.noteType = 'click';
+        note.type = 'click';
         note.holdDuration = 0;
         note.holdProgress = 0;
         note.gateWidth = null;
@@ -4635,8 +4637,16 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         note.keyboardHint = null;
         note.keyboardKey = null;
     }
-    if (note.inputChannel === 'keyboard' && !note.keyHint && !note.keyboardHint && note.noteType === 'tap') {
+    if (note.noteType === 'tap') {
+        note.inputChannel = 'keyboard';
+        if (!note.keyHint) {
+            note.keyHint = 'F';
+            note.keyboardKey = 'f';
+        }
+    } else if (note.noteType === 'click') {
         note.inputChannel = 'mouse';
+        note.keyHint = null;
+        note.keyboardHint = null;
         note.keyboardKey = null;
     }
 
