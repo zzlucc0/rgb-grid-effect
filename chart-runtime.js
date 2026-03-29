@@ -51,7 +51,7 @@
       const missGraceSec = this.goodRangeMs / 1000;
       const visibleSustainedCap = Number(options.visibleSustainedCap || 1);
       let visibleSustained = Number(options.visibleSustainedCount || 0);
-      const isSustained = (type) => ['pulseHold','drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
+      const isSustained = (type) => ['drag','ribbon','orbit','diamondLoop','starTrace'].includes(type);
 
       while (this.nextIndex < notes.length) {
         const chartIndex = this.nextIndex;

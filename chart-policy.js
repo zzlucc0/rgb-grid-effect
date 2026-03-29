@@ -4,7 +4,7 @@
     if (value === 'spin') return { mechanic: 'spin', pathVariant: null };
     if (value === 'drag') return { mechanic: 'drag', pathVariant: note.pathVariant || note.pathTemplate || 'arc' };
     if (value === 'ribbon') return { mechanic: 'drag', pathVariant: note.pathVariant || note.pathTemplate || 'starTrace' };
-    if (value === 'pulseHold' || value === 'hold') return { mechanic: 'hold', pathVariant: null };
+    if (value === 'pulseHold' || value === 'hold') return { mechanic: 'tap', pathVariant: null };
     if (value === 'flick' || value === 'cut' || value === 'gate') return { mechanic: 'tap', pathVariant: null };
     return { mechanic: 'tap', pathVariant: null };
   }
@@ -41,7 +41,7 @@
   }
 
   function isSustainedType(type) {
-    return ['hold', 'drag', 'spin'].includes(String(type || 'tap'));
+    return ['drag', 'spin'].includes(String(type || 'tap'));
   }
 
   function stableUnit(note, salt = 0) {
@@ -88,7 +88,7 @@
       if (family) {
         let mechanic = proposal;
         if (family === 'rest' || family === 'single-tap-accent' || family === 'alternating-taps') mechanic = 'tap';
-        else if (family === 'hold-anchor') mechanic = proposal === 'hold' ? 'hold' : 'tap';
+        else if (family === 'alternating-taps') mechanic = 'tap';
         else if (family === 'drag-sweep') mechanic = proposal === 'drag' ? 'drag' : (proposal === 'spin' ? 'tap' : 'tap');
         else if (family === 'burst-then-rest') mechanic = proposal === 'drag' ? 'tap' : proposal;
         else if (family === 'sync-accent') mechanic = proposal === 'spin' ? 'spin' : (proposal === 'drag' ? 'drag' : 'tap');
@@ -124,16 +124,12 @@
       } else if (proposal === 'drag') {
         const minGap = p.beforeHeavyStart ? 1.8 : 1.35;
         mechanic = t - lastDragTime >= minGap ? 'drag' : 'tap';
-      } else if (proposal === 'hold') {
-        mechanic = 'hold';
       } else if (proposal === 'tap') {
         const later = i >= Math.floor(seq.length * 0.55);
         const chorusBoost = seg === 'chorus' || seg === 'bridge';
-        const holdChance = later ? 0.18 : 0.1;
         const dragChance = (!p.beforeHeavyStart && chorusBoost) ? 0.14 : 0.04;
         const roll = stableUnit(note, i + 17);
         if (roll < dragChance && t - lastDragTime > 1.5) mechanic = 'drag';
-        else if (roll < dragChance + holdChance) mechanic = 'hold';
       }
       if (p.inCalmWindow && mechanic === 'drag') mechanic = 'tap';
       note.mechanic = mechanic;
@@ -214,10 +210,8 @@
   function applyMousePlayabilityFilter(notes, options = {}) {
     const seq = [...(notes || [])].sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
     const dragCooldown = Number(options.sustainedCooldownSec || 1.5);
-    const holdCooldown = Number(options.holdCooldownSec || 1.2);
     const spinRadius = Number(options.spinIsolationSec || 2.4);
     let lastDragTime = -Infinity;
-    let lastHoldTime = -Infinity;
     for (const note of seq) {
       const type = note.type || note.noteType || 'tap';
       const t = Number(note.time || 0);
@@ -235,12 +229,6 @@
           note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
         }
         lastDragTime = t;
-      }
-      if (type === 'hold') {
-        if (t - lastHoldTime < holdCooldown) {
-          note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; continue;
-        }
-        lastHoldTime = t;
       }
     }
     return seq;
@@ -262,10 +250,6 @@
         note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; continue;
       }
       if (profile.inCalmWindow && note.type !== 'tap') {
-        if (note.type === 'hold' && note.inputChannel === 'keyboard') {
-          note.spawnLeadBiasSec = Math.max(Number(note.spawnLeadBiasSec || 0), 1.1);
-          continue;
-        }
         note.type = 'tap'; note.noteType = 'tap'; note.mechanic = 'tap'; stripComplexPath(note); continue;
       }
       if (note.type === 'drag') {
@@ -289,8 +273,7 @@
   function downgradeType(type) {
     const modern = legacyToModern(type).mechanic;
     if (modern === 'spin') return 'drag';
-    if (modern === 'drag') return 'hold';
-    if (modern === 'hold') return 'tap';
+    if (modern === 'drag') return 'tap';
     return 'tap';
   }
 
@@ -314,9 +297,6 @@
         if (type === 'drag' && nextType === 'drag' && dt < 1.2) {
           next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap'; stripComplexPath(next);
         }
-        if (type === 'hold' && nextType === 'hold' && dt < 0.9 && laneClose) {
-          next.type = 'tap'; next.noteType = 'tap'; next.mechanic = 'tap';
-        }
       }
     }
     return notes;
@@ -325,7 +305,6 @@
   function tutorialLabelForType(type, note = null) {
     const modern = legacyToModern(type, note || {}).mechanic;
     if (modern === 'drag') return (note?.pathVariant === 'starTrace') ? 'SWIPE' : 'DRAG';
-    if (modern === 'hold') return note?.inputChannel === 'keyboard' ? 'KEY HOLD' : 'HOLD';
     if (modern === 'spin') return 'SPIN';
     return 'TAP';
   }
@@ -342,7 +321,6 @@
   function noteRadius(note, circleSize = 36) {
     const type = note?.type || note?.noteType || 'tap';
     if (type === 'spin') return circleSize * 1.8;
-    if (type === 'hold') return circleSize * 1.45;
     if (type === 'drag') return circleSize * 1.05;
     return circleSize * 0.95;
   }
@@ -380,7 +358,6 @@
     const type = note?.type || note?.noteType || 'tap';
     if (type === 'spin') return 7;
     if (type === 'drag') return 5;
-    if (type === 'hold') return 3;
     return 1;
   }
 
@@ -485,13 +462,11 @@
       for (const note of seq) {
         if ((note.type || note.noteType) !== 'tap') continue;
         if (Number(note.time || 0) < 10) continue;
-        note.type = (note.segmentLabel === 'chorus' || note.segmentLabel === 'bridge') ? 'drag' : 'hold';
-        note.noteType = note.type;
-        note.mechanic = note.type;
-        if (note.type === 'drag') {
-          note.pathVariant = note.pathVariant || (note.segmentLabel === 'chorus' ? 'starTrace' : 'diamondLoop');
-          note.pathTemplate = note.pathVariant;
-        }
+        note.type = 'drag';
+        note.noteType = 'drag';
+        note.mechanic = 'drag';
+        note.pathVariant = note.pathVariant || (note.segmentLabel === 'chorus' ? 'starTrace' : 'diamondLoop');
+        note.pathTemplate = note.pathVariant;
         if (mechanicMixStats(seq).tapRatio <= maxTapRatio) break;
       }
     }
@@ -499,13 +474,11 @@
       const latter = seq.filter((_, idx) => idx >= Math.floor(seq.length * 0.5));
       for (const note of latter) {
         if ((note.type || note.noteType) !== 'tap') continue;
-        note.type = note.segmentLabel === 'chorus' ? 'drag' : 'hold';
-        note.noteType = note.type;
-        note.mechanic = note.type;
-        if (note.type === 'drag') {
-          note.pathVariant = note.pathVariant || (note.segmentLabel === 'chorus' ? 'starTrace' : 'diamondLoop');
-          note.pathTemplate = note.pathVariant;
-        }
+        note.type = 'drag';
+        note.noteType = 'drag';
+        note.mechanic = 'drag';
+        note.pathVariant = note.pathVariant || (note.segmentLabel === 'chorus' ? 'starTrace' : 'diamondLoop');
+        note.pathTemplate = note.pathVariant;
         if (mechanicMixStats(seq).latterSpecialRatio >= minLatterSpecialRatio) break;
       }
     }
@@ -594,8 +567,7 @@
   function estimateNoteCost(note, context = {}) {
     const proposal = legacyToModern(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType, note || {}).mechanic;
     let cost = 1.0;
-    if (proposal === 'hold') cost = 1.35;
-    else if (proposal === 'drag') cost = 1.65;
+    if (proposal === 'drag') cost = 1.65;
     else if (proposal === 'spin') cost = 2.2;
     if (context.largeLaneJump) cost += 0.25;
     if (context.denseSubWindow) cost += 0.30;
@@ -636,11 +608,11 @@
     const seg = String(plan?.segmentLabel || 'verse');
     const energy = String(plan?.energyLevel || 'light');
     const familiesBySegment = {
-      intro: ['rest', 'single-tap-accent', 'alternating-taps', 'hold-anchor'],
-      verse: ['alternating-taps', 'hold-anchor', 'mixed-light', 'cross-lane-call-response'],
+      intro: ['rest', 'single-tap-accent', 'alternating-taps', 'cross-lane-call-response'],
+      verse: ['alternating-taps', 'cross-lane-call-response', 'mixed-light', 'burst-then-rest'],
       chorus: ['sync-accent', 'drag-sweep', 'mixed-heavy', 'burst-then-rest'],
-      bridge: ['hold-anchor', 'cross-lane-call-response', 'drag-sweep', 'mixed-light'],
-      outro: ['rest', 'single-tap-accent', 'hold-anchor', 'burst-then-rest']
+      bridge: ['alternating-taps', 'cross-lane-call-response', 'drag-sweep', 'mixed-light'],
+      outro: ['rest', 'single-tap-accent', 'alternating-taps', 'burst-then-rest']
     };
     let choices = familiesBySegment[seg] || familiesBySegment.verse;
     if (energy === 'rest') return 'rest';
@@ -733,14 +705,14 @@
         variationSeed,
         repetitionPenalty,
         cooldownFlags: {
-          recentHoldHeavy: Boolean(prevPlan && prevPlan.mechanicFamily === 'hold-anchor' && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax')),
+          recentHoldHeavy: false,
           recentDragHeavy: Boolean(prevPlan && prevPlan.mechanicFamily === 'drag-sweep' && (prevPlan.energyLevel === 'heavy' || prevPlan.energyLevel === 'climax'))
         },
         accentPattern: energyLevel === 'rest' ? 'sparse' : (energyLevel === 'light' ? 'strong-1' : 'strong-1-3'),
         restRatio,
         handTravelBudget: energyLevel === 'heavy' ? 2.0 : 1.6,
         readabilityBudget: energyLevel === 'heavy' ? 2.8 : 2.2,
-        targetInputBias: mechanicFamily === 'drag-sweep' ? 'mouse' : (mechanicFamily === 'hold-anchor' ? 'mixed' : 'keyboard'),
+        targetInputBias: mechanicFamily === 'drag-sweep' ? 'mouse' : 'keyboard',
         maxNoteCount: energyLevel === 'rest' ? 1 : (energyLevel === 'light' ? 3 : (energyLevel === 'medium' ? 5 : 7)),
         maxWindowStrain: energyLevel === 'rest' ? 1.2 : (energyLevel === 'light' ? 4.0 : (energyLevel === 'medium' ? 5.5 : (energyLevel === 'heavy' ? 6.5 : 7.5))),
         restMode: energyLevel === 'rest' ? 'strong' : (energyLevel === 'light' ? 'partial' : 'none'),
@@ -782,13 +754,9 @@
 
       if (plan.mechanicFamily === 'alternating-taps' || plan.mechanicFamily === 'cross-lane-call-response') {
         ranked = ranked.filter(item => legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic === 'tap' || item.note.segmentLabel === 'chorus');
-      } else if (plan.mechanicFamily === 'hold-anchor') {
-        const holdFirst = ranked.find(item => legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic === 'hold');
-        const rest = ranked.filter(item => item !== holdFirst && legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic !== 'drag');
-        ranked = holdFirst ? [holdFirst, ...rest] : rest;
       } else if (plan.mechanicFamily === 'drag-sweep') {
         const dragFirst = ranked.find(item => legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic === 'drag');
-        const rest = ranked.filter(item => item !== dragFirst && legacyToModern(item.note?.proposalType || item.note?.type || item.note?.noteType, item.note).mechanic !== 'hold');
+        const rest = ranked.filter(item => item !== dragFirst);
         ranked = dragFirst ? [dragFirst, ...rest] : rest;
       } else if (plan.mechanicFamily === 'burst-then-rest') {
         ranked = ranked.filter(item => Number(item.note?.time || 0) <= Number(plan.startTime || 0) + (Number(plan.endTime || 0) - Number(plan.startTime || 0)) * 0.55);
@@ -810,9 +778,8 @@
         if (plan.mechanicFamily === 'rest' && selected.length >= 1) continue;
         if (plan.mechanicFamily === 'single-tap-accent' && selected.length >= 2) continue;
         if (plan.mechanicFamily === 'alternating-taps' && proposal !== 'tap') continue;
-        if (plan.mechanicFamily === 'cross-lane-call-response' && proposal !== 'tap' && proposal !== 'hold') continue;
-        if (plan.mechanicFamily === 'hold-anchor' && proposal === 'drag') continue;
-        if (plan.mechanicFamily === 'drag-sweep' && proposal === 'hold') continue;
+        if (plan.mechanicFamily === 'cross-lane-call-response' && proposal !== 'tap') continue;
+        if (plan.mechanicFamily === 'drag-sweep' && proposal !== 'drag' && proposal !== 'tap') continue;
         if (plan.mechanicFamily === 'burst-then-rest' && selected.length >= Math.max(2, Number(plan.simultaneousCap || 2) + 1)) continue;
         if (isSustain && remainingSustain <= 0) continue;
         if (remainingBudget - item.cost < -0.05) continue;
@@ -833,7 +800,6 @@
           const prevSelected = selected[selected.length - 1];
           if (Math.abs(Number(prevSelected.laneHint || 0) - Number(note.laneHint || 0)) < 1) note.laneHint = (Number(prevSelected.laneHint || 0) + 2) % 4;
         }
-        if (plan.mechanicFamily === 'hold-anchor' && selected.length > 0 && proposal === 'tap') note.keepReason = 'anchor-support';
         if (plan.mechanicFamily === 'drag-sweep' && selected.length > 0 && proposal === 'tap') note.keepReason = 'drag-followup';
         if (plan.mechanicFamily === 'burst-then-rest') note.keepReason = selected.length === 0 ? 'burst-lead' : 'burst-fill';
         selected.push(note);
@@ -898,7 +864,6 @@
       const note = seq[i];
       const type = legacyToModern(note?.proposalType || note?.proposalMechanic || note?.type || note?.noteType, note).mechanic;
       strain += estimateNoteCost(note, {});
-      if (type === 'hold') strain += 0.5;
       if (type === 'drag') strain += 0.2;
       if (type === 'spin') strain += 0.4;
       if (Number(note.time || 0) <= Math.min(4, openingSeconds)) strain *= openingMultiplier;
@@ -1031,7 +996,7 @@
     const arranged = arrangeBars(seq, barPlan, options);
     seq = materializeBarPlan(arranged, options);
     seq = layerBMechanicPlanner(seq, options);
-    // layerD/E may downgrade drag/hold/spin → tap, changing noteType but NOT inputChannel.
+    // layerD/E may downgrade drag/spin → tap, changing noteType but NOT inputChannel.
     // Run layerC AFTER all downgrades so inputChannel always matches final noteType.
     seq = layerDOpeningGuard(seq, options);
     seq = layerEPlayabilityGuard(seq, options);

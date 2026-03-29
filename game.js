@@ -237,8 +237,6 @@ class RhythmGame {
         this.dragNoteFrequency = 0.25; // Probability of drag note appearance reduced to 25%
         this.currentDragNote = null; // Currently dragged button
         this.currentSpinNote = null;
-        this.currentHoldNote = null;
-        this.currentGateNote = null;
         this.pointerState = { down: false, x: 0, y: 0, startedAt: 0, startX: 0, startY: 0 };
         this.dragNoteMinDistance = this.circleSize * 4; // Minimum distance for drag notes
         this.dragNoteMaxDistance = this.circleSize * 6; // Maximum distance for drag notes
@@ -759,7 +757,7 @@ class RhythmGame {
                 endX: Number.isFinite(n.endX) ? n.endX : undefined,
                 endY: Number.isFinite(n.endY) ? n.endY : undefined,
                 noteType: n.type,
-                gateWidth: n.gateWidth
+
             })));
             this.captureRuntimeDiagnostics('layout-audit', { layoutIssues: layoutIssues.length });
             console.log('Chart timing preview', this.chartData.notes.slice(0, 8).map((n, idx) => ({
@@ -1443,7 +1441,7 @@ class RhythmGame {
         const chartTime = this.resolveChartClock();
         if (this.liveMode) this.applySegmentProfile(chartTime);
         if (this.chartRuntime?.spawnUntil) {
-            const visibleSustainedCount = (this.notes || []).filter(n => !n.hit && !n.completed && ['hold','drag','spin'].includes(n.noteType || n.type)).length;
+            const visibleSustainedCount = (this.notes || []).filter(n => !n.hit && !n.completed && ['drag','spin'].includes(n.noteType || n.type)).length;
             const tuning = this.runtimeTuning || {};
             const spawned = this.chartRuntime.spawnUntil(chartTime, (currentTime, chartNote, chartIndex) => this.createChartNoteFromData(currentTime, chartNote, chartIndex), {
                 openingRampSec: tuning.openingCalmWindowSec ? Math.max(2.8, Number(tuning.openingCalmWindowSec) + 0.4) : 2.8,
@@ -2092,20 +2090,6 @@ class RhythmGame {
                 return true;
             }
 
-            if (note.noteType === 'hold' && note.held && !note.completed) {
-                note.holdProgress = Math.max(0, Math.min(1, (currentTime - (note.holdStartTime || currentTime)) / Math.max(0.2, note.holdDuration || 0.9)));
-                if (note.holdProgress >= 1) {
-                    note.completed = true;
-                    note.hit = true;
-                    note.score = 'perfect';
-                    this.score += 1400 * (1 + this.combo * 0.1);
-                    this.combo++;
-                    this.recordJudgement('perfect');
-                    this.createHitEffect(note.x, note.y, 'perfect');
-                    if (this.currentHoldNote === note) this.currentHoldNote = null;
-                    return true;
-                }
-            }
 
             if (note.isSpin && note.held && !note.completed) {
                 const progress = Math.max(0, Math.min(1, (currentTime - (note.spinStartedAt || currentTime)) / Math.max(0.5, note.spinDuration || 2.2)));
@@ -2146,16 +2130,6 @@ class RhythmGame {
                 return true;
             }
 
-            if (note.noteType === 'hold' && note.held && !note.completed && currentTime > note.hitTime + Math.max(1.6, (note.holdDuration || 0.9) + 1.2)) {
-                note.hit = true;
-                note.held = false;
-                note.completed = true;
-                note.score = 'miss';
-                this.combo = 0;
-                this.recordJudgement('miss');
-                if (this.currentHoldNote === note) this.currentHoldNote = null;
-                return true;
-            }
             
             return true;
         });
@@ -2204,12 +2178,8 @@ class RhythmGame {
             const timeUntilHit = note.hitTime - currentTime;
             const approachProfiles = {
                 tap: { lead: 0.72, size: 0.84 },
-                flick: { lead: 0.62, size: 0.8 },
-                cut: { lead: 0.58, size: 0.76 },
-                pulseHold: { lead: 0.82, size: 0.9 },
                 drag: { lead: 0.8, size: 0.88 },
-                ribbon: { lead: 0.86, size: 0.92 },
-                gate: { lead: 0.74, size: 0.86 }
+                spin: { lead: 0.78, size: 0.86 }
             };
             const profile = approachProfiles[note.noteType || 'tap'] || approachProfiles.tap;
             const visualApproachSec = (this.visualApproachDurationMs / 1000) * profile.lead;
@@ -2244,17 +2214,7 @@ class RhythmGame {
                     this.ctx.lineWidth = note.isDrag ? 4.8 : 3.8;
                     this.ctx.shadowBlur = 28;
                     this.ctx.shadowColor = `rgba(${shellR},${shellG},${shellB},0.72)`;
-                    if (note.noteType === 'flick' || note.noteType === 'cut') {
-                        const vec = note.flickVector || { x: 1, y: 0 };
-                        const px = -vec.y;
-                        const py = vec.x;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(- vec.x * shell * 0.55 - px * shell * 0.18, - vec.y * shell * 0.55 - py * shell * 0.18);
-                        this.ctx.lineTo(vec.x * shell * 0.35 - px * shell * 0.18, vec.y * shell * 0.35 - py * shell * 0.18);
-                        this.ctx.moveTo(- vec.x * shell * 0.55 + px * shell * 0.18, - vec.y * shell * 0.55 + py * shell * 0.18);
-                        this.ctx.lineTo(vec.x * shell * 0.35 + px * shell * 0.18, vec.y * shell * 0.35 + py * shell * 0.18);
-                        this.ctx.stroke();
-                    } else {
+                    {
                         const size = shell * 1.38;
                         const hf = size / 2;
                         const arm = Math.max(8, size * 0.22);
@@ -2286,67 +2246,6 @@ class RhythmGame {
                 }
             }
 
-            if (note.noteType === 'gate') {
-                const gateWidth = note.gateWidth || this.circleSize * 2.6;
-                const gateHeight = this.circleSize * 1.35;
-                const gateAlpha = 0.18 + note.approachProgress * 0.18;
-                const gatePulse = 1 + Math.sin(performance.now() / 120) * 0.06;
-                this.ctx.strokeStyle = palette.glow.replace('.34', `${Math.min(0.4, gateAlpha + 0.12).toFixed(2)}`);
-                this.ctx.lineWidth = 3;
-                this.ctx.strokeRect(note.x - (gateWidth * gatePulse) / 2, note.y - gateHeight / 2, gateWidth * gatePulse, gateHeight);
-                this.ctx.beginPath();
-                this.ctx.moveTo(note.x, note.y - gateHeight * 0.75);
-                this.ctx.lineTo(note.x, note.y + gateHeight * 0.75);
-                this.ctx.strokeStyle = palette.edge;
-                this.ctx.setLineDash([8, 8]);
-                this.ctx.stroke();
-                this.ctx.setLineDash([]);
-            }
-
-            if (note.noteType === 'hold') {
-                const hH = Math.round(this.circleSize * (2.2 + (1 - note.approachProgress) * 0.6));
-                const hW = Math.round(this.circleSize * 0.46);
-                const hx = Math.round(note.x - hW / 2);
-                const hy = Math.round(note.y - hH / 2);
-                const bw = Math.max(2, Math.round(hW / 6));
-                this.ctx.save();
-                this.ctx.imageSmoothingEnabled = false;
-                this.ctx.fillStyle = 'rgba(4,12,20,.94)';
-                this.ctx.fillRect(hx, hy, hW, hH);
-                if (note.held) {
-                    const fillH = Math.round(hH * Math.max(0.03, Math.min(1, note.holdProgress || 0)));
-                    this.ctx.fillStyle = palette.edge;
-                    this.ctx.globalAlpha = 0.35;
-                    this.ctx.fillRect(hx + bw, hy + hH - fillH, hW - bw * 2, fillH);
-                    this.ctx.globalAlpha = 1;
-                }
-                // tick marks
-                this.ctx.fillStyle = palette.edge;
-                this.ctx.globalAlpha = 0.20;
-                for (let t = 1; t < 4; t++) {
-                    const ty = Math.round(hy + hH * t / 4);
-                    this.ctx.fillRect(hx + bw + 2, ty, hW - bw * 2 - 4, 2);
-                }
-                this.ctx.globalAlpha = 1;
-                // border
-                const bAlpha = note.held ? 0.90 : 0.55;
-                this.ctx.fillStyle = palette.edge;
-                this.ctx.globalAlpha = bAlpha;
-                this.ctx.fillRect(hx, hy, hW, bw);
-                this.ctx.fillRect(hx, hy + hH - bw, hW, bw);
-                this.ctx.fillRect(hx, hy, bw, hH);
-                this.ctx.fillRect(hx + hW - bw, hy, bw, hH);
-                this.ctx.globalAlpha = 1;
-                // corner dots
-                this.ctx.fillStyle = '#ffffff';
-                this.ctx.globalAlpha = 0.45;
-                this.ctx.fillRect(hx, hy, bw * 2, bw * 2);
-                this.ctx.fillRect(hx + hW - bw * 2, hy, bw * 2, bw * 2);
-                this.ctx.fillRect(hx, hy + hH - bw * 2, bw * 2, bw * 2);
-                this.ctx.fillRect(hx + hW - bw * 2, hy + hH - bw * 2, bw * 2, bw * 2);
-                this.ctx.globalAlpha = 1;
-                this.ctx.restore();
-            }
 
             if (note.isSpin) {
                 const radius = this.circleSize * 1.85;
@@ -2362,41 +2261,6 @@ class RhythmGame {
                 this.ctx.stroke();
             }
 
-            if (note.noteType === 'flick' || note.noteType === 'cut') {
-                const vec = note.flickVector || { x: 1, y: 0 };
-                const u = Math.max(3, Math.round(this.circleSize * 0.17));
-                const shaftLen = Math.round(this.circleSize * (note.noteType === 'cut' ? 1.8 : 1.4));
-                this.ctx.save();
-                this.ctx.imageSmoothingEnabled = false;
-                this.ctx.translate(note.x, note.y);
-                this.ctx.rotate(Math.atan2(vec.y, vec.x));
-                // shaft (filled pixel rects)
-                const sx = -Math.round(shaftLen * 0.75);
-                const sy = -Math.round(u * 0.75);
-                const sw = Math.round(shaftLen * 0.68);
-                const sh = Math.round(u * 1.5);
-                this.ctx.fillStyle = 'rgba(4,12,20,.88)';
-                this.ctx.fillRect(sx, sy, sw, sh);
-                this.ctx.fillStyle = palette.edge;
-                this.ctx.globalAlpha = 0.8;
-                this.ctx.fillRect(sx, sy, sw, 2);
-                this.ctx.fillRect(sx, sy + sh - 2, sw, 2);
-                this.ctx.fillRect(sx, sy, 2, sh);
-                // staircase arrowhead
-                const steps = 4;
-                this.ctx.globalAlpha = 0.88;
-                for (let i = 0; i < steps; i++) {
-                    const bx = Math.round(shaftLen * (0.0 + (i / steps) * 0.55));
-                    const bw2 = Math.max(2, Math.round(u * 0.55 * (steps - i)));
-                    this.ctx.fillRect(bx, -bw2, u + 1, bw2 * 2);
-                }
-                // bright tip
-                this.ctx.fillStyle = '#ffffff';
-                this.ctx.globalAlpha = 0.7;
-                this.ctx.fillRect(Math.round(shaftLen * 0.54), -Math.round(u * 0.6), Math.round(u * 0.6), Math.round(u * 1.2));
-                this.ctx.globalAlpha = 1;
-                this.ctx.restore();
-            }
 
             // If it's a drag button, draw the track
             if (note.isDrag) {
@@ -2737,13 +2601,6 @@ class RhythmGame {
             }
 
             if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === String(key || '').toLowerCase()) {
-                if (note.noteType === 'hold') {
-                    note.held = true;
-                    note.holdStartTime = currentTime;
-                    note.holdProgress = 0;
-                    this.currentHoldNote = note;
-                    return;
-                }
                 note.score = timingDiff <= this.perfectRange ? 'perfect' : 'good';
                 this.score += (note.score === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
                 this.recordJudgement(note.score);
@@ -2901,49 +2758,6 @@ class RhythmGame {
             }
         }
 
-        if (this.currentHoldNote) {
-            const note = this.currentHoldNote;
-            if (!note.held || note.hit || note.completed) {
-                this.currentHoldNote = null;
-            } else if (type === 'end') {
-                if ((note.holdProgress || 0) < 0.92) {
-                    note.hit = true;
-                    note.completed = true;
-                    note.held = false;
-                    note.score = 'miss';
-                    this.combo = 0;
-                    this.recordJudgement('miss');
-                }
-                this.currentHoldNote = null;
-                this.updateHUD();
-                return;
-            }
-        }
-
-        if (type === 'move') {
-            for (const note of this.notes) {
-                if (note.hit || note.completed || !note.held) continue;
-                if (note.noteType !== 'flick' && note.noteType !== 'cut') continue;
-                const dx = x - (note.swipeStartX || note.x);
-                const dy = y - (note.swipeStartY || note.y);
-                const primary = note.flickVector || { x: 1, y: 0 };
-                const along = dx * primary.x + dy * primary.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist >= (note.swipeDistance || this.circleSize * 1.15) && (note.noteType === 'cut' || along > (note.swipeDistance || this.circleSize) * 0.72)) {
-                    note.hit = true;
-                    note.completed = true;
-                    note.held = false;
-                    note.score = dist > (note.swipeDistance || this.circleSize * 1.15) * 1.05 ? 'perfect' : 'good';
-                    this.score += (note.score === 'perfect' ? 1250 : 750) * (1 + this.combo * 0.1);
-                    this.recordJudgement(note.score);
-                    this.combo++;
-                    this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
-                    this.createHitEffect(x, y, note.score);
-                    this.updateHUD();
-                    return;
-                }
-            }
-        }
 
         if (type === 'start') {
             // Use for-of so we can break after the first tap hit (forEach can't break)
@@ -2993,42 +2807,6 @@ class RhythmGame {
                     break;
                 }
 
-                if (note.noteType === 'hold') {
-                    if (note.inputChannel === 'keyboard') continue;
-                    note.held = true;
-                    note.holdStartTime = currentTime;
-                    note.holdProgress = 0;
-                    this.currentHoldNote = note;
-                    break;
-                }
-
-                if (note.noteType === 'gate') {
-                    const gateWidth = note.gateWidth || this.circleSize * 2.6;
-                    if (Math.abs(x - note.x) <= gateWidth * 0.42) {
-                        note.held = true;
-                        note.completed = true;
-                        note.hit = true;
-                        note.score = timingDiff <= this.perfectRange ? 'perfect' : 'good';
-                        this.score += (note.score === 'perfect' ? 1450 : 900) * (1 + this.combo * 0.1);
-                        this.recordJudgement(note.score);
-                        this.combo++;
-                        this.tutorialSeenCounts[note.noteType || 'tap'] = (this.tutorialSeenCounts[note.noteType || 'tap'] || 0) + 1;
-                        this.createHitEffect(note.x, note.y, note.score);
-                        this.pushSignatureBurst(note.x, note.y, 'gate');
-                        this.currentGateNote = null;
-                        this.updateHUD();
-                        break;
-                    }
-                    continue;
-                }
-
-                if (note.noteType === 'flick' || note.noteType === 'cut') {
-                    note.held = true;
-                    note.swipeStartX = x;
-                    note.swipeStartY = y;
-                    break;
-                }
-
                 // Keyboard-exclusive notes can ONLY be hit by their assigned key, not mouse.
                 if (note.inputChannel === 'keyboard') continue;
 
@@ -3057,21 +2835,6 @@ class RhythmGame {
             }
         }
 
-        if (type === 'end') {
-            for (const note of this.notes) {
-                if (note.hit || note.completed || !note.held) continue;
-                if (note.noteType === 'flick' || note.noteType === 'cut') {
-                    note.hit = true;
-                    note.completed = true;
-                    note.held = false;
-                    note.score = 'miss';
-                    this.combo = 0;
-                    this.recordJudgement('miss');
-                    this.updateHUD();
-                    return;
-                }
-            }
-        }
     }
 
     hitNote = (note) => {
@@ -3232,9 +2995,6 @@ RhythmGame.prototype.decoratePaletteForNote = function (base, note) {
     const mechanicPalettes = {
         tap: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' },
         drag: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' },
-        hold: { core: '#e9ffff', edge: '#7af7ff', glow: 'rgba(122,247,255,.42)' },
-        flick: { core: '#eaffff', edge: '#7ff6ff', glow: 'rgba(127,246,255,.4)' },
-        cut: { core: '#eaffff', edge: '#7ff6ff', glow: 'rgba(127,246,255,.4)' },
         spin: { core: '#dffcff', edge: '#59efff', glow: 'rgba(89,239,255,.38)' }
     };
     const typeKey = note?.noteType || (note?.isDrag ? 'drag' : 'tap');
@@ -3426,22 +3186,21 @@ RhythmGame.prototype.drawFloatJudges = function () {
 
 RhythmGame.prototype.drawNoteLinks = function () {
     const ctx = this.ctx;
-    const notes = (this.notes || []).filter(n => !n.hit && !n.completed && n.noteType === 'tap');
+    const notes = (this.notes || [])
+        .filter(n => !n.hit && !n.completed && ['tap', 'drag'].includes(n.noteType))
+        .sort((a, b) => {
+            const ta = Number.isFinite(a.hitTime) ? a.hitTime : Number.POSITIVE_INFINITY;
+            const tb = Number.isFinite(b.hitTime) ? b.hitTime : Number.POSITIVE_INFINITY;
+            if (ta !== tb) return ta - tb;
+            return (a.noteNumber || 0) - (b.noteNumber || 0);
+        })
+        .slice(0, 6);
     if (notes.length < 2) return;
     const now = performance.now();
     ctx.save();
-    // Sort by note number within same group
-    const groups = {};
-    for (const n of notes) {
-        const key = n.groupKey || 'default';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(n);
-    }
-    for (const key in groups) {
-        const grp = groups[key].sort((a, b) => (a.noteNumber || 0) - (b.noteNumber || 0));
-        for (let i = 0; i < grp.length - 1; i++) {
-            const a = grp[i];
-            const b = grp[i + 1];
+    for (let i = 0; i < notes.length - 1; i++) {
+        const a = notes[i];
+        const b = notes[i + 1];
             const dist = Math.hypot(b.x - a.x, b.y - a.y);
             if (dist > this.circleSize * 12) continue; // skip if too far apart
             const pct = Math.max(a.approachProgress || 0, b.approachProgress || 0);
@@ -3521,7 +3280,6 @@ RhythmGame.prototype.drawNoteLinks = function () {
             ctx.globalAlpha = alpha * 0.9;
             ctx.fillRect(sx - 2, sy - 2, 4, 4);
             ctx.globalAlpha = 1;
-        }
     }
     ctx.restore();
 };
@@ -3798,7 +3556,7 @@ RhythmGame.prototype.drawCountdownFlash = function (flash, now = performance.now
     this.ctx.restore();
 };
 
-RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'gate') {
+RhythmGame.prototype.pushSignatureBurst = function (x, y, kind = 'tap') {
     this.signatureBursts.push({
         x,
         y,
@@ -4209,8 +3967,7 @@ RhythmGame.prototype.createLiveNote = function (currentTime, hitTime, isDrag) {
         groupIndex: liveBar,
         groupSlot: this.liveEngine ? ((this.liveEngine.step || 0) % 4) : 0,
         spawnedAtWall: performance.now(),
-        holdDuration: noteType === 'hold' ? Math.max(0.55, (this.liveEngine?.beatSec || 0.48) * 1.6) : 0,
-        gateWidth: noteType === 'gate' ? this.circleSize * (2.6 + Math.random() * 0.6) : null
+        holdDuration: 0
     };
 
     note.groupPalette = this.getSegmentPalette(note.segmentLabel || 'live', note.groupIndex);
@@ -4414,7 +4171,7 @@ RhythmGame.prototype.createChartNoteFromData = function (currentTime, chartNote,
         groupIndex: phrase,
         groupSlot,
         spawnedAtWall: performance.now(),
-        holdDuration: noteType === 'hold' ? Math.max(0.6, (chartNote.duration || 0.82)) : 0,
+        holdDuration: 0,
         pathVariant: chartNote.pathVariant || chartNote.pathTemplate || null,
         pathTemplate: chartNote.pathTemplate || chartNote.pathVariant || null,
         groupPattern: basePos.pattern,
@@ -4553,7 +4310,7 @@ RhythmGame.prototype.spawnBurstCluster = function (anchorNote, clusterSize = 3) 
             segmentLabel: anchorNote.segmentLabel || 'chorus'
         });
         this.globalNoteSeq += 1;
-        const type = i === clusterSize - 1 && anchorNote.noteType !== 'pulseHold' ? 'cut' : 'tap';
+        const type = 'tap';
         const note = {
             ...anchorNote,
             x: pos.x,
@@ -4615,7 +4372,7 @@ RhythmGame.prototype.generateLiveGridNotes = function (currentTime) {
             if (note) {
                 note.laneHint = Math.abs(note.groupSlot || 0) % 4;
                 let groupNotes = [note];
-                const chorusBurst = note.segmentLabel === 'chorus' && (idx === 0 || idx === 8) && note.noteType !== 'pulseHold';
+                const chorusBurst = note.segmentLabel === 'chorus' && (idx === 0 || idx === 8);
                 if (chorusBurst) {
                     const extras = this.spawnBurstCluster(note, 3);
                     groupNotes = [note, ...extras];
@@ -4650,7 +4407,7 @@ RhythmGame.prototype.applySegmentProfile = function (timeSec) {
     const key = seg.start + ':' + seg.end;
     if (this.liveEngine.segmentKey === key) return;
     this.liveEngine.segmentKey = key;
-    this.liveEngine.signatureMode = seg.label === 'chorus' ? 'ribbon' : (seg.label === 'bridge' ? 'gate' : 'mixed');
+    this.liveEngine.signatureMode = seg.label === 'chorus' ? 'drag' : (seg.label === 'bridge' ? 'tap' : 'mixed');
     this.liveEngine.density = seg.energy === 'high' ? 1.08 : (seg.energy === 'mid' ? 0.9 : 0.68);
     this.liveEngine.dragQuotaPerBar = seg.dragRatio >= 0.24 ? 2 : 1;
     this.liveEngine.phrase.radius = seg.phraseRadius || (seg.label === 'chorus' ? 260 : seg.label === 'verse' ? 220 : 185);
@@ -4792,23 +4549,14 @@ RhythmGame.prototype.pickChartNoteType = function (note, idx, inPhraseIndex = 0)
     if (note && note.type) return note.type;
     const segment = note?.segmentLabel || 'verse';
     const cycle = idx % 16;
-    if (segment === 'chorus' && (cycle === 11 || cycle === 12)) return 'ribbon';
-    if ((segment === 'chorus' && (cycle === 5 || cycle === 6) && inPhraseIndex % 2 === 0) || (segment === 'bridge' && (cycle === 7 || cycle === 8))) return 'gate';
-    if ((cycle === 9 || cycle === 10) && segment !== 'chorus') return 'pulseHold';
-    if ((cycle === 3 || cycle === 4) && inPhraseIndex % 3 !== 2) return 'flick';
-    if ((cycle === 13 || cycle === 14) && segment === 'chorus') return 'cut';
+    if (segment === 'chorus' && (cycle === 11 || cycle === 12)) return 'drag';
     if ((idx + inPhraseIndex) % 6 === 0) return 'drag';
     return 'tap';
 };
 
 RhythmGame.prototype.pickLiveNoteType = function (seq, groupIndex, preferDrag) {
-    if (groupIndex % 4 === 3 && seq % 6 === 0) return 'ribbon';
-    if (groupIndex % 3 === 2 && seq % 8 === 0) return 'gate';
-    if (preferDrag && seq % 6 === 0) return seq % 12 === 0 ? 'ribbon' : 'drag';
-    if (seq % 15 === 0) return 'gate';
-    if (seq % 11 === 0) return 'pulseHold';
-    if (seq % 9 === 0) return 'cut';
-    if (seq % 7 === 0) return 'flick';
+    if (groupIndex % 4 === 3 && seq % 6 === 0) return 'drag';
+    if (preferDrag && seq % 6 === 0) return 'drag';
     return preferDrag ? 'drag' : 'tap';
 };
 
@@ -4860,10 +4608,38 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
         idx: context.idx ?? 0,
         segmentLabel: context.segmentLabel || note.segmentLabel || 'verse'
     };
-    if (note.noteType === 'hold') {
-        note.holdDuration = Math.max(0.5, note.holdDuration || 0.82);
+
+    // Gameplay cleanup: keep only tap / drag / spin as core mechanics.
+    // Remove gate / flick / cut, and collapse free-standing holds into tap.
+    if (['gate', 'flick', 'cut', 'hold', 'pulseHold'].includes(note.noteType)) {
+        note.noteType = 'tap';
+        note.type = 'tap';
+        note.holdDuration = 0;
         note.holdProgress = 0;
+        note.gateWidth = null;
+        note.flickVector = null;
+        note.swipeDistance = null;
+        note.keyboardCheckpoint = false;
+        note.keyboardHit = false;
     }
+
+    if (note.noteType === 'drag' && note.inputChannel === 'keyboard') {
+        note.inputChannel = 'mouse';
+        note.keyHint = null;
+        note.keyboardHint = null;
+        note.keyboardKey = null;
+    }
+    if (note.noteType === 'spin' && note.inputChannel === 'keyboard') {
+        note.inputChannel = 'mouse';
+        note.keyHint = null;
+        note.keyboardHint = null;
+        note.keyboardKey = null;
+    }
+    if (note.inputChannel === 'keyboard' && !note.keyHint && !note.keyboardHint && note.noteType === 'tap') {
+        note.inputChannel = 'mouse';
+        note.keyboardKey = null;
+    }
+
     if (note.noteType === 'drag' && note.pathVariant === 'starTrace') {
         note.ribbonWidth = this.circleSize * 0.9;
         note.traceStrictness = 0.2;
@@ -4899,7 +4675,7 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
 };
 
 RhythmGame.prototype.recordJudgement = function (score, noteX, noteY) {
-    if (!score || !this.judgementStats[score] && score !== 'miss') return;
+    if (!score || !this.judgementStats || !Object.prototype.hasOwnProperty.call(this.judgementStats, score)) return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
     const x = (noteX != null) ? noteX : this.canvas.width / 2;
     const y = (noteY != null) ? noteY - this.circleSize * 1.8 : this.canvas.height * 0.3;
@@ -4974,6 +4750,7 @@ RhythmGame.prototype.showResultOverlay = function () {
     if (menuBtn) menuBtn.onclick = () => {
         hideOverlay();
         this.isPlaying = false;
+        this.resetRunVisualState();
         this.setRunPhase('idle');
         this.setScene('input', { force: true });
         // Show input UI
@@ -4991,6 +4768,30 @@ RhythmGame.prototype.pushFloatJudge = function (type, x, y) {
     };
     const c = cfg[type] || cfg.good;
     (this.floatJudges = this.floatJudges || []).push({ text: c.text, color: c.color, shadow: c.shadow, size: c.size, x, y: y || (this.canvas.height * 0.3), at: performance.now(), lifeMs: 1100 });
+};
+
+RhythmGame.prototype.resetRunVisualState = function () {
+    this.combo = 0;
+    this.score = 0;
+    this.notes = [];
+    this.floatJudges = [];
+    this.comboBanners = [];
+    this.currentDragNote = null;
+    this.currentSpinNote = null;
+    this.pointerState = { down: false, x: 0, y: 0, startedAt: 0, startX: 0, startY: 0 };
+    this.visualBursts = [];
+    this.signatureBursts = [];
+    this.feedbackBanners = [];
+    this.countdownFlash = null;
+    if (this.ctx?.clearRect && this.canvas) {
+        this.ctx.clearRect(0, 0, this.canvas.width || 0, this.canvas.height || 0);
+    }
+    const backgroundCanvas = document.getElementById('backgroundCanvas');
+    const backgroundCtx = backgroundCanvas?.getContext ? backgroundCanvas.getContext('2d') : null;
+    if (backgroundCtx?.clearRect && backgroundCanvas) {
+        backgroundCtx.clearRect(0, 0, backgroundCanvas.width || 0, backgroundCanvas.height || 0);
+    }
+    this.updateHUD();
 };
 
 // Initialize the game
