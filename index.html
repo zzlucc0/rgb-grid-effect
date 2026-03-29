@@ -912,6 +912,11 @@
     <script src="chart-reviewer.js?v=20260313c"></script>
     <script src="path-templates.js?v=20260327i"></script>
     <script src="game.js?v=20260328f"></script>
+    <script>
+      if (!window.RGB_API_BASE && location.hostname === 'zpulse.zz-now.com') {
+        window.RGB_API_BASE = 'https://zpulse-api.zz-now.com';
+      }
+    </script>
     <script src="youtube-client.js?v=20260324a"></script>
 </body>
 </html>
