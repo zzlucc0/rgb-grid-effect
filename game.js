@@ -4675,7 +4675,7 @@ RhythmGame.prototype.applyNoteMechanicProfile = function (note, context = {}) {
 };
 
 RhythmGame.prototype.recordJudgement = function (score, noteX, noteY) {
-    if (!score || !this.judgementStats[score] && score !== 'miss') return;
+    if (!score || !this.judgementStats || !Object.prototype.hasOwnProperty.call(this.judgementStats, score)) return;
     if (score === 'perfect' || score === 'good' || score === 'miss') this.judgementStats[score] += 1;
     const x = (noteX != null) ? noteX : this.canvas.width / 2;
     const y = (noteY != null) ? noteY - this.circleSize * 1.8 : this.canvas.height * 0.3;
@@ -4779,6 +4779,18 @@ RhythmGame.prototype.resetRunVisualState = function () {
     this.currentDragNote = null;
     this.currentSpinNote = null;
     this.pointerState = { down: false, x: 0, y: 0, startedAt: 0, startX: 0, startY: 0 };
+    this.visualBursts = [];
+    this.signatureBursts = [];
+    this.feedbackBanners = [];
+    this.countdownFlash = null;
+    if (this.ctx?.clearRect && this.canvas) {
+        this.ctx.clearRect(0, 0, this.canvas.width || 0, this.canvas.height || 0);
+    }
+    const backgroundCanvas = document.getElementById('backgroundCanvas');
+    const backgroundCtx = backgroundCanvas?.getContext ? backgroundCanvas.getContext('2d') : null;
+    if (backgroundCtx?.clearRect && backgroundCanvas) {
+        backgroundCtx.clearRect(0, 0, backgroundCanvas.width || 0, backgroundCanvas.height || 0);
+    }
     this.updateHUD();
 };
 
