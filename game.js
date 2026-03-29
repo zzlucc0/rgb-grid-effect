@@ -2235,11 +2235,15 @@ class RhythmGame {
                     this.ctx.save();
                     this.ctx.translate(note.x, note.y);
                     this.ctx.rotate(shellRotation);
-                    const shellAlpha = 0.36 + (1 - rotateT) * 0.26 + dangerPulse * 0.16;
-                    this.ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.8, shellAlpha).toFixed(3)})`;
-                    this.ctx.lineWidth = note.isDrag ? 4.6 : 3.6;
-                    this.ctx.shadowBlur = 26;
-                    this.ctx.shadowColor = 'rgba(255,255,255,0.7)';
+                    const shellAlpha = 0.28 + (1 - rotateT) * 0.18 + dangerPulse * 0.18;
+                    const shellColorMix = Math.min(1, Math.max(0, rotateT * 1.08 + dangerPulse * 0.45));
+                    const shellR = Math.round(255 * shellColorMix + 90 * (1 - shellColorMix));
+                    const shellG = Math.round(246 * shellColorMix + 246 * (1 - shellColorMix));
+                    const shellB = Math.round(255 * shellColorMix + 255 * (1 - shellColorMix));
+                    this.ctx.strokeStyle = `rgba(${shellR},${shellG},${shellB},${Math.min(0.92, shellAlpha).toFixed(3)})`;
+                    this.ctx.lineWidth = note.isDrag ? 4.8 : 3.8;
+                    this.ctx.shadowBlur = 28;
+                    this.ctx.shadowColor = `rgba(${shellR},${shellG},${shellB},0.72)`;
                     if (note.noteType === 'flick' || note.noteType === 'cut') {
                         const vec = note.flickVector || { x: 1, y: 0 };
                         const px = -vec.y;
@@ -2255,8 +2259,8 @@ class RhythmGame {
                         const hf = size / 2;
                         const arm = Math.max(8, size * 0.22);
                         const th = 3;
-                        const alpha = Math.min(0.92, shellAlpha * (0.78 + 0.22 * Math.sin(performance.now() / 240)));
-                        this.ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+                        const alpha = Math.min(0.94, shellAlpha * (0.78 + 0.22 * Math.sin(performance.now() / 240)));
+                        this.ctx.fillStyle = `rgba(${shellR},${shellG},${shellB},${alpha.toFixed(3)})`;
                         this.ctx.fillRect(-hf, -hf, arm, th);
                         this.ctx.fillRect(-hf, -hf, th, arm);
                         this.ctx.fillRect(hf - arm, -hf, arm, th);
@@ -2266,7 +2270,7 @@ class RhythmGame {
                         this.ctx.fillRect(hf - arm, hf - th, arm, th);
                         this.ctx.fillRect(hf - th, hf - arm, th, arm);
 
-                        this.ctx.fillStyle = `rgba(90,246,255,${Math.min(0.48, alpha * 0.55).toFixed(3)})`;
+                        this.ctx.fillStyle = `rgba(255,96,182,${Math.min(0.62, 0.16 + alpha * (0.28 + rotateT * 0.42)).toFixed(3)})`;
                         const inner = size * 0.74;
                         const ih = inner / 2;
                         this.ctx.fillRect(-ih, -ih, Math.max(6, inner * 0.14), 2);
@@ -3475,12 +3479,15 @@ RhythmGame.prototype.drawNoteLinks = function () {
                 const perpX = -dirY;
                 const perpY = dirX;
                 const chevronCount = Math.max(1, Math.floor(lineLen / (this.circleSize * 1.8)));
+                const travel = (now / 900 + i * 0.17) % 1;
                 for (let ci = 1; ci <= chevronCount; ci++) {
-                    const ct = ci / (chevronCount + 1);
+                    const baseT = ci / (chevronCount + 1);
+                    const ct = (baseT + travel) % 1;
                     const cx = a.x + lineDx * ct;
                     const cy = a.y + lineDy * ct;
-                    const ps = 3; // pixel size
-                    ctx.fillStyle = `rgba(255,255,255,${(alpha * 0.72).toFixed(3)})`;
+                    const ps = 3;
+                    const leadBoost = 1 - Math.min(1, Math.abs(ct - travel) * 3.2);
+                    ctx.fillStyle = `rgba(255,255,255,${Math.min(0.95, alpha * (0.5 + leadBoost * 0.55)).toFixed(3)})`;
                     // Draw chevron: two angled lines forming >>>
                     for (let chevOff = -1; chevOff <= 1; chevOff += 2) {
                         for (let seg = 0; seg < 3; seg++) {
