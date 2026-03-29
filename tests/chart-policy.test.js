@@ -72,10 +72,10 @@ describe('chart policy quotas', () => {
     expect(notes[2].type).toBe('tap');
   });
 
-  it('provides tutorial labels for modern mechanics', () => {
+  it('provides tutorial labels for supported modern mechanics', () => {
     const policy = loadPolicy();
-    expect(policy.tutorialLabelForType('hold')).toBe('HOLD');
-    expect(policy.tutorialLabelForType('hold', { inputChannel: 'keyboard' })).toBe('KEY HOLD');
+    expect(policy.tutorialLabelForType('hold')).toBe('TAP');
+    expect(policy.tutorialLabelForType('hold', { inputChannel: 'keyboard' })).toBe('TAP');
     expect(policy.tutorialLabelForType('drag')).toBe('DRAG');
     expect(policy.tutorialLabelForType('spin')).toBe('SPIN');
   });

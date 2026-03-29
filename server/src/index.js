@@ -1478,7 +1478,7 @@ function reviewChartPayload(payload) {
       area: 'variety',
       severity: 'medium',
       evidence: `tapRatio=${Number(mechanic.tapRatio || 0).toFixed(2)}`,
-      recommendation: 'Trade some tap density for drag/ribbon/pulseHold variation in mid-song windows.'
+      recommendation: 'Trade some tap density for drag/spin variation in mid-song windows.'
     });
   }
   if (Number(mechanic.latterSpecialRatio || 0) < 0.35) {

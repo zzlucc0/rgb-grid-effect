@@ -46,8 +46,8 @@
         end: round(end, 2),
         count: entries.length,
         taps: types.filter(v => v === 'tap').length,
-        sustain: types.filter(v => ['drag', 'ribbon', 'pulseHold'].includes(v)).length,
-        accents: types.filter(v => ['flick', 'cut', 'gate'].includes(v)).length,
+        sustain: types.filter(v => ['drag', 'spin'].includes(v)).length,
+        accents: 0,
         geometry
       });
     }

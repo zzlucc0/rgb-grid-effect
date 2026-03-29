@@ -23,13 +23,13 @@ describe('opening policy', () => {
     ];
     const out = p.applyOpeningWindowPolicy(notes, { openingSeconds: 12, openingCalmWindowSec: 2.4, openingHeavyStartSec: 4.8, openingPreviewBoostSec: 1.1 });
     expect(out[0].spawnLeadBiasSec).toBeGreaterThan(0.5);
-    expect(out[0].type).toBe('hold');
+    expect(out[0].type).toBe('tap');
     expect(out[1].type).toBe('tap');
     expect(['tap', 'drag']).toContain(out[2].type);
     expect(['tap', 'drag']).toContain(out[3].type);
   });
 
-  it('enforces sustained cooldown for drag and hold notes', () => {
+  it('enforces sustained cooldown for drag-only sustained notes', () => {
     const p = loadPolicy();
     const notes = [
       { time: 5, type: 'hold', noteType: 'hold', laneHint: 0, segmentLabel: 'verse' },
@@ -39,8 +39,9 @@ describe('opening policy', () => {
     ];
     const out = p.applyMousePlayabilityFilter(notes, { sustainedCooldownSec: 1.6, holdCooldownSec: 2.6 });
     const sustained = out.filter(n => p.isSustainedType(n.type || n.noteType));
-    expect(sustained.length).toBeLessThanOrEqual(3);
-    expect((out[2].type || out[2].noteType)).toBe('tap');
+    expect(sustained.length).toBeLessThanOrEqual(2);
+    expect((out[0].type || out[0].noteType)).toBe('hold');
+    expect((out[2].type || out[2].noteType)).toBe('hold');
   });
 
   it('hard-caps opening sustained density and suppresses early drag piles', () => {
