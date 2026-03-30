@@ -2547,18 +2547,10 @@ class RhythmGame {
                 this.ctx.fillText(`${String(note.groupPattern || 'group').toUpperCase()} · ${note.groupSize}`, note.x, note.y - this.circleSize - 16);
             }
 
-            // If there is a score, display the score text
-            if (note.score) {
-                this.ctx.fillStyle = palette.edge;
-                this.ctx.font = '700 18px Arial';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText(note.score.toUpperCase(), note.x, note.y - 40);
-                
-                // Remove the note after displaying the score for a period of time
-                if (currentTime - note.hitTime > 0.5) {
-                    note.hit = true;
-                    note.score = null;
-                }
+            // Remove resolved note visuals after a short linger; judgement text is now handled by the banner above the note.
+            if (note.score && currentTime - note.hitTime > 0.5) {
+                note.hit = true;
+                note.score = null;
             }
         });
 
@@ -2964,6 +2956,8 @@ class RhythmGame {
                 particleColor = '255,255,255';
         }
         this.pushBurst(x, y, scoreType);
+    const bannerY = y - this.circleSize * 1.8;
+    this.pushFeedbackBanner(scoreType, { x, y: bannerY, scale: 0.9, lifeMs: 520 });
 
         for (let i = 0; i < particleCount; i++) {
             const angle = (Math.PI * 2 * i) / particleCount;
@@ -3492,7 +3486,7 @@ RhythmGame.prototype.drawFeedbackBanner = function (banner, now = performance.no
     const out = 1 - t;
     const slam = Math.max(0, 1 - age / 120);
     const x = banner.x || this.canvas.width / 2;
-    const y = (banner.y || this.canvas.height * 0.3) - t * 26;
+    const y = (banner.y || this.canvas.height * 0.3) - t * 18;
     const scale = (banner.scale || 1) * (1 + slam * 0.18);
     const text = String(banner.text || '').toUpperCase();
     const w = Math.max(200, 84 + text.length * 26 + (banner.level || 0) * 10);
