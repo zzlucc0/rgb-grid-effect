@@ -2579,55 +2579,63 @@ class RhythmGame {
         const currentTime = this.resolveChartClock();
         const normalizedKey = String(key || '').toLowerCase();
 
-        let bestCheckpoint = null;
-        let bestCheckpointDiff = Infinity;
-        let bestCheckpointFuture = true;
-        let bestNote = null;
-        let bestDiff = Infinity;
-        let bestFuture = true;
+        const activeKeyboardNotes = this.notes
+            .filter(note => !note.hit && !note.completed && note.inputChannel !== 'mouse')
+            .sort((a, b) => {
+                const ta = Number.isFinite(a.hitTime) ? a.hitTime : Number.POSITIVE_INFINITY;
+                const tb = Number.isFinite(b.hitTime) ? b.hitTime : Number.POSITIVE_INFINITY;
+                if (ta !== tb) return ta - tb;
+                return (a.noteNumber || 0) - (b.noteNumber || 0);
+            });
 
-        for (const note of this.notes) {
-            if (note.hit || note.completed) continue;
-            if (note.inputChannel === 'mouse') continue;
-            const deltaMs = (currentTime - note.hitTime) * 1000;
-            const timingDiff = Math.abs(deltaMs);
-            if (timingDiff > this.goodRange) continue;
-            const isFuture = deltaMs < 0;
+        const activeTarget = activeKeyboardNotes[0];
+        if (!activeTarget) return;
 
-            if (note.keyboardCheckpoint && !note.keyboardHit && String(note.keyboardKey || 'space') === normalizedKey) {
-                if ((bestCheckpointFuture && !isFuture) || (bestCheckpointFuture === isFuture && timingDiff < bestCheckpointDiff)) {
-                    bestCheckpoint = note;
-                    bestCheckpointDiff = timingDiff;
-                    bestCheckpointFuture = isFuture;
-                }
-                continue;
+        const deltaMs = (currentTime - activeTarget.hitTime) * 1000;
+        const timingDiff = Math.abs(deltaMs);
+        if (timingDiff > this.goodRange) return;
+
+        if (activeTarget.keyboardCheckpoint && !activeTarget.keyboardHit) {
+            const expectedKey = String(activeTarget.keyboardKey || 'space').toLowerCase();
+            if (normalizedKey !== expectedKey) {
+                activeTarget.keyboardHit = true;
+                activeTarget.keyboardHitTime = currentTime;
+                activeTarget.completed = true;
+                activeTarget.hit = true;
+                activeTarget.score = 'miss';
+                activeTarget.held = false;
+                this.combo = 0;
+                this.recordJudgement('miss', activeTarget.x, activeTarget.y);
+                if (this.currentDragNote === activeTarget) this.currentDragNote = null;
+                this.updateHUD();
+                return;
             }
-
-            if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === normalizedKey) {
-                if ((bestFuture && !isFuture) || (bestFuture === isFuture && timingDiff < bestDiff)) {
-                    bestNote = note;
-                    bestDiff = timingDiff;
-                    bestFuture = isFuture;
-                }
-            }
-        }
-
-        if (bestCheckpoint) {
-            bestCheckpoint.keyboardHit = true;
-            bestCheckpoint.keyboardHitTime = currentTime;
-            this.pushSignatureBurst(bestCheckpoint.x, bestCheckpoint.y, 'drag');
-            this.createHitEffect(bestCheckpoint.x, bestCheckpoint.y, bestCheckpointDiff <= this.perfectRange ? 'perfect' : 'good');
+            activeTarget.keyboardHit = true;
+            activeTarget.keyboardHitTime = currentTime;
+            this.pushSignatureBurst(activeTarget.x, activeTarget.y, 'drag');
+            this.createHitEffect(activeTarget.x, activeTarget.y, timingDiff <= this.perfectRange ? 'perfect' : 'good');
             this.updateHUD();
             return;
         }
 
-        if (bestNote) {
-            bestNote.score = bestDiff <= this.perfectRange ? 'perfect' : 'good';
-            this.score += (bestNote.score === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
-            this.recordJudgement(bestNote.score, bestNote.x, bestNote.y);
+        if (activeTarget.inputChannel === 'keyboard' && activeTarget.keyHint) {
+            const expectedKey = String(activeTarget.keyboardKey || activeTarget.keyHint || '').toLowerCase();
+            if (normalizedKey !== expectedKey) {
+                activeTarget.score = 'miss';
+                activeTarget.hit = true;
+                this.combo = 0;
+                this.recordJudgement('miss', activeTarget.x, activeTarget.y);
+                this.createHitEffect(activeTarget.x, activeTarget.y, 'miss');
+                this.updateHUD();
+                return;
+            }
+
+            activeTarget.score = timingDiff <= this.perfectRange ? 'perfect' : 'good';
+            this.score += (activeTarget.score === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
+            this.recordJudgement(activeTarget.score, activeTarget.x, activeTarget.y);
             this.combo++;
-            bestNote.hit = true;
-            this.createHitEffect(bestNote.x, bestNote.y, bestNote.score);
+            activeTarget.hit = true;
+            this.createHitEffect(activeTarget.x, activeTarget.y, activeTarget.score);
             this.updateHUD();
         }
     }
