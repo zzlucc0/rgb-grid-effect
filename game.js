@@ -2956,8 +2956,6 @@ class RhythmGame {
                 particleColor = '255,255,255';
         }
         this.pushBurst(x, y, scoreType);
-    const bannerY = y - this.circleSize * 1.8;
-    this.pushFeedbackBanner(scoreType, { x, y: bannerY, scale: 0.9, lifeMs: 520 });
 
         for (let i = 0; i < particleCount; i++) {
             const angle = (Math.PI * 2 * i) / particleCount;
