@@ -2102,7 +2102,7 @@ class RhythmGame {
                         this.recordJudgement('miss');
                     } else {
                         this.score += (note.score === 'perfect' ? 1600 : 900) * (1 + this.combo * 0.1);
-                        this.recordJudgement(note.score);
+                        this.recordJudgement(note.score, note.x, note.y);
                         this.combo++;
                         this.createHitEffect(note.x, note.y, note.score);
                     }
@@ -2624,7 +2624,7 @@ class RhythmGame {
         if (bestNote) {
             bestNote.score = bestDiff <= this.perfectRange ? 'perfect' : 'good';
             this.score += (bestNote.score === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
-            this.recordJudgement(bestNote.score);
+            this.recordJudgement(bestNote.score, bestNote.x, bestNote.y);
             this.combo++;
             bestNote.hit = true;
             this.createHitEffect(bestNote.x, bestNote.y, bestNote.score);
@@ -2748,7 +2748,7 @@ class RhythmGame {
                         const _geomBonus = (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') ? 1850 : 1500;
                         this.score += _geomBonus * (1 + this.combo * 0.1);
                         this.combo++;
-                        this.recordJudgement('perfect');
+                        this.recordJudgement('perfect', note.endX ?? note.x, note.endY ?? note.y);
                         this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'perfect');
                         if (_tmpl === 'starTrace' || _tmpl === 'heart' || _tmpl === 'vortex') this.pushSignatureBurst(note.endX, note.endY, 'ribbon');
@@ -2757,7 +2757,7 @@ class RhythmGame {
                         note.score = 'good';
                         this.score += 800 * (1 + this.combo * 0.1);
                         this.combo++;
-                        this.recordJudgement('good');
+                        this.recordJudgement('good', note.endX ?? note.x, note.endY ?? note.y);
                         this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
                         this.createHitEffect(note.endX, note.endY, 'good');
                     } else {
@@ -2861,7 +2861,7 @@ class RhythmGame {
             if (bestPointerNote) {
                 bestPointerNote.score = bestPointerScore;
                 this.score += (bestPointerScore === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
-                this.recordJudgement(bestPointerScore);
+                this.recordJudgement(bestPointerScore, bestPointerNote.x, bestPointerNote.y);
                 this.combo++;
                 bestPointerNote.hit = true;
                 this.tutorialSeenCounts[bestPointerNote.noteType || 'click'] = (this.tutorialSeenCounts[bestPointerNote.noteType || 'click'] || 0) + 1;
