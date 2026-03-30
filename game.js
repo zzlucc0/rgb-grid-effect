@@ -3108,12 +3108,9 @@ RhythmGame.prototype.drawFloatJudges = function () {
         const alpha = t < 0.08 ? t / 0.08 : Math.max(0, 1 - (t - 0.08) / 0.92);
         const bounceS = t < 0.10 ? (1 + 0.30 * Math.sin(t / 0.10 * Math.PI)) : 1;
         const rise = t * 55;
-        // MISS: at note position; PERFECT/GOOD: centered on screen
-        const isMiss = j.text === 'MISS';
-        const cx = isMiss ? (j.x || this.canvas.width / 2) : this.canvas.width / 2;
-        const cy = isMiss
-            ? (j.y || this.canvas.height * 0.32) - rise
-            : this.canvas.height * 0.32 - rise;
+        // All judgements now use the same large pixel treatment directly above the hit note.
+        const cx = j.x || this.canvas.width / 2;
+        const cy = (j.y || this.canvas.height * 0.32) - rise;
 
         ctx.save();
         ctx.imageSmoothingEnabled = false;
