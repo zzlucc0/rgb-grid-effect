@@ -2585,32 +2585,52 @@ class RhythmGame {
     handleKeyboardAction = (key) => {
         if (!this.isPlaying || this.isPausedPhase()) return;
         const currentTime = this.resolveChartClock();
+        const normalizedKey = String(key || '').toLowerCase();
+
+        let bestCheckpoint = null;
+        let bestCheckpointDiff = Infinity;
+        let bestNote = null;
+        let bestDiff = Infinity;
+
         for (const note of this.notes) {
             if (note.hit || note.completed) continue;
-            // Mouse-only notes cannot be hit by keyboard
             if (note.inputChannel === 'mouse') continue;
             const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
             if (timingDiff > this.goodRange) continue;
 
-            if (note.keyboardCheckpoint && !note.keyboardHit && String(note.keyboardKey || 'space') === String(key || 'space')) {
-                note.keyboardHit = true;
-                note.keyboardHitTime = currentTime;
-                this.pushSignatureBurst(note.x, note.y, 'drag');
-                this.createHitEffect(note.x, note.y, timingDiff <= this.perfectRange ? 'perfect' : 'good');
-                this.updateHUD();
-                return;
+            if (note.keyboardCheckpoint && !note.keyboardHit && String(note.keyboardKey || 'space') === normalizedKey) {
+                if (timingDiff < bestCheckpointDiff) {
+                    bestCheckpoint = note;
+                    bestCheckpointDiff = timingDiff;
+                }
+                continue;
             }
 
-            if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === String(key || '').toLowerCase()) {
-                note.score = timingDiff <= this.perfectRange ? 'perfect' : 'good';
-                this.score += (note.score === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
-                this.recordJudgement(note.score);
-                this.combo++;
-                note.hit = true;
-                this.createHitEffect(note.x, note.y, note.score);
-                this.updateHUD();
-                return;
+            if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === normalizedKey) {
+                if (timingDiff < bestDiff) {
+                    bestNote = note;
+                    bestDiff = timingDiff;
+                }
             }
+        }
+
+        if (bestCheckpoint) {
+            bestCheckpoint.keyboardHit = true;
+            bestCheckpoint.keyboardHitTime = currentTime;
+            this.pushSignatureBurst(bestCheckpoint.x, bestCheckpoint.y, 'drag');
+            this.createHitEffect(bestCheckpoint.x, bestCheckpoint.y, bestCheckpointDiff <= this.perfectRange ? 'perfect' : 'good');
+            this.updateHUD();
+            return;
+        }
+
+        if (bestNote) {
+            bestNote.score = bestDiff <= this.perfectRange ? 'perfect' : 'good';
+            this.score += (bestNote.score === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
+            this.recordJudgement(bestNote.score);
+            this.combo++;
+            bestNote.hit = true;
+            this.createHitEffect(bestNote.x, bestNote.y, bestNote.score);
+            this.updateHUD();
         }
     }
 
@@ -2761,78 +2781,90 @@ class RhythmGame {
 
 
         if (type === 'start') {
-            // Use for-of so we can break after the first tap hit (forEach can't break)
+            let bestSpin = null;
+            let bestSpinDiff = Infinity;
+            let bestSpinDistance = Infinity;
+            let bestDrag = null;
+            let bestDragDiff = Infinity;
+            let bestDragDistance = Infinity;
+            let bestPointerNote = null;
+            let bestPointerScore = null;
+            let bestPointerDiff = Infinity;
+            let bestPointerDistance = Infinity;
+
             for (const note of this.notes) {
                 if (note.hit || note.completed) continue;
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
-                // Drag notes get a larger tap radius — they're harder to start
                 const hitRadius = note.isDrag ? this.circleSize * 1.5 : this.circleSize;
                 if (distance > hitRadius) continue;
                 const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
-
-                // ── CRITICAL FIX: skip notes outside the timing window ──
-                // Without this guard, clicking a visible-but-too-early note
-                // would fall through to the else branch and mark it as 'miss',
-                // permanently destroying it before the player can actually hit it.
                 if (timingDiff > this.goodRange) continue;
 
                 if (note.isSpin) {
                     if (note.inputChannel === 'keyboard') continue;
-                    note.held = true;
-                    note.spinStartedAt = currentTime;
-                    note.spinLastAngle = Math.atan2(y - note.y, x - note.x);
-                    note.spinAccum = 0;
-                    this.currentSpinNote = note;
-                    break;
+                    if (timingDiff < bestSpinDiff || (timingDiff === bestSpinDiff && distance < bestSpinDistance)) {
+                        bestSpin = note;
+                        bestSpinDiff = timingDiff;
+                        bestSpinDistance = distance;
+                    }
+                    continue;
                 }
 
                 if (note.isDrag) {
                     if (note.inputChannel === 'keyboard') continue;
-                    note.held = true;
-                    note.progress = 0;
-                    note._cachedPath = null;
-                    note._cachedPath2D = null;
-                    note._milestonesFired = null;
-                    // Determine drag direction NOW at tap time using initial pointer position.
-                    // Heart: bottom-tip start.
-                    //   tap to the RIGHT of note → player sweeps left → reverse path (left lobe first)
-                    //   tap to the LEFT          → player sweeps right → default (right lobe first)
-                    if (note.pathTemplate === 'heart' && note.extraPath?.points?.length) {
-                        const rawPts = note.extraPath.points;
-                        const dx = x - note.x;
-                        const orderedPts = dx > 0 ? rawPts.slice().reverse() : rawPts;
-                        const segs = Math.max(1, orderedPts.length - 1);
-                        note._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                    if (timingDiff < bestDragDiff || (timingDiff === bestDragDiff && distance < bestDragDistance)) {
+                        bestDrag = note;
+                        bestDragDiff = timingDiff;
+                        bestDragDistance = distance;
                     }
-                    this.currentDragNote = note;
-                    break;
+                    continue;
                 }
 
-                // Keyboard-exclusive notes can ONLY be hit by their assigned key, not mouse.
                 if (note.inputChannel === 'keyboard') continue;
 
-                // ── Tap note hit ──
-                if (timingDiff <= this.perfectRange) {
-                    note.score = 'perfect';
-                    this.score += 1000 * (1 + this.combo * 0.1);
-                    this.recordJudgement('perfect');
-                    this.combo++;
-                    note.hit = true;
-                    this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
-                    this.createHitEffect(note.x, note.y, note.score);
-                } else {
-                    // Within goodRange (guaranteed by guard above)
-                    note.score = 'good';
-                    this.score += 500 * (1 + this.combo * 0.1);
-                    this.recordJudgement('good');
-                    this.combo++;
-                    note.hit = true;
-                    this.tutorialSeenCounts[note.noteType || 'click'] = (this.tutorialSeenCounts[note.noteType || 'click'] || 0) + 1;
-                    this.createHitEffect(note.x, note.y, note.score);
+                if (timingDiff < bestPointerDiff || (timingDiff === bestPointerDiff && distance < bestPointerDistance)) {
+                    bestPointerNote = note;
+                    bestPointerDiff = timingDiff;
+                    bestPointerDistance = distance;
+                    bestPointerScore = timingDiff <= this.perfectRange ? 'perfect' : 'good';
                 }
-                    
+            }
+
+            if (bestSpin) {
+                bestSpin.held = true;
+                bestSpin.spinStartedAt = currentTime;
+                bestSpin.spinLastAngle = Math.atan2(y - bestSpin.y, x - bestSpin.x);
+                bestSpin.spinAccum = 0;
+                this.currentSpinNote = bestSpin;
+                return;
+            }
+
+            if (bestDrag) {
+                bestDrag.held = true;
+                bestDrag.progress = 0;
+                bestDrag._cachedPath = null;
+                bestDrag._cachedPath2D = null;
+                bestDrag._milestonesFired = null;
+                if (bestDrag.pathTemplate === 'heart' && bestDrag.extraPath?.points?.length) {
+                    const rawPts = bestDrag.extraPath.points;
+                    const dx = x - bestDrag.x;
+                    const orderedPts = dx > 0 ? rawPts.slice().reverse() : rawPts;
+                    const segs = Math.max(1, orderedPts.length - 1);
+                    bestDrag._cachedPath = orderedPts.map((p, i) => ({ x: p.x, y: p.y, t: i / segs }));
+                }
+                this.currentDragNote = bestDrag;
+                return;
+            }
+
+            if (bestPointerNote) {
+                bestPointerNote.score = bestPointerScore;
+                this.score += (bestPointerScore === 'perfect' ? 1000 : 500) * (1 + this.combo * 0.1);
+                this.recordJudgement(bestPointerScore);
+                this.combo++;
+                bestPointerNote.hit = true;
+                this.tutorialSeenCounts[bestPointerNote.noteType || 'click'] = (this.tutorialSeenCounts[bestPointerNote.noteType || 'click'] || 0) + 1;
+                this.createHitEffect(bestPointerNote.x, bestPointerNote.y, bestPointerScore);
                 this.updateHUD();
-                break;
             }
         }
 
