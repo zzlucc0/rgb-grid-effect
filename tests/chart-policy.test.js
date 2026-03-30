@@ -41,7 +41,7 @@ describe('chart policy quotas', () => {
     const policy = loadPolicy();
     const assigned = policy.assignMechanics(makeNotes(72), {});
     const types = new Set(assigned.map(n => n.type));
-    expect([...types].every(type => ['tap', 'hold', 'drag', 'spin'].includes(type))).toBe(true);
+    expect([...types].every(type => ['click', 'tap', 'hold', 'drag', 'spin'].includes(type))).toBe(true);
     expect(assigned.filter(n => n.type === 'spin').length).toBeLessThanOrEqual(2);
   });
 
@@ -68,14 +68,14 @@ describe('chart policy quotas', () => {
       { time: 20.9, type: 'hold', laneHint: 2, segmentLabel: 'bridge' }
     ];
     policy.enforceChartPlayability(notes);
-    expect(notes[1].type).toBe('tap');
-    expect(notes[2].type).toBe('tap');
+    expect(notes[1].type).toBe('click');
+    expect(notes[2].type).toBe('click');
   });
 
   it('provides tutorial labels for supported modern mechanics', () => {
     const policy = loadPolicy();
-    expect(policy.tutorialLabelForType('hold')).toBe('TAP');
-    expect(policy.tutorialLabelForType('hold', { inputChannel: 'keyboard' })).toBe('TAP');
+    expect(policy.tutorialLabelForType('hold')).toBe('CLICK');
+    expect(policy.tutorialLabelForType('hold', { inputChannel: 'keyboard' })).toBe('CLICK');
     expect(policy.tutorialLabelForType('drag')).toBe('DRAG');
     expect(policy.tutorialLabelForType('spin')).toBe('SPIN');
   });
