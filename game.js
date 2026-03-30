@@ -2589,27 +2589,33 @@ class RhythmGame {
 
         let bestCheckpoint = null;
         let bestCheckpointDiff = Infinity;
+        let bestCheckpointFuture = true;
         let bestNote = null;
         let bestDiff = Infinity;
+        let bestFuture = true;
 
         for (const note of this.notes) {
             if (note.hit || note.completed) continue;
             if (note.inputChannel === 'mouse') continue;
-            const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
+            const deltaMs = (currentTime - note.hitTime) * 1000;
+            const timingDiff = Math.abs(deltaMs);
             if (timingDiff > this.goodRange) continue;
+            const isFuture = deltaMs < 0;
 
             if (note.keyboardCheckpoint && !note.keyboardHit && String(note.keyboardKey || 'space') === normalizedKey) {
-                if (timingDiff < bestCheckpointDiff) {
+                if ((bestCheckpointFuture && !isFuture) || (bestCheckpointFuture === isFuture && timingDiff < bestCheckpointDiff)) {
                     bestCheckpoint = note;
                     bestCheckpointDiff = timingDiff;
+                    bestCheckpointFuture = isFuture;
                 }
                 continue;
             }
 
             if (note.inputChannel === 'keyboard' && note.keyHint && String(note.keyboardKey || note.keyHint || '').toLowerCase() === normalizedKey) {
-                if (timingDiff < bestDiff) {
+                if ((bestFuture && !isFuture) || (bestFuture === isFuture && timingDiff < bestDiff)) {
                     bestNote = note;
                     bestDiff = timingDiff;
+                    bestFuture = isFuture;
                 }
             }
         }
@@ -2791,14 +2797,17 @@ class RhythmGame {
             let bestPointerScore = null;
             let bestPointerDiff = Infinity;
             let bestPointerDistance = Infinity;
+            let bestPointerFuture = true;
 
             for (const note of this.notes) {
                 if (note.hit || note.completed) continue;
                 const distance = Math.sqrt((x - note.x) ** 2 + (y - note.y) ** 2);
                 const hitRadius = note.isDrag ? this.circleSize * 1.5 : this.circleSize;
                 if (distance > hitRadius) continue;
-                const timingDiff = Math.abs(currentTime - note.hitTime) * 1000;
+                const deltaMs = (currentTime - note.hitTime) * 1000;
+                const timingDiff = Math.abs(deltaMs);
                 if (timingDiff > this.goodRange) continue;
+                const isFuture = deltaMs < 0;
 
                 if (note.isSpin) {
                     if (note.inputChannel === 'keyboard') continue;
@@ -2822,10 +2831,11 @@ class RhythmGame {
 
                 if (note.inputChannel === 'keyboard') continue;
 
-                if (timingDiff < bestPointerDiff || (timingDiff === bestPointerDiff && distance < bestPointerDistance)) {
+                if ((bestPointerFuture && !isFuture) || (bestPointerFuture === isFuture && (timingDiff < bestPointerDiff || (timingDiff === bestPointerDiff && distance < bestPointerDistance)))) {
                     bestPointerNote = note;
                     bestPointerDiff = timingDiff;
                     bestPointerDistance = distance;
+                    bestPointerFuture = isFuture;
                     bestPointerScore = timingDiff <= this.perfectRange ? 'perfect' : 'good';
                 }
             }
