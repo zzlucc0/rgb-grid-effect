@@ -4815,13 +4815,32 @@ RhythmGame.prototype.showResultOverlay = function () {
                         </div>
                     </div>
                 </div>
-                <div style="width:min(34vw,300px);display:flex;align-items:center;justify-content:center;padding:8px 0 0;">
-                    <div style="position:relative;width:260px;height:260px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 22px ${rankTheme.glow});">
-                        <div style="position:absolute;inset:18px;border:4px solid ${rankTheme.edge};opacity:.26;transform:rotate(45deg);"></div>
-                        <div style="position:absolute;inset:34px;border:2px solid rgba(255,255,255,.18);opacity:.22;transform:rotate(45deg);"></div>
-                        <div style="position:absolute;width:228px;height:228px;background:radial-gradient(circle at 35% 30%, ${rankTheme.accent}, ${rankTheme.hue} 36%, ${rankTheme.edge} 72%, rgba(0,0,0,.0) 73%);clip-path:polygon(50% 0%, 72% 8%, 90% 24%, 100% 50%, 92% 74%, 74% 92%, 50% 100%, 26% 92%, 8% 74%, 0% 50%, 10% 24%, 28% 8%);box-shadow:0 0 32px ${rankTheme.glow}, inset 0 0 0 8px rgba(0,0,0,.22), inset 0 0 28px rgba(255,255,255,.15);"></div>
-                        <div style="position:absolute;width:188px;height:188px;background:linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.06));clip-path:polygon(50% 0%, 72% 8%, 90% 24%, 100% 50%, 92% 74%, 74% 92%, 50% 100%, 26% 92%, 8% 74%, 0% 50%, 10% 24%, 28% 8%);opacity:.45;"></div>
-                        <div style="position:relative;font-size:${grade === 'S+' ? '82px' : '94px'};line-height:1;color:${rankTheme.accent};letter-spacing:${grade === 'S+' ? '0px' : '4px'};text-shadow:4px 4px 0 ${rankTheme.edge}, 0 0 12px ${rankTheme.glow}, -2px -2px 0 rgba(255,255,255,.2);transform:translateY(-4px) scale(${grade === 'S+' ? '0.96' : '1'});">${grade}</div>
+                <div style="width:min(36vw,340px);display:flex;align-items:center;justify-content:center;padding:8px 0 0;">
+                    <div style="position:relative;width:290px;height:290px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 26px ${rankTheme.glow});">
+                        <div style="position:absolute;inset:10px;opacity:.22;background:radial-gradient(circle at center, ${rankTheme.glow}, transparent 64%);"></div>
+                        <div style="position:absolute;inset:20px;border:4px solid ${rankTheme.edge};opacity:.18;transform:rotate(45deg);"></div>
+                        <div style="position:absolute;inset:42px;border:2px solid rgba(255,255,255,.14);opacity:.16;transform:rotate(45deg);"></div>
+                        <div style="position:absolute;width:238px;height:238px;border-radius:26px;background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.12), rgba(255,255,255,0) 62%);"></div>
+                        <div style="position:absolute;left:50%;top:50%;width:238px;height:238px;transform:translate(-50%,-50%);pointer-events:none;opacity:.95;">
+                            <div style="position:absolute;left:50%;top:50%;width:180px;height:180px;transform:translate(-50%,-50%) rotate(45deg);background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));border:4px solid ${rankTheme.edge};box-shadow:0 0 20px ${rankTheme.glow};"></div>
+                            <div style="position:absolute;left:18px;top:26px;width:18px;height:18px;background:${rankTheme.edge};clip-path:polygon(0 0,100% 42%,38% 100%);opacity:.72;"></div>
+                            <div style="position:absolute;right:22px;top:42px;width:14px;height:14px;background:${rankTheme.hue};clip-path:polygon(0 0,100% 30%,52% 100%);opacity:.78;"></div>
+                            <div style="position:absolute;left:28px;bottom:34px;width:16px;height:16px;background:${rankTheme.accent};clip-path:polygon(0 0,100% 40%,30% 100%);opacity:.68;"></div>
+                            <div style="position:absolute;right:28px;bottom:28px;width:20px;height:20px;background:${rankTheme.edge};clip-path:polygon(0 0,100% 50%,42% 100%);opacity:.64;"></div>
+                            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(${grade === 'S+' ? '0.88' : '1'});font-size:${grade === 'S+' ? '118px' : '136px'};line-height:1;letter-spacing:${grade === 'S+' ? '-8px' : '2px'};font-weight:900;color:${rankTheme.accent};
+                                text-shadow:
+                                    0 0 0 ${rankTheme.edge},
+                                    2px 2px 0 ${rankTheme.edge},
+                                    4px 4px 0 ${rankTheme.edge},
+                                    6px 6px 0 rgba(15,8,24,.92),
+                                    0 0 10px ${rankTheme.glow},
+                                    0 0 26px ${rankTheme.glow};
+                                -webkit-text-stroke: 3px rgba(255,255,255,.08);
+                                filter:saturate(1.18) contrast(1.12);">
+                                <span style="display:inline-block;padding:8px 12px 4px;background:linear-gradient(180deg, rgba(255,255,255,.30), rgba(255,255,255,0) 34%),linear-gradient(180deg, ${rankTheme.accent} 0%, ${rankTheme.hue} 44%, ${rankTheme.edge} 82%);-webkit-background-clip:text;background-clip:text;color:transparent;">${grade}</span>
+                            </div>
+                            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(${grade === 'S+' ? '0.88' : '1'}) translate(4px,4px);font-size:${grade === 'S+' ? '118px' : '136px'};line-height:1;letter-spacing:${grade === 'S+' ? '-8px' : '2px'};font-weight:900;color:rgba(18,8,28,.88);z-index:-1;">${grade}</div>
+                        </div>
                     </div>
                 </div>
             </div>
