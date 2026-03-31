@@ -4742,47 +4742,115 @@ RhythmGame.prototype.showResultOverlay = function () {
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'resultOverlay';
-        overlay.style.cssText = [
-            'position:fixed', 'inset:0', 'z-index:9999',
-            'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
-            'background:rgba(4,10,20,1)',
-            'font-family:"Press Start 2P",monospace',
-            'color:#59efff', 'pointer-events:all'
-        ].join(';');
         document.body.appendChild(overlay);
     }
 
-    const grade = acc >= 95 ? 'S' : acc >= 85 ? 'A' : acc >= 70 ? 'B' : acc >= 55 ? 'C' : 'D';
-    const gradeColor = acc >= 95 ? '#ffe95a' : acc >= 85 ? '#59efff' : acc >= 70 ? '#b892ff' : acc >= 55 ? '#ff9bb4' : '#ff5f76';
+    const grade = (acc === 100 && this.judgementStats.miss === 0)
+        ? 'S+'
+        : acc >= 95 ? 'S'
+        : acc >= 85 ? 'A'
+        : acc >= 70 ? 'B'
+        : acc >= 55 ? 'C'
+        : acc >= 40 ? 'D'
+        : 'F';
+
+    const rankTheme = {
+        'S+': { hue: '#ffd84f', edge: '#ff9f1a', glow: 'rgba(255,216,79,.48)', accent: '#fff8d6', label: 'FULL COMBO // OVERDRIVE' },
+        'S':  { hue: '#ff5bd1', edge: '#8f5bff', glow: 'rgba(255,91,209,.42)', accent: '#ffe5fb', label: 'TOP CLASS // CLEAN RUN' },
+        'A':  { hue: '#ff9b4f', edge: '#ff4f5f', glow: 'rgba(255,155,79,.38)', accent: '#fff0dc', label: 'STRONG CLEAR // COMBAT HOT' },
+        'B':  { hue: '#ffd35a', edge: '#ffb347', glow: 'rgba(255,211,90,.34)', accent: '#fff6d8', label: 'SOLID CLEAR // HOLD THE LINE' },
+        'C':  { hue: '#67d8ff', edge: '#4f8fff', glow: 'rgba(103,216,255,.34)', accent: '#e6fbff', label: 'STABLE CLEAR // SYSTEM ONLINE' },
+        'D':  { hue: '#7fa3ff', edge: '#4d63c9', glow: 'rgba(127,163,255,.28)', accent: '#eef3ff', label: 'ROUGH CLEAR // DAMAGE TAKEN' },
+        'F':  { hue: '#ff6a7f', edge: '#8a2448', glow: 'rgba(255,106,127,.28)', accent: '#ffe3e8', label: 'RUN FAILED // SIGNAL LOST' }
+    }[grade];
 
     // Hide input UI while result is showing
     const uploadContainer = document.getElementById('uploadContainer');
     if (uploadContainer) uploadContainer.classList.add('hidden');
 
-    const btnStyle = `font-family:'Press Start 2P',monospace;font-size:9px;
-        padding:12px 28px;border:2px solid;cursor:pointer;letter-spacing:2px;margin:0 8px;`;
+    overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'z-index:9999',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'background:radial-gradient(circle at center, rgba(18,26,48,.75), rgba(3,5,10,.96) 68%)',
+        'backdrop-filter:blur(6px)',
+        'font-family:"Press Start 2P",monospace',
+        'color:#dff8ff', 'pointer-events:all', 'overflow:hidden'
+    ].join(';');
+
+    const btnStyle = `font-family:'Press Start 2P',monospace;font-size:9px;padding:14px 24px;border:3px solid;cursor:pointer;letter-spacing:2px;min-width:220px;clip-path:polygon(0 8px,8px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 8px),calc(100% - 8px) 100%,12px 100%,0 calc(100% - 12px));`;
+    const scorePadded = String(score).padStart(7,'0');
+
     overlay.innerHTML = `
-        <div style="font-size:10px;letter-spacing:4px;color:rgba(89,239,255,.55);margin-bottom:18px">── RESULT ──</div>
-        <div style="font-size:52px;color:${gradeColor};text-shadow:0 0 24px ${gradeColor},0 0 8px #fff;margin-bottom:24px">${grade}</div>
-        <div style="font-size:22px;color:#fff;text-shadow:0 0 12px #59efff;margin-bottom:32px">${String(score).padStart(7,'0')}</div>
-        <div style="display:flex;gap:32px;margin-bottom:36px">
-            <div style="text-align:center">
-                <div style="font-size:18px;color:#59efff;text-shadow:0 0 10px #59efff">${this.judgementStats.perfect}</div>
-                <div style="font-size:7px;color:rgba(89,239,255,.55);margin-top:6px">PERFECT</div>
+        <div style="position:absolute;inset:0;pointer-events:none;opacity:.26;background:
+            radial-gradient(circle at 50% 28%, ${rankTheme.glow}, transparent 22%),
+            repeating-linear-gradient(0deg, rgba(255,255,255,.026) 0 3px, transparent 3px 6px),
+            linear-gradient(90deg, transparent 0%, rgba(255,255,255,.04) 12%, transparent 22%, transparent 78%, rgba(255,255,255,.03) 88%, transparent 100%);"></div>
+        <div style="position:absolute;inset:auto 0 10%;height:140px;pointer-events:none;opacity:.22;background:radial-gradient(circle at 50% 50%, ${rankTheme.glow}, transparent 60%);"></div>
+        <div style="position:relative;z-index:1;width:min(92vw,980px);padding:36px 36px 30px;background:
+            linear-gradient(180deg, rgba(9,12,24,.94), rgba(8,10,20,.88)),
+            repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px);
+            border:3px solid ${rankTheme.edge};box-shadow:0 0 0 4px rgba(255,255,255,.03), 0 0 34px ${rankTheme.glow}, inset 0 0 0 2px rgba(255,255,255,.04);
+            clip-path:polygon(0 18px,18px 0,calc(100% - 28px) 0,100% 28px,100% calc(100% - 18px),calc(100% - 18px) 100%,24px 100%,0 calc(100% - 24px));">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:26px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:10px;letter-spacing:4px;color:rgba(223,248,255,.58);margin-bottom:14px;">── RESULT BOARD ──</div>
+                    <div style="font-size:11px;letter-spacing:3px;color:${rankTheme.accent};opacity:.92;margin-bottom:18px;">${rankTheme.label}</div>
+                    <div style="font-size:20px;color:#ffffff;text-shadow:0 0 16px ${rankTheme.glow}, 0 0 4px #fff;margin-bottom:24px;">${scorePadded}</div>
+                    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;">
+                        <div style="padding:16px 12px;background:linear-gradient(180deg, rgba(11,18,34,.92), rgba(8,12,24,.84));border:2px solid rgba(90,246,255,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);text-align:center;">
+                            <div style="font-size:17px;color:#59efff;text-shadow:0 0 12px rgba(89,239,255,.45);margin-bottom:8px;">${this.judgementStats.perfect}</div>
+                            <div style="font-size:7px;color:rgba(89,239,255,.65);letter-spacing:2px;">PERFECT</div>
+                        </div>
+                        <div style="padding:16px 12px;background:linear-gradient(180deg, rgba(19,12,28,.92), rgba(11,8,18,.84));border:2px solid rgba(255,79,174,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);text-align:center;">
+                            <div style="font-size:17px;color:#ff9bb4;text-shadow:0 0 12px rgba(255,155,180,.4);margin-bottom:8px;">${this.judgementStats.good}</div>
+                            <div style="font-size:7px;color:rgba(255,155,180,.68);letter-spacing:2px;">GOOD</div>
+                        </div>
+                        <div style="padding:16px 12px;background:linear-gradient(180deg, rgba(28,12,18,.92), rgba(18,8,12,.84));border:2px solid rgba(255,90,107,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);text-align:center;">
+                            <div style="font-size:17px;color:#ff5f76;text-shadow:0 0 12px rgba(255,95,118,.4);margin-bottom:8px;">${this.judgementStats.miss}</div>
+                            <div style="font-size:7px;color:rgba(255,95,118,.7);letter-spacing:2px;">MISS</div>
+                        </div>
+                        <div style="padding:16px 12px;background:linear-gradient(180deg, rgba(15,18,30,.92), rgba(9,10,20,.84));border:2px solid rgba(255,216,79,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);text-align:center;">
+                            <div style="font-size:17px;color:${rankTheme.accent};text-shadow:0 0 12px ${rankTheme.glow};margin-bottom:8px;">${acc.toFixed(1)}%</div>
+                            <div style="font-size:7px;color:rgba(255,255,255,.58);letter-spacing:2px;">ACCURACY</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="width:min(36vw,340px);display:flex;align-items:center;justify-content:center;padding:8px 0 0;">
+                    <div style="position:relative;width:290px;height:290px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 26px ${rankTheme.glow});">
+                        <div style="position:absolute;inset:10px;opacity:.22;background:radial-gradient(circle at center, ${rankTheme.glow}, transparent 64%);"></div>
+                        <div style="position:absolute;inset:20px;border:4px solid ${rankTheme.edge};opacity:.18;transform:rotate(45deg);"></div>
+                        <div style="position:absolute;inset:42px;border:2px solid rgba(255,255,255,.14);opacity:.16;transform:rotate(45deg);"></div>
+                        <div style="position:absolute;width:238px;height:238px;border-radius:26px;background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.12), rgba(255,255,255,0) 62%);"></div>
+                        <div style="position:absolute;left:50%;top:50%;width:238px;height:238px;transform:translate(-50%,-50%);pointer-events:none;opacity:.95;">
+                            <div style="position:absolute;left:50%;top:50%;width:180px;height:180px;transform:translate(-50%,-50%) rotate(45deg);background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));border:4px solid ${rankTheme.edge};box-shadow:0 0 20px ${rankTheme.glow};"></div>
+                            <div style="position:absolute;left:18px;top:26px;width:18px;height:18px;background:${rankTheme.edge};clip-path:polygon(0 0,100% 42%,38% 100%);opacity:.72;"></div>
+                            <div style="position:absolute;right:22px;top:42px;width:14px;height:14px;background:${rankTheme.hue};clip-path:polygon(0 0,100% 30%,52% 100%);opacity:.78;"></div>
+                            <div style="position:absolute;left:28px;bottom:34px;width:16px;height:16px;background:${rankTheme.accent};clip-path:polygon(0 0,100% 40%,30% 100%);opacity:.68;"></div>
+                            <div style="position:absolute;right:28px;bottom:28px;width:20px;height:20px;background:${rankTheme.edge};clip-path:polygon(0 0,100% 50%,42% 100%);opacity:.64;"></div>
+                            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(${grade === 'S+' ? '0.88' : '1'});font-size:${grade === 'S+' ? '118px' : '136px'};line-height:1;letter-spacing:${grade === 'S+' ? '-8px' : '2px'};font-weight:900;color:${rankTheme.accent};
+                                text-shadow:
+                                    0 0 0 ${rankTheme.edge},
+                                    2px 2px 0 ${rankTheme.edge},
+                                    4px 4px 0 ${rankTheme.edge},
+                                    6px 6px 0 rgba(15,8,24,.92),
+                                    0 0 10px ${rankTheme.glow},
+                                    0 0 26px ${rankTheme.glow};
+                                -webkit-text-stroke: 3px rgba(255,255,255,.08);
+                                filter:saturate(1.18) contrast(1.12);">
+                                <span style="display:inline-block;padding:8px 12px 4px;background:linear-gradient(180deg, rgba(255,255,255,.30), rgba(255,255,255,0) 34%),linear-gradient(180deg, ${rankTheme.accent} 0%, ${rankTheme.hue} 44%, ${rankTheme.edge} 82%);-webkit-background-clip:text;background-clip:text;color:transparent;">${grade}</span>
+                            </div>
+                            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(${grade === 'S+' ? '0.88' : '1'}) translate(4px,4px);font-size:${grade === 'S+' ? '118px' : '136px'};line-height:1;letter-spacing:${grade === 'S+' ? '-8px' : '2px'};font-weight:900;color:rgba(18,8,28,.88);z-index:-1;">${grade}</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div style="text-align:center">
-                <div style="font-size:18px;color:#ff9bb4;text-shadow:0 0 10px #ff9bb4">${this.judgementStats.good}</div>
-                <div style="font-size:7px;color:rgba(255,155,180,.55);margin-top:6px">GOOD</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:28px;flex-wrap:wrap;">
+                <div style="font-size:8px;letter-spacing:3px;color:rgba(223,248,255,.48);">PIXEL COMBAT ANALYSIS COMPLETE</div>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                    <button id="resultRetryBtn" style="${btnStyle}background:linear-gradient(180deg, rgba(89,239,255,.18), rgba(89,239,255,.08));border-color:#59efff;color:#eaffff;text-shadow:0 0 10px rgba(89,239,255,.55);box-shadow:0 0 22px rgba(89,239,255,.18), inset 0 0 0 1px rgba(255,255,255,.06);">PLAY AGAIN</button>
+                    <button id="resultMenuBtn" style="${btnStyle}background:linear-gradient(180deg, rgba(255,79,174,.18), rgba(255,79,174,.08));border-color:#ff4fae;color:#fff1fa;text-shadow:0 0 10px rgba(255,79,174,.55);box-shadow:0 0 22px rgba(255,79,174,.18), inset 0 0 0 1px rgba(255,255,255,.06);">BACK TO MENU</button>
+                </div>
             </div>
-            <div style="text-align:center">
-                <div style="font-size:18px;color:#ff5f76;text-shadow:0 0 10px #ff5f76">${this.judgementStats.miss}</div>
-                <div style="font-size:7px;color:rgba(255,95,118,.55);margin-top:6px">MISS</div>
-            </div>
-        </div>
-        <div style="font-size:9px;color:rgba(89,239,255,.6);margin-bottom:28px">ACCURACY ${acc.toFixed(1)}%</div>
-        <div style="display:flex;align-items:center;justify-content:center">
-            <button id="resultRetryBtn" style="${btnStyle}background:rgba(89,239,255,.08);border-color:#59efff;color:#59efff;text-shadow:0 0 10px #59efff;">PLAY AGAIN</button>
-            <button id="resultMenuBtn" style="${btnStyle}background:rgba(255,79,174,.08);border-color:#ff4fae;color:#ff4fae;text-shadow:0 0 10px #ff4fae;">BACK TO MENU</button>
         </div>`;
     overlay.style.display = 'flex';
 
@@ -4791,7 +4859,6 @@ RhythmGame.prototype.showResultOverlay = function () {
     const retryBtn = document.getElementById('resultRetryBtn');
     if (retryBtn) retryBtn.onclick = () => {
         hideOverlay();
-        // Directly restart the game with the same song — skip input page
         this.startGame();
     };
 
@@ -4802,7 +4869,6 @@ RhythmGame.prototype.showResultOverlay = function () {
         this.resetRunVisualState();
         this.setRunPhase('idle');
         this.setScene('input', { force: true });
-        // Show input UI
         if (uploadContainer) uploadContainer.classList.remove('hidden');
     };
 };
